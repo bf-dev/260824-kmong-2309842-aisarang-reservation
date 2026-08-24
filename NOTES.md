@@ -239,11 +239,12 @@ unityYn  N (독립반)
 > `value=` 만 지우고 정작 서명값을 그대로 남긴다. `_PW_ATTR` / `_PW_ATTR_REV`
 > 로 따로 처리한다. `tests/test_masking.py::test_signed_blob_masked` 가 잡아냈다.
 
-## 배포 현황 (v1.0.0, 2026-08-24)
+## 배포 현황 (v1.0.2, 2026-08-24)
 
-- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.0.exe
-  (29,112,902 bytes, `PE32+ executable (GUI) x86-64`, mode 644,
-  서빙 바이트 sha256 = 빌드 바이트 sha256 = `f2349e2fb05c75f9...` 로 대조 확인)
+- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.2.exe
+  (29,112,880 bytes, `PE32+ executable (GUI) x86-64`, mode 644,
+  서빙 바이트 sha256 = 빌드 바이트 sha256 = `1c7a3f3a1c765965...` 로 대조 확인)
+  (1.0.0 도 같은 경로에 남아 있다. 이미 서빙된 파일명은 덮어쓰지 않는다.)
 - 업데이트 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
 - CI: GitHub Actions run 성공 (unit tests → build → PE 확인 → 라이브 selftest →
   fixture selftest → GUI construct → GUI 스크린샷)
