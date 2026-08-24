@@ -218,8 +218,17 @@ class App:
 
     # ------------------------------------------------------------ 화면
     def _build(self):
-        outer = tk.Frame(self.root, bg=BG)
-        outer.pack(fill="both", expand=True, padx=18, pady=8 if self.compact else 14)
+        shell = tk.Frame(self.root, bg=BG)
+        shell.pack(fill="both", expand=True, padx=18, pady=8 if self.compact else 14)
+
+        # 실행 버튼 / 결과 / 상태 / 로그를 먼저 바닥에 붙여 자리를 확보한다.
+        # 위쪽 카드들이 먼저 자리를 다 먹으면 화면이 낮은 PC 에서 결과 표시줄이
+        # 통째로 잘려 나간다(실제로 CI 스크린샷에서 두 번 잘렸다).
+        # side="bottom" 으로 먼저 pack 한 것이 가장 아래를 차지한다.
+        self._build_bottom(shell)
+
+        outer = tk.Frame(shell, bg=BG)
+        outer.pack(side="top", fill="both", expand=True)
 
         # 머리말
         head = tk.Frame(outer, bg=BG)
@@ -313,9 +322,31 @@ class App:
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
             row=4, column=2, columnspan=3, sticky="w", padx=(10, 0), pady=(14, 0))
 
-        # 실행
-        run = tk.Frame(outer, bg=BG)
-        run.pack(fill="x", pady=(2, 7 if self.compact else 12))
+    def _build_bottom(self, shell):
+        """항상 보여야 하는 것들. 바닥부터 역순으로 붙인다."""
+        logwrap = tk.Frame(shell, bg=CARD, highlightthickness=1,
+                           highlightbackground=LINE)
+        logwrap.pack(side="bottom", fill="both", expand=True)
+        self.logbox = tk.Text(logwrap, height=4 if self.compact else 9,
+                              bg=CARD, fg=INK, relief="flat",
+                              font=("맑은 고딕", 9), wrap="word", padx=12, pady=10)
+        self.logbox.pack(side="left", fill="both", expand=True)
+        sb = ttk.Scrollbar(logwrap, command=self.logbox.yview)
+        sb.pack(side="right", fill="y")
+        self.logbox.config(yscrollcommand=sb.set, state="disabled")
+
+        self.status = tk.Label(shell, text="설정을 확인하고 [예약 시작] 을 눌러주세요.",
+                               bg=BG, fg=MUTED, font=("맑은 고딕", 10), anchor="w")
+        self.status.pack(side="bottom", fill="x",
+                         pady=(4, 5) if self.compact else (6, 8))
+
+        self.result = tk.Label(shell, text="대기 중", bg="#e8ecf4", fg=INK,
+                               font=("맑은 고딕", 12, "bold"), anchor="w",
+                               padx=16, pady=9 if self.compact else 12)
+        self.result.pack(side="bottom", fill="x")
+
+        run = tk.Frame(shell, bg=BG)
+        run.pack(side="bottom", fill="x", pady=(2, 7 if self.compact else 12))
         self.btn_start = tk.Button(run, text="예약 시작", command=self.on_start,
                                    bg=ACCENT, fg="white", relief="flat", bd=0,
                                    font=("맑은 고딕", 14, "bold"), padx=40, pady=10 if self.compact else 14,
@@ -332,25 +363,6 @@ class App:
                                   font=("맑은 고딕", 12), padx=22, pady=10 if self.compact else 14,
                                   cursor="hand2")
         self.btn_save.pack(side="right")
-
-        # 상태 + 결과
-        self.result = tk.Label(outer, text="대기 중", bg="#e8ecf4", fg=INK,
-                               font=("맑은 고딕", 12, "bold"), anchor="w",
-                               padx=16, pady=9 if self.compact else 12)
-        self.result.pack(fill="x")
-        self.status = tk.Label(outer, text="설정을 확인하고 [예약 시작] 을 눌러주세요.",
-                               bg=BG, fg=MUTED, font=("맑은 고딕", 10), anchor="w")
-        self.status.pack(fill="x", pady=(4, 5) if self.compact else (6, 8))
-
-        logwrap = tk.Frame(outer, bg=CARD, highlightthickness=1,
-                           highlightbackground=LINE)
-        logwrap.pack(fill="both", expand=True)
-        self.logbox = tk.Text(logwrap, height=4 if self.compact else 9, bg=CARD, fg=INK, relief="flat",
-                              font=("맑은 고딕", 9), wrap="word", padx=12, pady=10)
-        self.logbox.pack(side="left", fill="both", expand=True)
-        sb = ttk.Scrollbar(logwrap, command=self.logbox.yview)
-        sb.pack(side="right", fill="y")
-        self.logbox.config(yscrollcommand=sb.set, state="disabled")
 
     # ------------------------------------------------------ 상태 표시
     def log(self, line: str):
