@@ -140,15 +140,16 @@ class SegmentedChoice(tk.Frame):
 class SlotPicker(tk.Frame):
     """시간대 선택 칩. 선택 여부를 색과 글자로 보여준다."""
 
-    def __init__(self, master, hours=SLOT_HOURS):
+    def __init__(self, master, hours=SLOT_HOURS, per_row=5):
         super().__init__(master, bg=CARD)
+        self.per_row = per_row
         self._state = {}
         self._buttons = {}
         for i, h in enumerate(hours):
             b = tk.Button(self, text=h, relief="flat", bd=0, cursor="hand2",
                           font=("맑은 고딕", 10), width=6, padx=2, pady=6,
                           command=lambda k=h: self._toggle(k))
-            b.grid(row=i // 5, column=i % 5, padx=3, pady=3)
+            b.grid(row=i // self.per_row, column=i % self.per_row, padx=3, pady=2)
             self._state[h] = False
             self._buttons[h] = b
         self._paint()
@@ -173,17 +174,17 @@ class SlotPicker(tk.Frame):
         self._paint()
 
 
-def card(parent, title):
+def card(parent, title, compact=False):
     wrap = tk.Frame(parent, bg=BG)
-    wrap.pack(fill="x", pady=(0, 12))
+    wrap.pack(fill="x", pady=(0, 7 if compact else 12))
     head = tk.Label(wrap, text=title, bg=BG, fg=INK,
                     font=("맑은 고딕", 11, "bold"), anchor="w")
-    head.pack(fill="x", pady=(0, 6))
+    head.pack(fill="x", pady=(0, 4 if compact else 6))
     box = tk.Frame(wrap, bg=CARD, highlightthickness=1,
                    highlightbackground=LINE, highlightcolor=LINE)
     box.pack(fill="x")
     inner = tk.Frame(box, bg=CARD)
-    inner.pack(fill="x", padx=16, pady=14)
+    inner.pack(fill="x", padx=16, pady=8 if compact else 14)
     return inner
 
 
@@ -200,8 +201,16 @@ class App:
 
         root.title(f"{config.APP_NAME}  v{config.APP_VERSION}")
         root.configure(bg=BG)
-        root.geometry("880x900")
-        root.minsize(820, 760)
+        # 화면이 낮은 PC(1366x768 노트북, CI 러너 등)에서는 창이 잘려서
+        # 결과 표시줄과 로그가 안 보인다. 화면 높이에 맞춰 여백을 줄인다.
+        try:
+            screen_h = root.winfo_screenheight()
+        except Exception:
+            screen_h = 1080
+        self.compact = screen_h < 900
+        height = max(620, min(900, screen_h - 90))
+        root.geometry(f"880x{height}")
+        root.minsize(820, 600)
 
         self._build()
         self._apply_settings()
@@ -210,11 +219,11 @@ class App:
     # ------------------------------------------------------------ 화면
     def _build(self):
         outer = tk.Frame(self.root, bg=BG)
-        outer.pack(fill="both", expand=True, padx=18, pady=14)
+        outer.pack(fill="both", expand=True, padx=18, pady=8 if self.compact else 14)
 
         # 머리말
         head = tk.Frame(outer, bg=BG)
-        head.pack(fill="x", pady=(0, 14))
+        head.pack(fill="x", pady=(0, 7 if self.compact else 14))
         tk.Label(head, text="아이사랑 시간제보육 예약", bg=BG, fg=INK,
                  font=("맑은 고딕", 18, "bold")).pack(side="left")
         tk.Label(head, text=f"  v{config.APP_VERSION}", bg=BG, fg=MUTED,
@@ -223,7 +232,7 @@ class App:
                  bg=BG, fg=MUTED, font=("맑은 고딕", 10)).pack(side="right", pady=(8, 0))
 
         # 1. 로그인
-        c = card(outer, "1. 로그인 방식")
+        c = card(outer, "1. 로그인 방식", self.compact)
         self.login_choice = SegmentedChoice(
             c,
             [("manual", "크롬에서 직접 로그인"), ("cert", "공동인증서 자동 로그인")],
@@ -243,7 +252,7 @@ class App:
         self.cert_hint.grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(10, 0))
 
         # 2. 센터
-        c = card(outer, "2. 지역과 센터")
+        c = card(outer, "2. 지역과 센터", self.compact)
         tk.Label(c, text="시/도", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
             row=0, column=0, sticky="w")
         self.cb_sido = ttk.Combobox(c, width=18, state="readonly", font=("맑은 고딕", 10))
@@ -273,7 +282,7 @@ class App:
         self.cb_center.bind("<<ComboboxSelected>>", lambda e: self._show_center())
 
         # 3. 예약 조건
-        c = card(outer, "3. 예약 조건")
+        c = card(outer, "3. 예약 조건", self.compact)
         tk.Label(c, text="이용일", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
             row=0, column=0, sticky="w")
         self.date_choice = SegmentedChoice(
@@ -288,7 +297,7 @@ class App:
 
         tk.Label(c, text="원하는 시간대", bg=CARD, fg=INK,
                  font=("맑은 고딕", 10)).grid(row=2, column=0, sticky="nw", pady=(14, 0))
-        self.slots = SlotPicker(c)
+        self.slots = SlotPicker(c, per_row=9 if self.compact else 5)
         self.slots.grid(row=2, column=1, columnspan=4, sticky="w",
                         padx=(10, 0), pady=(14, 0))
         tk.Label(c, text="아무것도 고르지 않으면 그 날 열린 시간대 중 먼저 잡히는 것으로 신청합니다.",
@@ -306,37 +315,37 @@ class App:
 
         # 실행
         run = tk.Frame(outer, bg=BG)
-        run.pack(fill="x", pady=(2, 12))
+        run.pack(fill="x", pady=(2, 7 if self.compact else 12))
         self.btn_start = tk.Button(run, text="예약 시작", command=self.on_start,
                                    bg=ACCENT, fg="white", relief="flat", bd=0,
-                                   font=("맑은 고딕", 14, "bold"), padx=40, pady=14,
+                                   font=("맑은 고딕", 14, "bold"), padx=40, pady=10 if self.compact else 14,
                                    cursor="hand2", activebackground=ACCENT_DK,
                                    activeforeground="white")
         self.btn_start.pack(side="left")
         self.btn_stop = tk.Button(run, text="중지", command=self.on_stop,
                                   bg="#e8ebf0", fg=MUTED, relief="flat", bd=0,
-                                  font=("맑은 고딕", 12), padx=26, pady=14,
+                                  font=("맑은 고딕", 12), padx=26, pady=10 if self.compact else 14,
                                   cursor="hand2", state="disabled")
         self.btn_stop.pack(side="left", padx=(10, 0))
         self.btn_save = tk.Button(run, text="설정 저장", command=self.on_save,
                                   bg="#e8ebf0", fg=INK, relief="flat", bd=0,
-                                  font=("맑은 고딕", 12), padx=22, pady=14,
+                                  font=("맑은 고딕", 12), padx=22, pady=10 if self.compact else 14,
                                   cursor="hand2")
         self.btn_save.pack(side="right")
 
         # 상태 + 결과
         self.result = tk.Label(outer, text="대기 중", bg="#e8ecf4", fg=INK,
                                font=("맑은 고딕", 12, "bold"), anchor="w",
-                               padx=16, pady=12)
+                               padx=16, pady=9 if self.compact else 12)
         self.result.pack(fill="x")
         self.status = tk.Label(outer, text="설정을 확인하고 [예약 시작] 을 눌러주세요.",
                                bg=BG, fg=MUTED, font=("맑은 고딕", 10), anchor="w")
-        self.status.pack(fill="x", pady=(6, 8))
+        self.status.pack(fill="x", pady=(4, 5) if self.compact else (6, 8))
 
         logwrap = tk.Frame(outer, bg=CARD, highlightthickness=1,
                            highlightbackground=LINE)
         logwrap.pack(fill="both", expand=True)
-        self.logbox = tk.Text(logwrap, height=9, bg=CARD, fg=INK, relief="flat",
+        self.logbox = tk.Text(logwrap, height=4 if self.compact else 9, bg=CARD, fg=INK, relief="flat",
                               font=("맑은 고딕", 9), wrap="word", padx=12, pady=10)
         self.logbox.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(logwrap, command=self.logbox.yview)
