@@ -83,6 +83,113 @@ spending limit 때문에 즉시 막힌다.
 - `netfunnel-pcms.js` (넷퍼널 가상대기열) 이 배포돼 있다. 목록 화면에서는 주석 처리돼
   있지만 9시 몰릴 때 서버가 켤 수 있다. `automation.handle_netfunnel()` 이 대기 처리.
 
+## 실사이트 단계별 검증 맵 (2026-08-24, 전부 KR 프록시 egress 115.68.232.141 경유)
+
+증거 파일은 `docs/site-map/` 에 그대로 저장돼 있다. **추정으로 채운 칸은 없다.
+못 본 것은 못 봤다고 적는다.**
+
+### 1단계 — 시간제보육 진입과 로그인 게이트  ✅ 확인함
+- 진입: `GET /?menuno=242` → HTTP 200, 69,654B (`01-entry-242.html`)
+  화면: 구분(독립반/통합반) · 지역 선택 · 검색어 · 조회 (스크린샷으로도 확인)
+- 목록 조각: `POST /icms/nursery/TmpCareSlLAjax.html` → 200, 21,319B
+  (`03-centers-seocho-N.html`). 각 센터에 `시간제보육 예약` 버튼이 붙어 있고
+  `data-stcode` / `data-unityyn` 를 들고 `gotoOccasionRes()` 를 부른다.
+- **게이트 원문** (`03-centers-seocho-N.html` 의 `gotoOccasionRes` 안, 서버가
+  상황에 따라 주석을 풀어 내보내는 분기):
+  ```js
+  icmsLayerPopup.alert({ contents : "공동인증서 로그인이 필요합니다." });
+  return ;
+  ```
+  **고객이 화면에서 본 문구가 정확히 이것이다. 고객 보고가 맞았다.**
+- 인증서 로그인 화면: `GET /?menuno=506&ltype=cert` → 200, 89,776B (`02-login-cert.html`)
+  탭 3개: `gotoLogin('simple')` 간편인증 / `gotoLogin('cert')` 인증서 / `gotoLogin('id')` 아이디
+  ```html
+  <form name="frmLoginCert" action="/icms/login/login.html" method="post">
+    <input name="returnUrl"> <input name="loginPageType" value="01">
+    <input name="aResult">              <!-- 공동인증서 서명 결과 -->
+    <input name="kybrdscrtyyn" value="N"> <input name="certType" value="C">
+    <input name="flag" id="flag" value="PCSl">   <!-- 어린이집이면 NCSl -->
+    <input name="ssoReturnMenuno" value="1">
+  <button onclick="fnXecureLogin();">공동/금융인증서 로그인</button>
+  ```
+- `fnXecureLogin()` 실체 (`02-xecureCommon.js`):
+  ```js
+  AnySign.SignDataWithVID(AnySign.mXgateAddress, AnySign.mCAList, "isarang",
+                          '16','isarang','10','', AnySign.mLimitedTrial,
+                          SignDataCMS_callback);
+  ```
+  → **AnySign4PC(한컴위드) 로컬 모듈**이 인증서 목록/비밀번호 UI를 띄우고 서명해
+  `aResult` 를 채운 뒤 폼을 submit 한다. 서버에서 재현 불가능하고, 그래서
+  인증서와 비밀번호가 고객 PC 를 떠나지 않는다.
+- 아이디 로그인도 웹에 존재한다(`02-login-id.html`, `frmLoginId` →
+  `mbrid/uspass/ltype=id/flag=PISl/kybrdscrtyyn=N`). 하지만 아이디 로그인만으로는
+  아래 4·5단계가 열리지 않는다(그래서 고객이 인증서 안내를 받은 것).
+- **자격증명은 일절 시도하지 않았다.** 로그인 POST 는 한 번도 보내지 않았다.
+
+### 2단계 — 로그인 후 세션 상태  ❌ **도달 못 함**
+실제 공동인증서와 고객 계정이 있어야만 만들어지는 상태다. 우리가 확인한 것은
+경계뿐이다: 비로그인 세션에서 `icms/usr/MemberCertRegCheckAjax.html` 은 error
+페이지를 돌려준다(`menuno=242` 로 POST, 자격증명 없이).
+**없는 것: 실제 공동인증서 + 그 인증서가 등록된 고객 계정.**
+
+### 3단계 — 지역/센터 목록과 서초구 신반포의 실제 코드  ✅ 확인함
+- `POST /icms/nursery/NurseryMapSidoList.html` → 200, 787B (`03-sido.json`)
+  → `{"ARCODE":"11000","ARNAME":"서울특별시"}` 외 16개
+- `POST /icms/nursery/NurseryMapGuGunList.html` body `sido=11000` → 200, 22,381B
+  (`03-gugun-seoul.json`) → 서울 25개 구, `{"ARCODE":"11650","ARNAME":"서울특별시 서초구"}`
+- `POST /icms/nursery/TmpCareSlLAjax.html` 전체 파라미터(사이트 `#pagingForm` 그대로):
+  `unityYn pageNum ctprvn ctprvnName signgu signguName dong callType=road crname`
+- 서초구 결과: 독립반 9곳 + 통합반 1곳. **기본 센터는 여기서 나왔다**:
+  ```
+  stcode 11650000416  서초구육아종합지원센터(신반포)  unityYn=N
+  서울특별시 서초구 신반포로19길 26 / 02-596-9340 / 6개월~36개월 미만 / 예약가능
+  ```
+  (`03-centers-seocho-N.html` 8번째 항목. 고객이 말한 "서초구 신반포 센터"와 일치)
+
+### 4단계 — 2주 뒤 오픈분의 날짜/시간대 화면  ❌ **도달 못 함**
+`POST /?menuno=605` (body `stcode=11650000416&unityYn=N&unityynall=`) 는
+비로그인에서도 HTTP 200 을 주지만 **내용이 없다** (`05-reserve-605-anon.html`):
+
+| 측정 | 값 |
+|---|---|
+| `#contents` 블록 | 3,861 B |
+| `#contents` 보이는 텍스트 | **70자** (팝업 "닫기/확인/취소" 뿐) |
+| `<form>` 개수 | **0** |
+| `<input>` 개수 | **0** |
+| 달력/datepicker 위젯 | **0** |
+| 신청·예약 버튼 | **0** |
+
+`?menuno=245`(신청현황), `?menuno=617`(아동등록)도 **완전히 동일한 3,861B / 70자 /
+form 0개** 껍데기를 준다. 즉 시간제보육 거래 화면 전체가 하나의 인증 게이트 뒤에 있다.
+
+09:00 규칙 자체는 사이트 공지로 확인됨(아래 참조). **없는 것: 실제 공동인증서.**
+
+### 5단계 — 최종 예약 제출 요청 (URL/메서드/헤더/전체 파라미터)  ❌ **도달 못 함**
+프론트엔드 번들에서 뽑아보려 했으나 **그런 번들이 없다.** 확인한 것:
+- 비로그인 605 페이지가 부르는 외부 JS 20개는 전부 공용(jquery, AnySign, 레이어팝업 등).
+  예약 로직이 든 파일은 없다.
+- 공용 번들 `/icms/js/cpcommon.js`(113KB), `common.js`(126KB), `fncommon.js`(23KB)를
+  받아 `Occasion|TmpCare|ChildRes|fnRes` 로 훑었다 → **일치 0건**.
+- 비로그인 605 의 인라인 스크립트 8개에도 예약 로직 없음(SSO/인증서 체크 보일러플레이트뿐).
+- 목록 화면에 주석으로 남은 구경로는 죽어 있다:
+  `POST /cpis2gi/occasion/OccasionChildResIs.jsp` → **404 "시스템 점검 중"**
+  `POST /cpis2gi/occasion/OccasionChildResPiIs.jsp` → **404**
+
+→ 결론: 예약 폼과 제출 로직은 **정적 파일이 아니라 인증된 세션에만 서버가 찍어주는
+인라인 JSP 출력**이다. 인증서 없이는 URL도 파라미터 목록도 알아낼 방법이 없다.
+**없는 것: 실제 공동인증서 (+ 그 인증서가 등록된 계정).**
+
+우리가 확실히 아는 5단계의 유일한 부분은 진입 요청이다(실측):
+`POST /?menuno=605`, body `stcode`/`unityYn`/`unityynall`, HTTP 200, 51,666B.
+
+### 그래서 코드가 이 공백을 어떻게 다루는가
+4·5단계를 추측으로 채우지 않았다. `automation.py` 의 `select_date` /
+`select_time_slots` / `find_submit` 은 **여러 후보를 순서대로 시도하는 적응형**이고,
+매 시도마다 그 시점의 DOM 을 진단 ZIP 으로 올린다. 그리고 **날짜 선택에 성공하지
+못하면 절대 제출하지 않는다**(`attempt_once` 가 `date_not_open` 으로 먼저 빠진다).
+즉 실패 모드가 "엉뚱한 날짜를 예약함"이 아니라 "예약이 안 됨"이다.
+연습 모드는 마지막 버튼 직전에서 멈추므로 예약을 만들지 않고 DOM 만 받아올 수 있다.
+
 ## 서버 시각 동기화 (`clock.py`)
 
 전용 시간 API 가 없어서 `Date:` 응답 헤더를 쓴다. 초 단위라 그대로 쓰면 최대 1초 오차.

@@ -411,6 +411,33 @@ def select_time_slots(driver, slots: list[str], log=lambda *_: None) -> int:
     return picked
 
 
+def select_first_available_slot(driver, log=lambda *_: None) -> int:
+    """시간대를 지정하지 않았을 때, 그 날 열려 있는 첫 시간대를 고른다.
+
+    아무것도 안 고른 채로 신청 버튼을 누르면 사이트가 무엇을 잡을지 알 수 없다.
+    화면에 약속한 동작("먼저 잡히는 것으로 신청")을 코드로도 정확히 지킨다.
+    """
+    from selenium.webdriver.common.by import By
+
+    for sel in ("input[type=checkbox]", "input[type=radio]",
+                "[data-time]", "td[onclick*=':']"):
+        try:
+            for el in driver.find_elements(By.CSS_SELECTOR, sel):
+                cls = (el.get_attribute("class") or "").lower()
+                if el.get_attribute("disabled") or "disabled" in cls:
+                    continue
+                if not el.is_displayed():
+                    continue
+                driver.execute_script("arguments[0].click();", el)
+                label = (el.get_attribute("value") or el.text or "").strip()
+                log(f"열려 있는 첫 시간대를 선택했습니다{(' (' + label + ')') if label else ''}.")
+                return 1
+        except Exception:
+            continue
+    log("선택 가능한 시간대를 찾지 못했습니다.")
+    return 0
+
+
 SUBMIT_TEXTS = ("신청하기", "예약하기", "신청", "예약", "확인")
 
 
@@ -487,11 +514,19 @@ def attempt_once(driver, center: dict, target_date: str, slots: list[str],
                          {"reason": "date_not_open"})
 
     time.sleep(0.3)
-    picked = select_time_slots(driver, slots, log)
-    if slots and picked == 0:
-        capture(driver, diag, "slot_not_found")
-        return RunResult(False, "원하는 시간대가 열려 있지 않습니다.",
-                         {"reason": "slot_unavailable"})
+    if slots:
+        picked = select_time_slots(driver, slots, log)
+        if picked == 0:
+            capture(driver, diag, "slot_not_found")
+            return RunResult(False, "원하는 시간대가 열려 있지 않습니다.",
+                             {"reason": "slot_unavailable"})
+    else:
+        # 지정이 없으면 빈 선택으로 제출하지 않고 열린 첫 시간대를 고른다.
+        picked = select_first_available_slot(driver, log)
+        if picked == 0:
+            capture(driver, diag, "no_slot_open")
+            return RunResult(False, "그 날 열린 시간대가 없습니다.",
+                             {"reason": "slot_unavailable"})
 
     el, text = find_submit(driver)
     if el is None:
