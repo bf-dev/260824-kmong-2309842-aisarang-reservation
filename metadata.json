@@ -15,7 +15,11 @@
     "artifactsCustomerKey": "2309842",
     "publish": "~/workspace/scripts/works-publish 2309842 out/aisarang-reservation-<ver>.exe",
     "manifest": "https://works.insu.ng/works/public/2309842/version-aisarang.json",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "exe": "https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.0.exe",
+    "exeSha256Prefix": "f2349e2fb05c75f900e4cf96aa5c83ea",
+    "screenshot": "out/gui.png",
+    "ciRun": "GitHub Actions windows-latest, all steps green"
   },
-  "notes": "아이사랑(childcare.go.kr) 시간제보육 09:00 오픈분 자동 예약 Windows 프로그램. Default center is 서초구육아종합지원센터(신반포) stcode 11650000416, unityYn=N, 서울특별시 11000 / 서초구 11650 (customer's own words 2026-08-24: '서초구 신반포 센터 기본값으로 넣어주시면 될거같습니다')."
+  "notes": "아이사랑(childcare.go.kr) 시간제보육 09:00 오픈분 자동 예약 Windows 프로그램. 기본 센터 = 서초구육아종합지원센터(신반포) stcode 11650000416, unityYn=N (고객 원문 2026-08-24: '서초구 신반포 센터 기본값으로 넣어주시면 될거같습니다'). 핵심 제약: 예약 화면 ?menuno=605 는 공동인증서 세션에만 그려지고, 공동인증서 로그인은 AnySign4PC 로컬 모듈이 처리한다. 그래서 고객 PC 의 크롬을 Selenium 으로 몬다. 서버 시각은 Date 헤더 구간 교집합으로 동기화(저지연 회선에서 ±67ms 실측), 발사 정밀도는 목표 대비 +1ms 이내 실측. 미결: 로그인 후 ?menuno=605 의 DOM 을 못 봐서 날짜/시간대/신청버튼 선택자가 아직 적응형이다. 고객 첫 실행(연습 모드 권장) 진단 ZIP 의 page_source/*_reservation_page.html 로 굳혀야 한다."
 }

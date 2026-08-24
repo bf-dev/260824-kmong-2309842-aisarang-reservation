@@ -132,6 +132,37 @@ unityYn  N (독립반)
 > `value=` 만 지우고 정작 서명값을 그대로 남긴다. `_PW_ATTR` / `_PW_ATTR_REV`
 > 로 따로 처리한다. `tests/test_masking.py::test_signed_blob_masked` 가 잡아냈다.
 
+## 배포 현황 (v1.0.0, 2026-08-24)
+
+- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.0.exe
+  (29,112,902 bytes, `PE32+ executable (GUI) x86-64`, mode 644,
+  서빙 바이트 sha256 = 빌드 바이트 sha256 = `f2349e2fb05c75f9...` 로 대조 확인)
+- 업데이트 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+- CI: GitHub Actions run 성공 (unit tests → build → PE 확인 → 라이브 selftest →
+  fixture selftest → GUI construct → GUI 스크린샷)
+- 스크린샷: `out/gui.png` (실제 Windows 창을 PrintWindow 로 캡처, 실측 결과 표시)
+
+### 측정된 근거
+
+프로즌 exe 가 실제 Windows(2025Server, `frozen: True`)에서 매 실행 진단을 올렸다.
+왕복지연에 따라 정밀도가 갈리는 것이 그대로 찍혔다:
+
+| 대상 | 최소 왕복 | 동기화 오차 |
+|---|---|---|
+| 라이브 childcare.go.kr (러너→한국) | 870~900ms | ±531 ~ ±882ms |
+| 로컬 fixture 서버 | 0~1ms | **±67 ~ ±171ms** |
+
+고객 PC(국내 회선 → 국내 정부 서버)는 아래쪽 구간에 해당한다.
+
+발사 정밀도 실측(실서버 동기화 후 목표 시각에 쏘기, 3회):
+목표 대비 **+0.4ms / +0.5ms / +1.1ms** (의도한 300ms prefire 제외 기준).
+즉 오차의 지배 요인은 스케줄러가 아니라 서버 시각 추정치와 왕복지연이다.
+
+기본 센터로 실제 예약 화면 POST 도 던져봤다:
+`POST /?menuno=605 stcode=11650000416` → HTTP 200, 51,666 bytes,
+제목 "시간제보육 입소신청". 비로그인 세션이라 신청 폼 자체는 안 그려진다
+(= 사이트의 공동인증서 게이트가 정확히 여기서 걸린다).
+
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
 **`?menuno=605` 의 로그인 후 DOM 을 우리는 못 봤다.** 고객 계정 없이는 볼 수 없고,
