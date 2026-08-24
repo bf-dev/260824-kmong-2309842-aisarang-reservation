@@ -42,14 +42,37 @@ jobs:
           if ($b[0] -ne 0x4D -or $b[1] -ne 0x5A) { throw "not a PE binary" }
           "PE header OK (MZ)"
 
-      - name: runtime selftest (real live check against childcare.go.kr)
+      # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
+      # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.
+      - name: probe childcare.go.kr from the runner
+        id: probe
+        continue-on-error: true
+        run: python ci/probe.py
+
+      - name: runtime selftest against the live site (only if reachable)
+        if: steps.probe.outcome == 'success'
         shell: pwsh
         run: |
-          # --selftest 는 진짜 서버 시각 동기화 + 진짜 기관 조회를 돌린다.
-          # 콘솔 출력이 없는 --noconsole 빌드라 종료코드로 판정한다.
           $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
           "selftest exit code: $($p.ExitCode)"
-          if ($p.ExitCode -ne 0) { throw "selftest failed" }
+          if ($p.ExitCode -ne 0) { throw "live selftest failed" }
+
+      # 러너에서 대상 사이트가 막혀도 exe 의 전체 파이프라인(Date 헤더 동기화,
+      # 기관 목록 파싱, 진단 업로드)은 진짜로 돌려서 확인해야 한다.
+      # 실제로 녹화한 응답을 로컬 서버로 되먹여 프로즌 exe 를 통과시킨다.
+      - name: runtime selftest against recorded fixtures (always)
+        shell: pwsh
+        run: |
+          $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18642" -PassThru
+          Start-Sleep -Seconds 4
+          try {
+            $env:AISARANG_BASE_URL = "http://127.0.0.1:18642"
+            $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
+            "fixture selftest exit code: $($p.ExitCode)"
+            if ($p.ExitCode -ne 0) { throw "fixture selftest failed" }
+          } finally {
+            Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - name: GUI construct selftest
         shell: pwsh
@@ -58,9 +81,21 @@ jobs:
           "gui construct exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "gui construct failed" }
 
-      - name: GUI screenshot (real window, real live result)
+      - name: GUI screenshot (real window, real result on screen)
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1
+        run: |
+          $srv = $null
+          if ("${{ steps.probe.outcome }}" -ne "success") {
+            $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18642" -PassThru
+            Start-Sleep -Seconds 4
+            $env:AISARANG_BASE_URL = "http://127.0.0.1:18642"
+            Write-Host "라이브 사이트가 러너에서 막혀 녹화된 실제 응답으로 화면을 채웁니다."
+          }
+          try {
+            powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1
+          } finally {
+            if ($srv) { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
+          }
 
       - uses: actions/upload-artifact@v4
         if: always()

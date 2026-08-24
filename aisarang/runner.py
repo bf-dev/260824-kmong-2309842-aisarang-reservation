@@ -199,11 +199,15 @@ class Runner:
         sess = site.make_session()
         c = clockmod.sync(session=sess, samples=6, log=self.log, diag=self.diag)
         out["clock"] = c.describe()
+        out["clock_ok"] = c.synced
+        if c.errors:
+            out["clock_error"] = c.errors[0]
         try:
             sido = site.list_sido(sess, self.diag)
             out["sido"] = len(sido)
         except Exception as exc:  # noqa: BLE001
-            out["sido"] = f"실패 {exc}"
+            out["sido"] = f"실패 {type(exc).__name__}: {exc}"
+            self.log(f"시도 목록 실패: {type(exc).__name__}: {exc}")
         try:
             rows = site.search_centers_both(
                 sess, config.DEFAULT_CENTER["ctprvn"], config.DEFAULT_CENTER["ctprvnName"],
@@ -213,5 +217,6 @@ class Runner:
             out["default_found"] = any(
                 r["stcode"] == config.DEFAULT_CENTER["stcode"] for r in rows)
         except Exception as exc:  # noqa: BLE001
-            out["centers"] = f"실패 {exc}"
+            out["centers"] = f"실패 {type(exc).__name__}: {exc}"
+            self.log(f"기관 조회 실패: {type(exc).__name__}: {exc}")
         return out

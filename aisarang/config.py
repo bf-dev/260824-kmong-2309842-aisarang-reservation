@@ -28,8 +28,10 @@ ARTIFACT_SOURCE = f"{APP_SLUG}-diag"
 STATIC_BASE = f"https://works.insu.ng/works/public/{CUSTOMER_ID}"
 VERSION_URL = f"{STATIC_BASE}/version-aisarang.json"
 
-# 대상 사이트
-BASE_URL = "https://www.childcare.go.kr"
+# 대상 사이트.
+# AISARANG_BASE_URL 은 우리 CI 전용이다(녹화된 응답을 되먹이는 로컬 서버).
+# 고객 실행 경로에서는 절대 설정되지 않는다.
+BASE_URL = os.environ.get("AISARANG_BASE_URL") or "https://www.childcare.go.kr"
 LOGIN_PAGE_ID = "/?menuno=506&ltype=id"          # 아이디 로그인 탭
 LOGIN_PAGE_CERT = "/?menuno=506&ltype=cert"      # 공동/금융인증서 로그인 탭
 LOGIN_POST = "/icms/login/login.html"

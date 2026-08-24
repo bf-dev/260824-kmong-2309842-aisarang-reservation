@@ -37,6 +37,7 @@ class ClockSync:
     rtt_best: float = float("inf")
     synced: bool = False
     detail: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
 
     @property
     def uncertainty(self) -> float:
@@ -80,13 +81,16 @@ def sync(session=None, samples: int = 12, url: str | None = None,
     target = url or (config.BASE_URL + "/?menuno=1")
     out = ClockSync()
 
+    errors: list[str] = []
     for i in range(samples):
         try:
             t0 = time.time()
             r = sess.head(target, timeout=8, allow_redirects=False,
                           headers={"Cache-Control": "no-cache"})
             t1 = time.time()
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # 왜 실패했는지 남긴다. 망 차단인지 SSL/번들 문제인지 구분해야 한다.
+            errors.append(f"{type(exc).__name__}: {exc}")
             continue
 
         raw = r.headers.get("Date")
@@ -122,13 +126,18 @@ def sync(session=None, samples: int = 12, url: str | None = None,
         out.offset = (out.lo + out.hi) / 2.0
         out.synced = True
 
+    out.errors = errors
     log(out.describe())
+    if errors and not out.synced:
+        log(f"서버 시각 요청 실패 사유: {errors[0]}")
     if diag is not None:
         try:
             diag.add_json("clock_sync.json",
                           {"offsetMs": round(out.offset * 1000, 1),
                            "uncertaintyMs": round(out.uncertainty * 1000, 1)
                            if out.uncertainty != float("inf") else None,
+                           "target": target,
+                           "errors": errors[:10],
                            "samples": out.detail})
         except Exception:
             pass
