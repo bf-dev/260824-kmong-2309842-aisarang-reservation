@@ -1,0 +1,72 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pytest
+
+      - name: unit tests
+        run: python -m pytest tests/ -q
+
+      - name: build exe
+        run: >
+          pyinstaller --onefile --noconsole
+          --name aisarang-reservation
+          --collect-all selenium
+          --hidden-import tkinter
+          main.py
+
+      - name: exe exists and is a real PE
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
+          if (-not $exe) { throw "no exe" }
+          "{0}  {1:N1} MB" -f $exe.Name, ($exe.Length / 1MB)
+          $fs = [System.IO.File]::OpenRead($exe.FullName)
+          $b = New-Object byte[] 2; $fs.Read($b, 0, 2) | Out-Null; $fs.Close()
+          if ($b[0] -ne 0x4D -or $b[1] -ne 0x5A) { throw "not a PE binary" }
+          "PE header OK (MZ)"
+
+      - name: runtime selftest (real live check against childcare.go.kr)
+        shell: pwsh
+        run: |
+          # --selftest 는 진짜 서버 시각 동기화 + 진짜 기관 조회를 돌린다.
+          # 콘솔 출력이 없는 --noconsole 빌드라 종료코드로 판정한다.
+          $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
+          "selftest exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "selftest failed" }
+
+      - name: GUI construct selftest
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--guiselftest" -PassThru -Wait
+          "gui construct exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "gui construct failed" }
+
+      - name: GUI screenshot (real window, real live result)
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aisarang-reservation
+          path: |
+            dist/*.exe
+            screenshots/*.png
+          retention-days: 14
