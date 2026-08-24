@@ -153,7 +153,7 @@ def target_date_for(clock: ClockSync, lead_days: int = config.OPEN_LEAD_DAYS,
     import datetime as _dt
 
     base = open_epoch if open_epoch is not None else next_open_epoch(clock)
-    kst = _dt.datetime.utcfromtimestamp(base + config.KST_OFFSET_SECONDS)
+    kst = _dt.datetime.fromtimestamp(base + config.KST_OFFSET_SECONDS, _dt.timezone.utc)
     return (kst + _dt.timedelta(days=lead_days)).strftime("%Y%m%d")
 
 

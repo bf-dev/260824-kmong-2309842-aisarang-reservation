@@ -26,10 +26,26 @@ _PHONE = re.compile(r"\b(01[016789]|0\d{1,2})[-\s.]?(\d{3,4})[-\s.]?(\d{4})\b")
 _CARD = re.compile(r"\b(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})\b")
 # 이메일
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-# 흔한 비밀번호/토큰 키=값 형태
+_SENSITIVE_KEYS = (
+    r"uspass|passwd|password|pwd|certpw|certPassword|"
+    r"aResult|aSignedMsg|aVidMsg|issacweb_data|token|authorization"
+)
+# 흔한 비밀번호/토큰 키=값 형태 (JSON, 쿼리스트링, 폼 인코딩)
 _PWKEY = re.compile(
-    r"((?:uspass|passwd|password|pwd|certpw|certPassword|aResult|aSignedMsg|aVidMsg|token|authorization)"
-    r"\s*[=:\"']{1,3}\s*)([^&\"'<>\s,}]{1,4096})",
+    r"((?:" + _SENSITIVE_KEYS + r")\s*[=:\"']{1,3}\s*)([^&\"'<>\s,}]{1,4096})",
+    re.IGNORECASE,
+)
+# HTML 폼 속성 형태: <input name="aResult" value="...">
+# 위의 _PWKEY 를 그대로 두면 name="aResult" 뒤의 value= 만 지우고 정작 값은
+# 그대로 남는다. 실제로 그렇게 새던 것을 테스트가 잡았다.
+_PW_ATTR = re.compile(
+    r"(name\s*=\s*[\"'](?:" + _SENSITIVE_KEYS + r")[\"'][^>]*?value\s*=\s*[\"'])"
+    r"([^\"']*)",
+    re.IGNORECASE,
+)
+# 속성 순서가 반대인 경우: <input value="..." name="aResult">
+_PW_ATTR_REV = re.compile(
+    r"(value\s*=\s*[\"'])([^\"']*)([\"'][^>]*?name\s*=\s*[\"'](?:" + _SENSITIVE_KEYS + r")[\"'])",
     re.IGNORECASE,
 )
 # 한글 이름이 들어가는 흔한 필드명
@@ -98,6 +114,9 @@ def mask(text) -> str:
         text = _EMAIL.sub(
             lambda m: (m.group(0)[0] + "***@" + m.group(0).split("@", 1)[1]), text
         )
+        # 속성 형태를 먼저 지운다(키=값 규칙보다 우선).
+        text = _PW_ATTR.sub(lambda m: m.group(1) + "***REDACTED***", text)
+        text = _PW_ATTR_REV.sub(lambda m: m.group(1) + "***REDACTED***" + m.group(3), text)
         text = _PWKEY.sub(lambda m: m.group(1) + "***REDACTED***", text)
         text = _NAMEKEY.sub(lambda m: m.group(1) + _mask_name(m.group(2)), text)
         text = _NAME_TAG.sub(
