@@ -48,6 +48,21 @@ def main(argv: list[str] | None = None) -> int:
             _out("SELFTEST " + ("OK" if ok else "FAILED"))
             return 0 if ok else 1
 
+        if "--arrivaltest" in argv:
+            # 도착시각 모델 검증. 서버의 초 경계 앞뒤로 쏴서, 응답 Date 헤더가
+            # 기대한 초를 가리키는지 본다. 우리 진단/CI 전용이다.
+            from aisarang import clock as clockmod, site
+            sess = site.make_session()
+            out = clockmod.measure_arrival(session=sess, log=_out, diag=diag)
+            for row in out["samples"]:
+                _out(str(row))
+            _out(f"ARRIVAL {out['matched']}/{out['total']} matched, "
+                 f"oneWayMs={out['oneWayMs']} offsetMs={out['offsetMs']}")
+            diag.upload("도착시각 검증", {"mode": "arrivaltest",
+                                     "matched": f"{out['matched']}/{out['total']}",
+                                     "oneWayMs": out["oneWayMs"]}, blocking=True)
+            return 0 if out["matched"] == out["total"] and out["total"] else 1
+
         if "--guiselftest" in argv:
             from aisarang.gui import run_construct_selftest
             rc = run_construct_selftest()

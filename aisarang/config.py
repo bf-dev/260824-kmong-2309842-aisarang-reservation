@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 # Kmong 고객 식별자. 로그/진단/업로드 경로 전부에 이 값이 찍힌다.
 CUSTOMER_ID = "2309842"

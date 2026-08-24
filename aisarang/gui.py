@@ -276,6 +276,13 @@ class App:
         tk.Label(c, text="인증서는 이 PC 에만 있고, 비밀번호는 이 화면 밖으로 나가지 않습니다.",
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
             row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        tk.Label(c, text="시간제보육 신청 화면은 공동인증서(또는 간편인증) 로그인에서만 열립니다. "
+                         "아이디 로그인으로는 화면이 비어서 나옵니다.",
+                 bg=CARD, fg=BAD, font=("맑은 고딕", 9), anchor="w", justify="left").grid(
+            row=5, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        tk.Label(c, text="로그인 세션은 60분이면 끊깁니다. 프로그램이 9시까지 세션을 살려 둡니다.",
+                 bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
+            row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
         tk.Label(c, text="인증서 비밀번호", bg=CARD, fg=INK,
                  font=("맑은 고딕", 10)).grid(row=2, column=0, sticky="w", pady=(10, 0))
         self.cert_pw = tk.Entry(c, show="●", width=26, font=("맑은 고딕", 11),

@@ -77,8 +77,49 @@ def build_driver(headless: bool = False, log=lambda *_: None):
         )
     except Exception:
         pass
+
+    neutralize_devtool_blocker(driver, log)
     log("크롬을 실행했습니다.")
     return driver
+
+
+def neutralize_devtool_blocker(driver, log=lambda *_: None) -> bool:
+    """사이트의 disable-devtool 이 우리를 오탐해 로그아웃시키는 것을 막는다.
+
+    실측(2026-08-24, 이 프로젝트의 셀레니움 옵션 그대로):
+      크롬을 셀레니움으로 띄워 /?menuno=242 를 열면 **1초 안에**
+      alert("부정 사용 방지를 위하여 개발자 도구 사용을 차단합니다.") 가 뜨고
+      페이지가 /logout 으로 넘어간다. 개발자도구를 연 적이 없는데도 그렇다.
+      (disable-devtool 0.3.7 의 탐지 규칙이 자동화된 크롬을 devtools 로 본다.)
+      09시 정각에 이게 터지면 고객은 로그아웃된 채로 예약을 놓친다.
+
+    그래서 그 스크립트 파일 하나만 네트워크에서 막는다. 페이지의 인라인
+    코드는 `typeof DisableDevtool !== 'undefined'` 로 감싸여 있어서, 없으면
+    console.error 한 줄만 남기고 그대로 정상 동작한다(실측으로 확인).
+    개발자도구를 여는 것이 아니라, 열지도 않았는데 튀는 오탐을 끄는 것이다.
+    """
+    ok = False
+    try:
+        driver.execute_cdp_cmd("Network.enable", {})
+        driver.execute_cdp_cmd("Network.setBlockedURLs",
+                               {"urls": ["*disable-devtool*"]})
+        ok = True
+    except Exception as exc:  # noqa: BLE001
+        log(f"devtool 차단 스크립트 무력화(1차) 실패: {type(exc).__name__}")
+    try:
+        # 1차가 안 먹는 크롬 버전을 대비한 이중 안전장치.
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": "try{Object.defineProperty(window,'DisableDevtool',"
+                       "{value:function(){},writable:false,configurable:false});}"
+                       "catch(e){}"},
+        )
+        ok = True
+    except Exception:
+        pass
+    if ok:
+        log("사이트의 개발자도구 감지 스크립트를 차단했습니다(오탐 로그아웃 방지).")
+    return ok
 
 
 # ---------------------------------------------------------------- 진단 수집
