@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="ko">
+<title>로그인 > 로그인 > 마이룸 > 임신육아종합포털 아이사랑</title>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+<meta name="format-detection" content="telephone=no, address=no, email=no" />
+<meta name="title" content="ZCMS">
+<meta name="keywords" content="ZCMS,전자정부표준프레임워크,Z5Solution">
+<!--[if lt IE 10]>
+<![endif]-->
+<!--[if lt IE 9]>
+<script type="text/javascript" src="/com/js/html5.js"></script>
+<![endif]-->
+<link rel="stylesheet" href="/cms/gen/css/20221201_37145513442998453.css" type="text/css" /> <!--zcms css-->
+<script src="/com/js/jquery-1.12.4.min.js"></script>
+</head>
+<body>
+
+<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="format-detection" content="telephone=no, address=no, email=no">
+<script src="/icms/js/cpcommon.js"></script>
+<script src="/icms/js/fncommon.js"></script>
+<script src="/icms/js/common.js"></script>
+<script src="/icms/js/is.js"></script>
+<script src="/icms/js/ajaxCommon.js"></script>
+<script src="/icms/js/layerpopup.js"></script>
+
+<!-- 유보통합 신규 디자인 JS, CSS 파일 시작 -->
+<script src="/cms/gen/js/common.js"></script>
+<script src="/cms/gen/js/include.js"></script>
+<script src="/cms/gen/js/jquery.ui.datepicker.js"></script>
+<script src="/cms/gen/js/jquery-1.12.4.min.js"></script>
+<script src="/cms/gen/js/main.js"></script>
+<script src="/cms/gen/js/sub.js"></script>
+<script src="/cms/gen/js/swiper.min.js"></script>
+
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/common.css" />
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/font-face.css" />
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/jquery-ui.css" />
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/main.css" />
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/style.css" />
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/sub.css" />
+<link rel="stylesheet" type="text/css" href="/cms/gen/css/swiper.min.css" />
+<!-- 유보통합 신규 디자인 JS, CSS 파일 끝 -->
+
+<!-- 인증서 로그인 Non-ActiveX 변경 -->
+<script type="text/javascript" src="/icms/AnySign/anySign4PCInterface.js"></script>
+<script type="text/javascript" src="/icms/AnySign/xecureCommon.js"></script>
+<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_config.js"></script>
+<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_html5.js"></script>
+
+<script type="text/javascript">
+  var activexPath     = "";
+  var activexRootPath = "";
+  var imagePath       = "";
+  var imageRootPath   = "";
+  var serverType      = "";
+  var serverId        = "";
+  var ServerNumber    = "";
+  var ccisDomain      = "";
+  var prefixServerName = "";
+</script>
+
+<!-- loadingbar -->
+<style>
+.loading_wrap {box-sizing:border-box}
+.loading_wrap {width:100%; height:100%; margin:0 auto 0; display:flex; align-items:center; justify-content:center; background-color:rgba(255,255,255,0.5); position:fixed; top:0; left:0; z-index:9000}
+.loading { display:flex; flex-direction:column; justify-content:center; align-items:center; width:500px; height:216px;}
+.loading-title {margin-bottom:20px; text-align:center; font-size:18px; font-weight:600; line-height:1.333; color:#333; animation-name:flicker; animation-duration:1600ms; animation-iteration-count:infinite; animation-direction:alternate;}
+.progress-bar {position:relative; width:300px; height:12px; border-radius:100px; background-color:rgb(167,167,167); overflow:hidden}
+.progress-bar-gauge {position:absolute; top:0; left:0; width:20px; height:12px; border-radius:100px; background-color:rgb(44,228,167); animation-name:loading-bar; animation-duration:1600ms; animation-iteration-count:infinite; animation-timing-function:ease-out;}
+@keyframes flicker {
+from {opacity:1;}
+to {opacity:0}
+}
+@keyframes loading-bar {
+0% {width:0; opacity:1}
+80% {width:100%; opacity:1}
+100% {width:100%; opacity:0 }
+}
+</style>
+
+<div class="loading_wrap" style="display:none;">
+	<section class="loading">
+		<h1 class="loading-title">Loading...</h1>
+		<div class="progress-bar" aria-hidden="true">
+			<span class="progress-bar-gauge"></span>
+		</div>
+	</section>
+</div>
+<!-- //loadingbar -->
+<script type="text/javascript">
+function fnLoddingStart () {
+	$('.loading_wrap').show();
+}
+
+function fnLoddingEnd () {
+	$('.loading_wrap').hide();
+}
+</script>
+
+<style>
+	.type-confirm, .type-confirm2, .type-alert, .type-alert2, .type-alert3 {
+		z-index: 3000;
+	}
+	
+	#dimmed1 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2000;
+		display: none;
+	}
+	#dimmed2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2100;
+		display: none;
+	}
+	#dimmed3 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2200;
+		display: none;
+	}
+	#dimmed_confirm2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2300;
+		display: none;
+	}
+</style>
+<div class="popup_wrap s_size wp400 type-confirm" id="layer-confirm-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close" title="팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm">확인</a>
+                <a href="#none" class="btn gray" id="layer-popup-close">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-confirm2" id="layer-confirm-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-confirm-popup-close2" title="팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title2"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm2">확인</a>
+                <a href="#none" class="btn gray" id="layer-confirm-popup-close2">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert" id="layer-alert-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close" title="알림 팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close2" title="알림 팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert3" id="layer-alert-popup3">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close3" title="알림 팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents3"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close3">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="dimmed1"></div>
+<div id="dimmed2"></div>
+<div id="dimmed3"></div>
+<div id="dimmed_confirm2"></div><!-- 세션 메세지 체크 -->
+<script src="/cms/gen/js/disable-devtool.0.3.7.min.js"></script>
+
+<script>
+/* 20250711 스크립트 위변조 방지 추가 */
+window.addEventListener('DOMContentLoaded', function () {
+    if (typeof DisableDevtool !== 'undefined') {
+      DisableDevtool({
+        ondevtoolopen: function (type) {
+          // 감지 시 로그아웃 처리
+          alert('부정 사용 방지를 위하여 개발자 도구 사용을 차단합니다.');
+          window.location.href = "/logout";
+        },
+        disableMenu: true,
+        disableSelect: true,
+        disableCopy: true
+      });
+    } else {
+      console.error("DisableDevtool is not defined");
+    }
+  });
+
+
+        /*
+        if('' == '') {
+                customAjax.ajax({
+                                type : "POST",
+                                url : "/icms/login/ssoCheck.html",
+                                data : { menuno : '50' },
+                                success : function(data) {    
+                                        if(data.result == "SUCCESS"){
+                                                location.href = data.ssoRedirectUrl;
+                                        }
+                                },
+                                error : function(xhr, status, error){
+                                        console.log(xhr);
+                                        console.log(status);
+                                        console.log(error);
+                                }
+                        });  
+        } 
+        */
+
+        
+    
+        var urlParams = new URLSearchParams(window.location.search);
+        var fromYubo = urlParams.get("fromYubo");
+        var ssoCheck = '';
+
+
+        if (fromYubo == "Y" && (ssoCheck == '' || !ssoCheck)) {
+                customAjax.ajax({
+                        type : "POST",
+                        url : "/icms/login/ssoCheck.html",
+                        data : { menuno : '50', returnUrl: location.href },
+                        success : function(data) {
+                                if(data.result == "SUCCESS"){
+                                        if(data.ssoRedirectUrl.includes(",") ){
+                                                console.log("SUCCESS");
+                                        } else {
+                                                location.href = data.ssoRedirectUrl;
+                                        }
+                                        //console.log("SUCCESS");
+                        
+                                } else if (data.result == "IS_LOGIN") {
+                                        console.log("IS_LOGIN");
+                                }
+                        },
+                        error : function(xhr, status, error){
+                                console.log(xhr, status, error);
+                        }
+                });
+        } else {
+                console.log("SSO 조건 아님");
+        }
+
+
+    function fnMemberInfoCheck(pMode) {
+        if (pMode == "EDUAGREYN") {
+            icmsLayerPopup.alert({
+                contents : "회원정보에서 유치원입학시스템을 동의하셔야 이동할 수 있습니다."
+            }, function() {
+                location.href = "/?menuno=400";
+            });
+        } else if (pMode == "CERT") {
+            customAjax.ajax({
+                type : "POST",
+                url : "/icms/usr/MemberCertRegCheckAjax.html",
+                data : { menuno : '50' },
+                success : function(data) {
+                    icmsLayerPopup.alert({
+                        contents : data.sMessage
+                    }, function() {
+                        location.href = data.sRedirectUrl;
+                    });
+                } ,
+                error : function(xhr, status, error){
+                    console.log(xhr, status, error);
+                    icmsLayerPopup.alert({
+                        contents : "잘못된 접근입니다. 다시 로그인 후 진행하세요."
+                    }, function() {
+                        location.href = "/?menuno=50";
+                    });
+                }
+            });
+        }
+        
+        return false;
+    }
+</script>
+
+
+
+<!--Skip menu-->
+<div class="skipnav">
+    <a href="#contents">본문내용 바로가기</a>
+    <a href="#gnbMenu">대메뉴 바로가기</a>
+    <a href="#footer">푸터 바로가기</a>
+</div>
+
+<!-- units -->
+<section class="utility">
+    <div>
+        <ul class="left">
+            <li class="h_line">아이사랑 헬프데스크 1566-3232(단축번호 1번)</li>
+            <li>임신 · 출산 · 육아 상담 1644-7373</li>
+        </ul>
+        <ul class="right">
+            <li class="h_line"><a href='http://userguide.ebrochure.kr/'><em>포털이용가이드</em></a></li><!-- 260318 교육부요청가이드추가 -->
+            <li class="h_line"><a href='https://enter.childinfo.go.kr/icms/main/TotalSearchSlPL.html'><em>어린이집·유치원 통합검색</em></a></li>
+            <li class="h_line">
+            <a href="https://www.go-firstschool.go.kr/PAMS_SS/selectHm10mGridList.do">
+    <em>유치원 입학 바로가기</em></a>
+            </li>
+			  <li><a href="http://pf.kakao.com/_tsaxmn" target="_blank" class="icon_kakaotalk"  aria-label="아이사랑 카카오톡 상담채널 바로가기" title="새창열림">
+                <em class="hidden">카카오톡</em></a>
+            </li>
+            <li><a href="https://www.facebook.com/agasarang16447373" target="_blank" class="icon_facebook"  aria-label="아이사랑 페이스북 바로가기" title="새창열림">
+                <em class="hidden">페이스북</em></a>
+            </li>
+            <li><a href="https://www.instagram.com/childcare16447373/?hl=ko" target="_blank" class="icon_instagram"  aria-label="아이사랑 인스타그램 바로가기" title="새창열림">
+                <em class="hidden">인스타그램</em></a>
+            </li>
+            <li class=" btn_language">
+                <a href="#" class="icon_language" title="언어선택 열기"><em class="hidden">한국어</em></a>
+                <div class="language">
+                    <a href="https://eng.childcare.go.kr/">English</a>
+                    <a href="https://china.childcare.go.kr/">中文</a>
+                    <a href="https://vt.childcare.go.kr/">Tiếng Việt</a>
+                </div>
+            </li>
+        </ul>
+    </div>
+</section>
+
+<!-- header -->
+<header id="header" class="header">
+    <div class="navi">
+       <h1><a href="https://www.childcare.go.kr/" aria-label="아이사랑"><span class="hidden">아***</span></a></h1>
+        <nav id="gnbMenu">
+             <div class="gnbwrap">
+				<p class="all_menu_close">
+                <a href="#" title="전체메뉴 닫기"><em class="hidden">전체메뉴 닫기</em></a>
+            </p>
+            <h2 class="all_menu_title">전체메뉴</h2>
+            <p class="m_menu_close">
+                <a href="#"><span class="hidden">모바일메뉴 닫기</span></a>
+            </p>
+            <ul class="gnb">
+                <li>
+                    <a class="menu01" href="?menuno=3">임신</a>
+                    <div class="depth">
+                        <span>임*</span>
+                        <ul>
+                            <li>
+                                <a href="?menuno=251">임신계획</a>
+                                <ul>
+                                    <li><a href="?menuno=251">임신준비</a></li> 
+                                    <li><a href="?menuno=252">임신하기</a></li>
+                                    <li><a href="?menuno=253">임신확인</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=8">임신 중 잘지내기</a>
+                                <ul>
+                                    <li><a href="?menuno=254">임신초기(3~13주)</a></li>
+                                    <li><a href="?menuno=255">임신중기(14~27주)</a></li>
+                                    <li><a href="?menuno=256">임신후기(28~40주)</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=11">고위험임신</a>
+                                <ul>
+                                    <li><a href="?menuno=257">고위험 임신이란</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=259">유산</a>
+                                <ul>
+                                    <li><a href="?menuno=259">유산이란</a></li>
+                                    <li><a href="?menuno=260">자연유산</a></li>
+                                    <li><a href="?menuno=261">유산 후 관리</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=262">난임</a>
+                                <ul>
+                                    <li><a href="?menuno=262">난임이란</a></li>
+                                    <li><a href="?menuno=263">난임 검사</a></li>
+                                    <li><a href="?menuno=264">대표적 난임치료</a></li>
+                                    <li><a href="?menuno=258">정부지정 난임 시술기관</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=302">임신 상담</a></li>
+                            <li><a href="https://www.ei.go.kr/ei/eih/eg/pb/pbPersonBnef/retrievePb0301Info.do">근로자 지원제도</a></li>
+                            <li><a href="?menuno=124">임산부 신고</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu02" href="?menuno=265">출산</a>
+                    <div class="depth">
+                        <span>출*</span>
+                        <ul>
+                            <li><a href="?menuno=266">출산준비</a></li>
+                            <li><a href="?menuno=267">출산징후</a></li>
+                            <li>
+                                <a href="?menuno=268">분만</a>
+                                <ul>
+                                    <li><a href="?menuno=269">조산</a></li>
+                                    <li><a href="?menuno=270">자연분만</a></li>
+                                    <li><a href="?menuno=271">유도분만</a></li>
+                                    <li><a href="?menuno=272">통증관리</a></li>
+                                    <li><a href="?menuno=273">제왕절개술</a></li>
+                                    <li><a href="?menuno=274">난산</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=275">산후관리</a>
+                                <ul>
+                                    <li><a href="?menuno=276">산욕기</a></li>
+                                    <li><a href="?menuno=277">산후관리</a></li>
+                                    <li><a href="?menuno=640">산후조리원 현황</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=278">출산예정일</a></li>
+                            <li><a href="?menuno=305">출산 상담</a></li>
+                            <li><a href="https://www.ei.go.kr/ei/eih/eg/pb/pbPersonBnef/retrievePb0305Info.do">근로자 지원제도</a></li>
+                            <li><a href="?menuno=279">출산지원금</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu03" href="?menuno=282">육아</a>
+                    <div class="depth">
+                        <span>육*</span>
+                        <ul>
+                            <li>
+                                <a href="?menuno=282">함께하는 육아</a>
+                                <ul>
+                                    <li><a href="?menuno=282">부부함께 육아하기</a></li>
+                                    <li><a href="?menuno=283">육아갈등 해결하기</a></li>
+                                    <li><a href="?menuno=284">대리양육</a></li>
+                                    <li><a href="?menuno=285">쌍둥이 육아</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=286">월령별 성장 및 돌보기</a>
+                                <ul>
+                                    <li><a href="?menuno=287">이른둥이</a></li>
+                                    <li><a href="?menuno=288">신생아</a></li>
+                                    <li><a href="?menuno=289">1~3개월</a></li>
+                                    <li><a href="?menuno=290">4~6개월</a></li>
+                                    <li><a href="?menuno=291">7~9개월</a></li>
+                                    <li><a href="?menuno=292">10~12개월</a></li>
+                                    <li><a href="?menuno=293">13~24개월</a></li>
+                                    <li><a href="?menuno=294">25~36개월</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="https://www.nhis.or.kr/nhis/healthin/retrieveMdcAdminSknsClinic.do">병(의)원찾기</a></li>
+                            <li><a href="https://www.pharm114.or.kr/">약국찾기</a></li>
+                            <li><a href="https://sooyusil.com/">수유실 찾기</a></li>
+                            <li><a href="?menuno=309">육아 상담</a></li>
+                            <li><a href="https://www.ei.go.kr/ei/eih/eg/pb/pbPersonBnef/retrievePb0302Info.do">근로자 지원제도</a></li>
+                            <li>
+                                <a href="?menuno=295">장애아육아</a>
+                                <ul>
+                                    <li><a href="?menuno=467">장애아동의 이해</a></li>
+                                    <li><a href="?menuno=468">가족을 위한 가이드</a></li>
+                                    <li><a href="?menuno=469">특수교육</a></li>
+                                    <li><a href="?menuno=470">가정연계놀이활동</a></li>
+                                    <li><a href="?menuno=471">상담</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="https://www.nise.go.kr/onmam/front/index.do">특수교육 정보</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu04" href="?menuno=166">어린이집</a>
+                    <div class="depth">
+                        <span>어린이집</span>
+                        <ul>
+                            <li>
+                                <a href="?menuno=166">어린이집찾기</a>
+                                <ul>
+                                    <li><a href="?menuno=166">어린이집찾기</a></li>
+                                    <li><a href="?menuno=167">즐겨찾기한 어린이집</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=168">등록대기</a>
+                                <ul>
+                                    <li><a href="?menuno=169">모집·신청 안내</a></li>
+                                    <li><a href="?menuno=616">등록대기 아동등록</a></li>
+                                    <li><a href="?menuno=175">등록대기 신청</a></li>
+                                    <li><a href="?menuno=178">등록대기 신청현황</a></li>
+                                    <li><a href="?menuno=179">우선순위 자료제출</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=180">국민행복카드</a>
+                                <ul>
+                                    <li><a href="?menuno=181">국민행복카드안내</a></li>
+                                    <li><a href="?menuno=186">국민행복카드신청</a></li>
+                                    <li><a href="?menuno=187">카드발급내역조회</a></li>
+                                    <li><a href="?menuno=188">자주쓰는 카드</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=191">보육료결제</a>
+                                <ul>
+                                    <li><a href="?menuno=192">보육료 결제</a></li>
+                                    <li><a href="?menuno=540">보육료 결제 현황</a></li>
+                                    <li><a href="?menuno=194">긴급보육바우처 이용현황</a></li>
+                                    <li><a href="?menuno=241">보육료 연간 지원 내역</a></li>
+                                    <li><a href="?menuno=196">추가 결제권자 관리</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=200">시간제보육사업</a>
+                                <ul>
+                                    <li><a href="?menuno=200">시간제보육 안내</a></li>
+                                    <li><a href="?menuno=617">시간제보육 아동등록</a></li>
+                                    <li><a href="?menuno=242">시간제보육 신청</a></li>
+                                    <li><a href="?menuno=245">시간제보육 신청현황</a></li>
+                                    <li><a href="?menuno=246">시간제보육 결제</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=215&type=top">어린이집 이용 불편신고</a>
+                                <ul>
+                                    <li><a href="?menuno=216">소개</a></li>
+                                <li><a href="?menuno=221">신고서작성</a></li>
+                                <li><a href="?menuno=225">신고내역</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=612">보육교직원</a>
+                                <ul>
+                                    <li><a href="?menuno=613">인사기록카드</a></li>
+                                    <li><a href="?menuno=614">자격/경력 조회</a></li>
+                                    <li><a href="?menuno=615">인력뱅크</a></li>
+                                </ul>
+                            </li>
+                            <li>
+										<a href="?menuno=226">지역개방/근로복지 어린이집</a>
+										<ul>
+											<li><a href="?menuno=226">지역개방 직장어린이집</a></li>
+                                    <li><a href="?menuno=664">근로복지공단 어린이집</a></li>
+                                </ul>
+										</li>
+                            <li>
+                                <a href="?menuno=227">직장어린이집 모집공고</a>
+                                <ul>
+                                    <li><a href="?menuno=249">직장어린이집 모집공고현황</a></li>
+                                    <li><a href="?menuno=250">직장어린이집 신청현황</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=228">민간업체 공개현황</a></li>
+                            <li><a href="http://info.childcare.go.kr/info/pnis/search/NurseryEtntctClassAdditionSlL.jsp">연장반어린이집</a></li>
+                            <li>
+                                <a href="?menuno=229">어린이집 이용 신청</a>
+                                <ul>
+                                    <li><a href="?menuno=230">상(하)위연령반 편성</a></li>
+                                    <li><a href="?menuno=233">야간연장보육</a></li>
+                                    <li><a href="?menuno=236">24시간 어린이집</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu05" href="?menuno=296">소통 · 참여</a>
+                    <div class="depth">
+                        <span>소통 · 참여</span>
+                        <ul>
+                            <li><a href="?menuno=297">마음을 전해요</a></li>
+                            <li><a href="?menuno=298">행복 이야기</a></li>
+                            <li><a href="?menuno=299">이벤트</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu06" href="?menuno=301">상담실</a>
+                    <div class="depth">
+                        <span>상**</span>
+                        <ul>
+                            <li><a href="?menuno=301">상담 안내</a></li>
+                            <li>
+                                <a href="?menuno=303">임신 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=303">자주하는질문</a></li>
+                                    <li><a href="?menuno=304">산부인과상담</a></li>
+                                    <li><a href="?menuno=637">임산부(수유부) 약물상담</a></li>
+                                    <li><a href="https://www.loveplan.kr/home/59.htm" target="_blank" title="새창열림">성건강 · 임신유지종결상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=305">출산 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=306">자주하는질문</a></li>
+                                    <li><a href="?menuno=307">모유수유 상담</a></li>
+                                    <li><a href="?menuno=308">산전후우울증 상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=309">육아 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=310">자주하는질문</a></li>
+                                    <li><a href="?menuno=311">인구보건복지협회 육아상담</a></li>
+                                    <li><a href="?menuno=312">육아종합지원센터 육아상담</a></li>
+                                    <li><a href="?menuno=313">소아청소년과상담</a></li>
+                                    <li><a href="?menuno=307">모유수유 상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=315">심리 · 정책상담</a>
+                                <ul>
+                                    <li><a href="?menuno=316">임신 · 출산 · 육아</a></li>
+                                    <li><a href="https://www.loveplan.kr/home/59.htm" target="_blank" title="새창열림">성건강 · 임신유지종결상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=317">상담 예약</a>
+                                <ul>
+                                    <li><a href="?menuno=318">임신출산육아 전화상담예약</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=319">어린이집 이용 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=320">부모 상담</a></li>
+                                    <li><a href="?menuno=321">보육교직원 상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=322">시스템 이용 문의</a>
+                                <ul>
+                                    <li><a href="?menuno=323">자주하는질문</a></li>
+                                    <li><a href="?menuno=324">오류신고</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu07" href="?menuno=325">홍보 · 알림</a>
+                    <div class="depth">
+                        <span>홍보 · 알림</span>
+                        <ul>
+                            <li><a href="?menuno=326">공지사항</a></li>
+                            <li><a href="?menuno=327">정책뉴스</a></li>
+                            <li><a href="?menuno=328">행사 및 교육</a></li>
+                            <li>
+                                <a href="?menuno=329">건강정보</a>
+                                <ul>
+                                    <li><a href="?menuno=330">임산부건강정보</a></li>
+                                    <li><a href="?menuno=331">소아청소년건강정보</a></li>
+                                    <li><a href="?menuno=332">성인건강정보</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=333">자료실</a>
+                                <ul>
+                                    <li><a href="?menuno=648">아이사랑 자료실</a></li>
+                                    <li><a href="?menuno=647">보육통계</a></li>
+                                </ul>
+                             </li>
+                            <li>
+                                <a href="?menuno=334" class="end_menu">미디어 자료실</a>
+                                <ul>
+                                    <li><a href="?menuno=335">건강웹툰</a></li>
+                                    <li><a href="?menuno=336">교육동영상</a></li>
+                                    <li><a href="?menuno=337">E-book</a></li>
+                                    <li><a href="?menuno=338">공통 부모교육</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                </ul>
+                <div class="m_menu_box">
+                        <p>
+                                <span>아이사랑 헬프데스크</span> 1566-3232 (단축번호 1번) <br/>
+                                <span>임신·출산·육아 상담</span> 1644-7373
+                        </p>
+                        <a href="https://enter.childinfo.go.kr/icms/main/IntroPage.html?fromI=Y">어린이집·유치원 통합검색</a>
+<a href="https://www.go-firstschool.go.kr/PAMS_SS/selectHm10mGridList.do">
+    
+                        유치원 입학 바로가기</a>
+                        <ul class="sns">
+								 <li><a href="http://pf.kakao.com/_tsaxmn" target="_blank" class="icon_kakaotalk" title="새창열림" aria-label="카카오톡 상담채널 바로가기">
+                                <em class="hidden">카카오톡 상담채널 바로가기</em></a>
+                           </li>
+                           <li><a href="https://www.facebook.com/agasarang16447373" target="_blank" class="icon_facebook" title="새창열림" aria-label="아이사랑 페이스북 바로가기">
+                                <em class="hidden">페이스북</em></a>
+                            </li>
+                            <li><a href="https://www.instagram.com/childcare16447373/?hl=ko" target="_blank" class="icon_instagram" title="새창열림" aria-label="아이사랑 인스타그램 바로가기">
+                                <em class="hidden">인스타그램</em></a>
+                            </li>
+                           <li class=" btn_language">
+                <a href="#" class="icon_language" title="언어선택 목록 열기"><em class="hidden">한국어</em></a>
+                <div class="language">
+                    <a href="https://eng.childcare.go.kr/">English</a>
+                    <a href="https://china.childcare.go.kr/">中文</a>
+                    <a href="https://vt.childcare.go.kr/">Tiếng Việt</a>
+                </div>
+            </li>
+                            <script>
+                                $('.icon_language').click(function() {
+                                    $('.language').toggleClass('active');
+                                });
+                            </script>
+                        </ul>        
+                </div>                
+            </div>
+        </nav>
+        <ul class="member">
+            <li class="login"><a href="?menuno=50&returnUrl=/?menuno=50">로그인</a></li>
+                    <li class="login"><a href="?menuno=53">회원가입</a></li>
+                <li class="all_menu_btn">
+                <a class="all_menu" href="#" role="button" aria-label="전체메뉴 보기">
+                    <em class="hidden">전체메뉴 보기</em>
+                    <span class="line_wrap">
+                        <span class="line"></span>
+                        <span class="line"></span>
+                        <span class="line"></span>
+                    </span>
+                </a>
+            </li>
+            <li class="m_menu">
+                <a href="#" role="button" aria-label="전체메뉴 보기">
+                    <em class="hidden">모바일메뉴</em>
+                    <span class="line_wrap">
+                        <span class="line"></span>
+                        <span class="line"></span>
+                        <span class="line"></span>
+                    </span>
+                </a>
+            </li>
+        </ul>
+    </div>
+</header>
+<!--// header -->
+
+<!-- 상담 검색 영역 -->
+<div class="top_search">
+    <strong class="d_none">통***</strong>
+    <p class="top_search_close">
+        <a href="#"><em class="d_none">검색 닫기</em></a>
+    </p>
+    <fieldset>
+        <form>
+            <label for="topKwd" class="d_none">검색어를 입력해주세요.</label>
+            <input type="text" autocomplete="off" id="topKwd" name="innerKwd" placeholder="검색어를 입력해주세요" value="">
+            <button class="btn_search" title="Next" onclick="">검색</button>
+            <dt>
+                <dt>
+                    추천검색어
+                </dt>
+                <dd>#인기검색어1</dd>                
+                <dd>#인기검색어2</dd>
+                <dd>#인기검색어3</dd>
+                <dd>#인기검색어4</dd>
+                <dd>#인기검색어553423423</dd>
+                <dd>#인기검색어6</dd>
+                <dd>#인기검색어234234</dd>
+            </dt>
+        </form>
+    </fieldset>
+</div>
+<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-stor, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="format-detection" content="telephone=no, address=no, email=no">
+
+<!-- 인증서 로그인 Non-ActiveX 변경 -->
+<script type="text/javascript" src="/icms/AnySign/anySign4PCInterface.js"></script>
+<script type="text/javascript" src="/icms/AnySign/xecureCommon.js"></script>
+<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_config.js"></script>
+<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_html5.js"></script>
+
+<script type="text/javascript">
+  var activexPath     = "/activex/common";
+  var activexRootPath = "/activex";
+  var imagePath       = "https://img.childcare.go.kr/common";
+  var imageRootPath   = "https://img.childcare.go.kr";
+  var serverType      = "P";
+  var serverId        = "pcms";
+  var ServerNumber    = "w3";
+  var ccisDomain      = "www.childcare.go.kr";
+  var prefixServerName = "";
+</script>
+
+<!-- loadingbar -->
+<style>
+.loading_wrap {box-sizing:border-box}
+.loading_wrap {width:100%; height:100%; margin:0 auto 0; display:flex; align-items:center; justify-content:center; background-color:rgba(255,255,255,0.5); position:fixed; top:0; left:0; z-index:9000}
+.loading { display:flex; flex-direction:column; justify-content:center; align-items:center; width:500px; height:216px;}
+.loading-title {margin-bottom:20px; text-align:center; font-size:18px; font-weight:600; line-height:1.333; color:#333; animation-name:flicker; animation-duration:1600ms; animation-iteration-count:infinite; animation-direction:alternate;}
+.progress-bar {position:relative; width:300px; height:12px; border-radius:100px; background-color:rgb(167,167,167); overflow:hidden}
+.progress-bar-gauge {position:absolute; top:0; left:0; width:20px; height:12px; border-radius:100px; background-color:rgb(44,228,167); animation-name:loading-bar; animation-duration:1600ms; animation-iteration-count:infinite; animation-timing-function:ease-out;}
+@keyframes flicker {
+from {opacity:1;}
+to {opacity:0}
+}
+@keyframes loading-bar {
+0% {width:0; opacity:1}
+80% {width:100%; opacity:1}
+100% {width:100%; opacity:0 }
+}
+</style>
+
+<div class="loading_wrap" style="display:none;">
+	<section class="loading">
+		<h1 class="loading-title">Loading...</h1>
+		<div class="progress-bar" aria-hidden="true">
+			<span class="progress-bar-gauge"></span>
+		</div>
+	</section>
+</div>
+<!-- //loadingbar -->
+<script type="text/javascript">
+function fnLoddingStart () {
+	$('.loading_wrap').show();
+}
+
+function fnLoddingEnd () {
+	$('.loading_wrap').hide();
+}
+</script>
+
+<style>
+	.type-confirm, .type-confirm2, .type-alert, .type-alert2, .type-alert3 {
+		z-index: 3000;
+	}
+	
+	#dimmed1 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2000;
+		display: none;
+	}
+	#dimmed2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2100;
+		display: none;
+	}
+	#dimmed3 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2200;
+		display: none;
+	}
+	#dimmed_confirm2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2300;
+		display: none;
+	}
+</style>
+<div class="popup_wrap s_size wp400 type-confirm" id="layer-confirm-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close" title="팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm">확인</a>
+                <a href="#none" class="btn gray" id="layer-popup-close">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-confirm2" id="layer-confirm-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-confirm-popup-close2" title="팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title2"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm2">확인</a>
+                <a href="#none" class="btn gray" id="layer-confirm-popup-close2">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert" id="layer-alert-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close" title="알림 팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close2" title="알림 팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert3" id="layer-alert-popup3">
+	<div class="popup_inner_wrap maxw525">
+        <a href="#none" class="popup_close" role="button" id="layer-popup-close3" title="알림 팝업 닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents3"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close3">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="dimmed1"></div>
+<div id="dimmed2"></div>
+<div id="dimmed3"></div>
+<div id="dimmed_confirm2"></div><!-- 세션 메세지 체크 -->
+<script>
+icmsLayerPopup.alert({
+	contents : "아이디 또는 패스워드가 일치하지 않습니다."
+});
+</script>
+<!-- 로그인 체크 -->
+<script>
+	if("" != ""){
+		location.href = "";
+	}
+</script>
+<script>
+$(document).ready(function(){
+	var userAgent = navigator.userAgent.toLowerCase();
+	if(/mobi|android/i.test(userAgent)){
+
+		if(userAgent.indexOf('android') != -1){
+			$("#keyboardCheck").hide();
+		} else if(userAgent.indexOf('iphone') != -1 || userAgent.indexOf('ipad') != -1 || userAgent.indexOf('ipod') != -1) {
+			$("#keyboardCheck").hide();
+		} else {
+			$("#keyboardCheck").show();
+		}
+	}
+});
+function gotoLogin(type){
+	var userAgent = navigator.userAgent.toLowerCase();
+	
+	if(/mobi|android/i.test(userAgent)){
+		
+		if(userAgent.indexOf('android') != -1){
+			/* if(type=="cert"){
+				alert("인증서 로그인은 어플에서만 가능합니다.\n안드로이드 스토어로 이동합니다.");	
+			}else if(type="simple"){
+				alert("간편인증 로그인은 어플에서만 가능합니다.\n안드로이드 스토어로 이동합니다.");
+			} */
+			
+// 			alert("인증서/간편인증 로그인은 '아이사랑 모바일 앱'에서만 가능합니다.\n'확인'을 누르면 앱 스토어로 이동합니다.");
+			
+// 			window.open("https://market.android.com/details?id=com.mw.Android_KidsLove2");
+
+			location.href="?menuno=506&ltype="+type+"";
+			
+		}else if(userAgent.indexOf('iphone') != -1 || userAgent.indexOf('ipad') != -1 || userAgent.indexOf('ipod') != -1){
+			
+			/* if(type=="cert"){
+				alert("인증서 로그인은 어플에서만 가능합니다.\n아이폰 스토어로 이동합니다.");	
+			}else if(type="simple"){
+				alert("간편인증 로그인은 어플에서만 가능합니다.\n아이폰 스토어로 이동합니다.");
+			} */
+			
+// 			alert("인증서/간편인증 로그인은 '아이사랑 모바일 앱'에서만 가능합니다.\n'확인'을 누르면 앱 스토어로 이동합니다.");
+			
+// 			window.open("https://itunes.apple.com/kr/app/id490070696?mt=8");
+
+			location.href="?menuno=506&ltype="+type+"";
+			
+		}else{
+			alert("아이디 로그인만 가능합니다.");
+		}
+		
+	}else{
+// 		if($("#ssoparam").val() != ""){
+			location.href="?menuno=506&ltype="+type+"&ssoparam="+$("#ssoparam").val();	
+// 		} else {
+			
+// 		}
+		
+	}
+}
+
+</script>
+
+<div class="location">
+    <ul>
+        <li class="l_home"><a href="/?menuno=1"><em class="hidden">홈</em></a></li>
+        <li class="l_depth_01"></li>
+        <li class="l_depth_02"><a href="#"><em></em></a></li>
+        <li class="l_depth_03"><a href="#"><em></em></a></li>
+        <li class="l_depth_04"><a href="#"><em></em></a></li>
+        <li class="l_depth_last"><em></em></li>
+    </ul>
+</div>
+
+<!-- contents -->
+<section class="contents_wrap" id="contents">
+	<article class="members">
+		<h1><a href="/?menuno=1"><span class="hidden">유***</span></a></h1>
+		<h2><b>통합회원 로그인</b></h2>
+		<p>아이사랑(어린이집 등록대기), 유치원 입학 통합 로그인 입니다.</p>
+
+		<!-- 로그인 종류 -->
+		<div class="tab">
+			<ul>
+				<li><a  title="선택됨" href="#none" onclick="gotoLogin('simple')"  class="on">간편인증 로그인</a></li>
+						<li><a  href="#none" onclick="gotoLogin('cert')" >인증서 로그인</a></li>
+						<li><a  href="#none" onclick="gotoLogin('id')" >아이디 로그인</a></li>
+					</ul>
+		</div>
+		
+		<!-- 인증서 로그인 -->
+<form name="frmLoginSimple" id="frmLoginSimple" action="/?menuno=1" method="post" style="padding-top: 10px;">
+	<input id="ssoReturnMenuno" name="ssoReturnMenuno" type="hidden" value="1" />
+	<ul class="login">
+		<li>
+			<p class="authentication_simple">
+				<img src="/usr/images/sub/ico_kakao.png" alt="카카오톡 logo">
+				<img src="/usr/images/sub/ico_bank.png" alt="국민은행 logo">
+				<!-- 20250620: payco 인증서 20250717 서비스 중단에 따른 사전 조치 -->
+				<!-- img src="/usr/images/sub/ico_payco.png" alt="PAYCO logo" -->
+				<img src="/usr/images/sub/ico_pass.png" alt="통신사PASS logo">
+				<img src="/usr/images/sub/ico_samsung.png" alt="삼성패스 logo">
+				<img src="/usr/images/sub/ico_naver.png" alt="네이버 logo">
+				<img src="/usr/images/sub/ico_shinhan.png" alt="신한은행 logo">
+			</p>
+		</li>
+		<li class="option">
+			<span class="f_right">
+				<a href="/?menuno=523" class="h_line">아이디 찾기</a>
+				<a href="/?menuno=524">비밀번호  찾기</a>
+			</span>
+		</li>
+		<li><a href="#" class="btn h60 btn_full" onclick="fnSimple();" class="login_btn" title="새창열림">간편인증 로그인</a></li>
+		<li><a href="/?menuno=53" class="btn gray h60 btn_full">회원가입</a></li>
+	</ul>
+</form>
+
+
+<script>
+function fnSimple() {
+    var agt = navigator.userAgent.toLowerCase();
+
+    wWidth = 835;
+	wHight = 644;
+	wX = (window.screen.width - wWidth) / 2;
+	wY = (window.screen.height - wHight) / 2;
+	
+    window.open("/icms/login/authSimple.html", "s1", "toolbar=no,location=no,directories=no,status=no,menubar=no,scrollbars=no,resizable=no,copyhistory=no,left="+wX+",top="+wY+",width="+wWidth+",height="+wHight);
+}
+
+function fnMain(url) {
+	document.frmLoginSimple.action = url;
+    document.frmLoginSimple.submit();
+}
+
+$(document).ready(function(){
+	$(".l_depth_last > em").text('간편인증 로그인');
+});
+</script><script>
+				$(document).ready(function() {
+					$(".l_depth_last > em").text('간편인증  로그인');	
+					
+					fnLocationSet("login", 0, 8, 0, 0, 0);
+				});
+				document.title = "간편인증 로그인 > 임신육아종합포털 아이사랑";</script>
+			<dl id="keyboardCheck" style="display: none;">
+			<dt>키보드 보안 프로그램 설치 <a href="" class="btn h26 line black">키보드 보안 프로그램 적용</a></dt>
+			<dd>키보보드 보안 프로그램 설치 없이도 서비스를 이용할 수 있습니다.<br/>
+				키보드 보안 프로그램을 설치하지 않을 경우, 서비스를 위해 입력하는 중요한 정보(주민번호, 비밀번호 등)가 유출될 수 있습니다.</dd>
+		</dl>
+
+		<div class="color_box">
+			<p>사용자 지원</p>
+			<p><b>1566-3232</b> (단축번호 1번, 상담시간 평일 09:00~18:00)
+				<a href="#pop-up01"  data-rel="pop" title="이용안내 팝업 열기" >이용안내</a>
+			</p>
+		</div>
+		<input id="ssoparam" name="ssoparam" type="hidden" value="" />
+	</article>
+</section>
+<!--// contents -->
+<!-- 이용안내 popup -->
+<div class="popup_wrap" id="pop-up01" tabindex="0">
+	<div class="popup_inner">
+      <a href="#none" class="popup_close"><span class="hidden">팝업 닫기</span></a>
+		<header>
+			<h3>아이사랑 이용안내</h3>
+		</header>
+		<section class="pop_contents">
+			<ul class="tab_wrap_inner">
+				<li class="on"><a href="javascript:;" data-tab="tab-1">홈페이지</a>
+					<div class="tab_con_inner" id="b_tab-1" style="display:block;">
+						<dl class="accordion qna">
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>이름을 개명해서 회원정보를 바꾸고 싶습니다.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>임신육아종합포털 회원 개명은 마이페이지에서 공공아이핀 인증을 통해 변경 가능합니다.<br/>
+								- 메뉴 : 임신육아종합포털 로그인 &gt; 마이페이지 &gt; 회원정보변경 메뉴에서 회원 이름 옆에 [개명] 버튼 클릭 후 공공 아이핀 인증을 통해 개명 처리가 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>공인인증서 내보내기는 어떻게 이용하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>임신육아종합포털에서 모바일 APP으로 공인인증서 내보내기는 임신육아종합포털(PC) 메인페이지 하단 [모바일 서비스] 또는 로그인 &gt; [마이페이지 &gt; 공인인증서관리] 메뉴에서 진행하실 수 있습니다.<br/><br/>
+								○ 인증서 내보내기 방법
+								- 메인페이지 하단 [모바일 서비스] 메뉴 선택
+								1) [인증서 내보내기] 클릭
+								2) [스마트폰으로 인증서 복사하기] 버튼 클릭 후 공인인증서 비밀번호 입력
+								2) 모바일앱에서 [설정 &gt; 공인인증서 관리 &gt; 인증서 가져오기 메뉴]에서 보이는 인증번호 12자리 입력 
+								3) 모바일에서 공인인증서 이용시 이용할 비밀번호 입력 
+								4) 모바일앱에서 [인증서 가져오기] 클릭 
+								<br/><br/>
+								- 마이페이지 &gt; 공인인증서관리 메뉴 선택
+								1)[스마트폰으로 인증서 복사하기] 버튼 클릭 후 공인인증서 비밀번호 입력
+								2) 모바일앱에서 [설정 &gt; 공인인증서 관리 &gt; 인증서 가져오기 메뉴]에서 보이는 인증번호 12자리 입력 
+								3) 모바일에서 공인인증서 이용시 이용할 비밀번호 입력 
+								4) 모바일앱에서 [인증서 가져오기] 클릭</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>인구보건복지협회 육아상담 게시판과 소아청소년과 상담 게시판에는 비밀글 기능이 없어요</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>인구보건복지협회 육아상담 게시판과 소아청소년과 상담 게시판은 인구보건복지협회에서 전문가 상담 기능을 제공하는 게시판으로 육아 및 소아청소년과 상담의 경우 비슷한 상담글이 많이 등록되는데 비밀글 작성시 같은 질문에 대한 답변이 공유가 되지 않아 전문가 상담위원 자문회의를 통해 공개글만 작성이 가능하도록 결정되어 비밀글 기능을 제공하지 않고 있습니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>비밀번호를 잊어버려서 홈페이지 이용을 못하고 있어요</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>아이디/비밀번호를 잊어버린 경우, 임신육아종합포털 내 아이디/비밀번호 찾기를 통해 확인 가능합니다.<br/><br/>
+								○ 아이디 찾기 방법<br/>
+								- 임신육아종합포털 메인페이지 상단 로그인 버튼 클릭 → 아이디 찾기 선택 → 공인인증, 휴대폰인증, 아이핀인증 중 1가지 방법 선택 후 본인 인증 → 아이디 확인
+								<br/><br/>
+								○ 비밀번호 찾기 방법<br/>
+								- 임신육아종합포털 메인페이지 상단 로그인 버튼 클릭 → 비밀번호 찾기 선택 → 공인인증, 휴대폰인증, 아이핀인증 중 1가지 방법 선택 후 본인 인증 → 새 비밀번호로 변경</span>
+							</dd>
+							<dt area-label="내용닫기"><a href="#none"><em class="hidden">질문</em>회원가입(아이디/비밀번호 찾기) 시 휴대폰 본인인증이 되지 않아요</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>회원가입(아이디/비밀번호 찾기)시 휴대폰 본인인증 서비스를 이용하실 경우 본인명의의 휴대전화인 경우에만 확인 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>임신육아종합포털 회원 탈퇴는 어떻게 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>임신육아종합포털 홈페이지(http://www.childcare.go.kr) 및 모바일(m.childcare.go.kr)을 통하여 회원 탈퇴가 가능합니다.<br/><br/>
+								○ 회원 탈퇴 방법<br/>
+								- 로그인(아이디 또는 공인인증서) 후 마이페이지의 회원탈퇴 메뉴에서 탈퇴 처리가 가능합니다.<br/>
+								* 회원 재가입은 탈퇴 당일에도 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>공인인증서 갱신 후 시스템 로그인이 되지 않습니다.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>공인인증서를 갱신한 경우 임신육아종합포털(PC)에 공인인증서 재등록이 필요합니다.<br/><br/>
+								○ 공인인증서 재등록 방법<br/>
+								- 임신육아종합포털(PC) 로그인 &gt; 마이페이지 &gt; 공인인증서 관리 메뉴에서 기존에 등록된 공인인증서 삭제 후 재등록 하시면 됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>공인인증서는 어떻게 등록해야 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>○ 공인인증서 로그인 방법<br/>
+								- 임신육아종합포털(PC) 로그인 &gt; 마이페이지 &gt; 공인인증서 관리 메뉴에서 등록이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>공인인증서가 없습니다. 어떻게 발급 받을 수 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>공인인증서 발급은 은행 및 금융사 지점에서 전자금융(인터넷뱅킹 등)서비스를 신청하신 후 해당 은행 및 금융사 홈페이지에 접속하셔서 공인인증서를 발급받아 PC 또는 USB에 저장하여 사용하시면 됩니다.</span>
+							</dd>
+						</dl>
+					</div>
+				</li>
+				<li><a href="javascript:;" data-tab="tab-2">보육료결제(아이행복카드)</a>
+					<div class="tab_con_inner" id="b_tab-2">
+						<dl class="accordion qna">
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>정부지원보육료만 아이행복카드로 결제하고 부모부담보육료는 따로 결제 가능한가요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>아이행복카드로 정부지원보육료와 부모부담보육료가 함께 결제되므로 따로 결제는 불가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>아이행복카드를 통해 첫째 아이 보육료 지원을 받고 있습니다. 둘째아이가 이번에 대상이 되어 보육료 지원신청을 했는데 아이행복카드를 계속 사용할 수 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>사용할 수 있습니다. 한 가구에 1장만 있으면 해당 가구 아동 전체에 대해 보육료 결제가 가능합니다. 둘째 아이에 대한 보육료 지원신청을 완료하셨다면 소지하고 계신 아이행복카드로 보육료 결제를 하실 수 있습니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>아이즐거운카드 소지자입니다. 어린이집 보육료 결제하려면 아이행복카드로 재발급해야 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>카드 교체없이 최초 보육료 결제시 어린이집에 방문하여 전환등록만 하시면 됩니다. 다만 읍면동 주민센터 또는 복지로 온라인 사이트(www.bokjiro.go.kr)를 통해 보육료 변경 신청을 하셔야 보육료지원을 받으실 수 있습니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>보육료 결제 취소는 어떻게 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>(방문결제의 경우) 어린이집을 방문하여 해당 결제 건을 취소<br/><br/>
+								(인터넷, 모바일 결제의 경우) 어린이집에 결제취소 하고 싶은 건에 대해 ARS번호 생성 요청 후 포털 및 모바일 인증서 로그인 &gt; 보육료결제 &gt; 보육료결제현황 메뉴에서 결제현황 조회 및 선택 &gt; [결제취소] 클릭 &gt; 공인인증서 비밀번호 입력<br/><br/>
+								(ARS결제의 경우) 어린이집에 결제취소 하고 싶은 건에 대해 ARS번호 생성 요청 후 ARS(1566-0244) &gt; 카드번호와 우물정자(#) 입력 &gt; 주민번호 뒷번호와 우물정자(#) 입력 &gt; 2번(결제취소) &gt; 취소 ARS인증번호 입력 &gt; 취소내역 확인 &gt; 1번(결제취소 처리)</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>자주쓰는카드 등록 이나 수정은 어떻게 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>자주쓰는카드 기능은 보육료를 결제하실 때(임신육아종합포털 로그인 → 어린이집 → 보육료결제 메뉴) 등록 및 수정, 삭제가 가능합니다.<br/><br/>
+								○ (등록) 보육료결제 시 결제정보 입력하는 화면에서 등록(최대 3개까지 등록 가능)<br/>
+								- [카드 불러오기] &gt; [카드 등록] &gt;  [카드별칭 및 카드번호, 유효기간 입력] &gt; [저장]<br/><br/>
+								○ (수정) 보육료결제 시 결제정보 입력하는 화면에서 수정<br/>
+								- [카드 불러오기] &gt;  [편집] &gt; [카드별칭 및 카드번호, 유효기간 입력] &gt; [저장]<br/><br/>
+								○ (삭제) 보육료결제 시 결제정보 입력하는 화면 [카드 불러오기] 창에서 삭제<br/>
+								- [카드 불러오기] &gt; [삭제]</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>보육료 결제를 하려고 하니 업무개시 전 이라면서 결제가 되지 않아요.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>업무개시 전이라는 알림멘트는 보육료 결제를 오후 11시 50분 부터 익일 오전 12시 25분 사이에 결제시 발생하는 문구로 카드사와 벤사간의 연계가 익일 업무를 위해 잠시 정지하는 시간을 알리는 것 입니다.<br/>
+								해당 시간을 피해서 보육료 결제를 부탁드립니다.<br/><br/>
+								위 언급된 시간이 아닌데도 업무개신 전이라는 메세지가 뜬다면 아이사랑 헬프데스크(1566-3232 → 1번)으로 연락 부탁드립니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>아이행복카드로 보육료결제시 수수료는 누가 부담합니까?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>보육료를 결제할 때 발생하는 정부지원보육료 및 부모부담보육료에 따른 결제 수수료는 정부가 부담하며, 기타경비에 따른 결제 수수료는 어린이집(보육시설)에서 부담하게 됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>아이행복카드 발급은 어디서 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>오프라인 : 읍면동 주민센터, 카드발급 금융기관(KB, 우리, 하나, 신한, NH농협, 롯데, BC카드)<br/>
+								온라인 : 복지로(www.bokjiro.go.kr), 임신육아종합포털(www.childcare.go.kr)<br/><br/>
+								&gt; 임신육아종합포털에서 신청방법<br/>
+								- 임신육아종합포털 공인인증서 로그인 → 어린이집 → 아이행복카드 → 아이행복카드 신청 메뉴에서 신청<br/><br/>
+								※ 읍면동 주민센터 또는 복지로를 통해 복지서비스 변경신청을 하셔야 정부지원금이 지원됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>보육료 결제를 하려고 하는데 결제목록에서 우리 아이가 검색되지 않습니다. 어떻게 해야 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>임신육아종합포털 및 모바일에서 결제를 하기 위해서는<br/><br/>
+								1) [마이페이지 &gt; 아동정보관리] 메뉴에 아동이 등록되어 있어야 하며<br/>
+								&gt; 아동정보 등록<br/>
+								- 임신육아종합포털 로그인 → 마이페이지 → 아동정보관리 메뉴에서 포털 가입자 실명인증 후 아동정보 등록<br/><br/>
+								2) 어린이집에서 이용현황을 확정해야 합니다.<br/><br/>
+								아동정보를 등록했는데도 조회되지 않으신다면 아동이 재원중인 어린이집에 이용현황 확정을 문의 부탁드립니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>보육료결제를 하려고 하는데 아이디는 남편명의이고 아이행복카드는 엄마명의이면 보육료결제가 되지 않나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>임신육아종합포털 및 모바일에서 결제 시에는 임신육아종합포털 로그인(가입자) 명의, 아이행복카드, 주민등록번호 및 공인인증서의 명의자가 동일해야 결제가 가능합니다.<br/><br/>
+								엄마 명의의 아이행복카드로 보육료 결제를 원하신다면,<br/>
+								- 남편명의로 로그인 후 [마이페이지 &gt; 아동정보관리]메뉴에 등록된 아동정보를 삭제 후<br/>
+								- 엄마 명의 계정 로그인 후 [마이페이지 &gt; 아동정보관리]메뉴에서 아동정보 등록 후 보육료결제 메뉴에서 결제가 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>기존에 발급받은 아이사랑카드가 있습니다. 새로 신청을 해야하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>발급받으신 아이사랑카드가 하나/국민/우리카드시라면 카드의 유효기간이 지나기 전까지는 이용이 가능합니다.</span>
+							</dd>
+						</dl>
+					</div>
+				</li>
+				<li><a href="javascript:;" data-tab="tab-3">등록대기</a>
+					<div class="tab_con_inner" id="b_tab-3">
+						<dl class="accordion qna">
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>맞벌이 자격이 변경되었을 때 등록대기 맞벌이 항목 상태는 어떻게 변경 하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>등록대기 맞벌이 항목은 맞벌이 자격 변경 시 자동으로 변경되는 사항이 아니며, 보호자분께서 직접 해당 항목의 설정 및 해제를 해주셔야 합니다.<br/><br/>
+								등록대기 맞벌이 항목 수정은 아이사랑에 접속 하셔서 등록대기 아동등록-&gt;해당 아동을 선택한 후 세부내역창에서 수정이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>태아도 영유아에 포함이 되어 등록대기를 신청한 아동의 점수에 영향을 주나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>등록대기 항목 중 영유아는 출생한 만0세~만5세 자녀에 대해서 해당되며 태아는 해당사항이 없습니다.<br/>
+								태아는 등록대기를 신청한 아동의 등록대기 점수에 영향을 미치지 않습니다.<br/><br/>
+								출생한 이후에 해당항목에 대해서 수정이 가능합니다.<br/>
+								단, 등록대기를 신청한 아동의 등원 전 태아가 출생하는 경우에는 관련 항목들의 선택이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>어린이집 찾기 메뉴에서는 보이는데 등록대기 신청을 하려니 어린이집이 보이지 않아요</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>아이사랑포털에서의 등록대기 신청대상에서 어린이집 유형이 직장, 협동인 어린이집과 서울시 소재 어린이집은 제외되어 있어 조회되지 않습니다.<br/>
+								- 어린이집 유형이 직장 또는 협동이라면 해당 어린이집에 직접 문의를 부탁드립니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>맞벌이 자격이 맞는지 궁금해요.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>자격이나 지침, 제출 서류 등의 문의는 교육부 민원전화상담실(02-****-60**, 1번)로 문의하셔야 보다 정확한 상담이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>유치원 입학신청을 하고 싶어요.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>아이사랑 어린이집 등록대기시스템은 어린이집만 신청 가능합니다. 유치원 관련 문의는 에듀콜 1544-0079로 부탁드립니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>평일에는 조부모님이 양육해주시고 주말에만 아이를 돌보는데 조손가족에 해당할 수 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>조손가정에 해당하지 않으며, 조손으로만 이루어진 가정에 한해 자격을 부여합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>한부모가정이면 1순위/2순위 모두 체크해도 되나요? 그리고 한부모이면서 재직중입니다. “부모가 모두 취업중인 영유아”에 해당하나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>1순위 한부모 가정은 자격이 연계되는 것으로 직접 체크가 불가능합니다. 한부모가정이면서 1순위에 해당하지 않는 경우, 2순위 한부모가정에 체크해주시면 됩니다.<br/>
+								한부모가정에서 보호자분이 직장에 재직중이시거나 취업활동인 경우 “부모가 모두 취업중인 영유아” 자격에 해당합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>개인정보활용 동의가 진행이 되지 않아요.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>포털에 가입한 보호자 명의로 (ID 소유자 명의) 개인정보 활용동의를 진행하셔야 합니다. 아동명의 또는 배우자의 공인인증서로는 진행이 되지 않습니다.<br/>
+								동일 명의자의 성명, 주민등록번호, 인증서를 등록해 주셔야 정상적으로 진행이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>재원아동이 타 어린이집 대기신청을 하면 어린이집에서 알 수 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>아닙니다. 재원중인 어린이집에서는 타 어린이집 등록대기 신청현황 등의 정보를 확인 할 수 없습니다. 어린이집에서는 해당 어린이집 관련사항만 조회됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>어린이집 등록대기는 몇군데까지 할 수 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>현재 재원중인 아동은 2곳까지, 미재원 아동은 3곳까지 신청이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>아동 개명을 했는데 어떻게 변경할 수 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>재원중인 어린이집에 문의하셔서 지자체로 아동 개명 요청 부탁드립니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>어린이집 등록대기 신청 시 이미 등록대기 중이라는 메시지가 나오는데 목록에서 조회가 되지 않아요.</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>배우자분의 ID에 등록이 된 어린이집이 있는지 확인을 부탁드립니다. 어린이집 등록대기 아동등록의 경우 부모님께서 각각 하실 수 있고, 신청 내용을 서로 조회할 수 없게 되어 있습니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>아동이 등록되지 않는다고 나옵니다. 어떻게 할까요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>(한국인 보호자) 다른 보호자에 아동이 등록되어 있음을 의미합니다. 보육료 결제를 위한 마이페이지 &gt; 아동등록에는 부모 한 분에게만 등록되며, 바우처 사용 등을 위해 아동을 등록하셔야 하는 경우에는 기 등록 ID에서 아동을 삭제하고 변경하실 ID에 등록하시면 됩니다.<br/>
+								(외국인 보호자) 외국인 아동은 실명인증이 되지 않아 나오는 메시지입니다. 거주중인 시,군,구 보육담당부서로 문의하셔서 등록대기를 진행하셔야 합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>주소지와 거주지가 다릅니다. 등록대기 시 불이익이 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>주소지와 거주지가 다름으로인한 불이익은 없습니다. 이사예정이셔서 사전신청을 하고자 하시는 경우에는 이사 갈 지역의 어린이집을 검색하셔서 대기신청하시면 됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>장애아통합어린이집에 등록하고 싶어요. 일반 어린이집과 동일한가요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>대기 신청 전 장애아통합어린이집에 먼저 연락하셔서 운영사항을 안내받으시는 것을 권장합니다. 이후 아동 등록시 『장애아보육료 지급여부』에 체크하시고 대기신청을 하시면 됩니다. 체크 된 아동 간 우선순번을 경합하게 됩니다.</span>
+							</dd>
+						</dl>
+					</div>
+				</li>
+				<li><a href="javascript:;" data-tab="tab-4">시간제보육</a>
+					<div class="tab_con_inner" id="b_tab-4">
+						<dl class="accordion qna">
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>예약 가능한 건수가 정해져 있나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>이용일로부터 30일전부터 1일 최대 10건까지 예약이 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>외국인가구의 아동으로 시간제보육을 이용하고 싶습니다. 시간제보육 아동등록이 가능합니까?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>시간제보육의 기본대상은 양육수당 지원가구이므로 재외국인 가구는 시간제보육 대상에서 제외됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>시간제보육 아동등록은 모바일에서도 가능한가요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>네, 시간제보육 아동등록은 모바일에서도 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>시간제보육 서비스를 예약하고자 하는 경우 공인인증서가 필수 사항인가요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>개인정보보호를 위해 공인인증서를 통한 로그인이 필요합니다.<br/>
+								공인인증서를 임신육아종합포털(PC)로그인 &gt; 마이페이지 &gt; 공인인증서관리 메뉴에서 등록 후 이용 부탁드립니다.<br/><br/>
+								시스템으로 아동등록이 어려운 경우 관리기관(2016.6.1~) 및 제공기관(2016.7.1~)에서 아동등록이 가능합니다.<br/>
+								이 경우 시간제보육 예약은 전화예약(1661-9361)으로만 가능합니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>시간제보육을 이용하면 이용한만큼 양육수당이 차감되어 지급되나요?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>그렇지 않습니다. 영유아보육법 제34조의2제2항에 따라 시간제보육 이용대상자에게도 양육수당은 전액 지급됩니다.<br/>
+								시간제보육을 이용한만큼의 보육료를 아이행복카드를 통해 지불하시면 됩니다.</span>
+							</dd>
+							<dt area-label="내용열기"><a href="#none"><em class="hidden">질문</em>시간제보육의 이용대상은 ?</a></dt>
+							<dd>
+								<span><em class="hidden">답변</em>양육수당을 지원받는 6개월 ~ 36개월 미만의 영아입니다.<br/>
+								※ 단, 보육료지원을 받고 있는 경우 전액 본인부담(시간당 4천원)으로 이용 가능합니다.</span>
+							</dd>
+						</dl>
+					</div>
+				</li>
+			</ul>
+		</section>
+	</div>
+</div>
+
+<footer id="footer">
+    <div class="footer_wrap">
+        <div class="f_link">
+            <ul class="link_wrap">
+                <li><a href="?menuno=511">이용약관</a></li>
+                <li><a href="?menuno=512" style="font-weight: 900;">개인정보처리방침</a></li>
+                <li><a href="?menuno=324">시스템 이용문의</a></li>
+                <li><a href="?menuno=514">전화번호 안내</a></li>
+                <li><a href="?menuno=515">모바일 서비스</a></li>
+                <li>
+                    <span class="webwach_logo">
+                        <a href="https://www.wa.or.kr/board/list.asp?search=total&SearchString=%BE%C6%C0%CC%BB%E7%B6%FB&BoardID=0006" target="_blank" title="새창열림"><img src="https://www.childcare.go.kr/usr/images/common/wa.png" alt="(사)한국장애인단체총연합회 한국웹접근성인증평가원 웹 접근성 우수사이트 인증마크(WA인증마크)"></a>
+                    </span>
+                </li>
+            </ul>
+        </div>
+        <div class="address_wrap">
+            <div class="address_inner">
+                <p><img src="/cms/gen/images/f_logo01.png" alt="교육부 로고"></p>
+                <address>정부세종청사 14동<span class="br"></span>
+                    세종특별자치시 갈매로 408</address>
+            </div>
+            <div class="address_inner">
+                <p><img src="/cms/gen/images/f_logo03.png" alt="보건복지부 로고"></p>
+                <address>정부세종청사 10동<span class="br"></span>
+                    세종특별자치시 도움4로 13</address>
+            </div>
+            <div class="address_inner">
+                <p><img src="/cms/gen/images/f_logo02.png" alt="한국사회보장정보원 로고"></p>
+                <address>
+                    한국사회보장정보원(04933) 서울 광진구 능동로 400<br/>
+                        Copyright ⓒ 한국사회보장정보원. All rights reserved.
+                </address>
+            </div>
+            <div class="address_inner">
+                <address>
+                    <span>아이사랑 헬프데스크</span><em><b>1566-3232</b>(단축번호 1번)</em>
+                </address>
+            </div>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>
+

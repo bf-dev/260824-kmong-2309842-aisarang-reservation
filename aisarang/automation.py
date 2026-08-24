@@ -26,6 +26,7 @@
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -120,6 +121,42 @@ def is_logged_in(driver) -> bool:
         body = driver.find_element("tag name", "body").text
         return any(m in body for m in LOGIN_MARKERS)
     except Exception:
+        return False
+
+
+def login_grade(driver) -> str:
+    """지금 세션의 인증 등급. 'cert' | 'id' | 'none'.
+
+    예약 화면(?menuno=605)을 한 번 열어 서버가 찍어준 loginMode 를 읽는다.
+    이 값은 우리가 추측한 게 아니라 서버가 페이지에 박아 내려주는 값이다.
+    """
+    try:
+        src = driver.page_source
+    except Exception:
+        return "none"
+    login_mode, _ = read_login_mode(src)
+    if login_mode == "CT":
+        return "cert"
+    if login_mode:
+        return "id"
+    return "cert" if is_logged_in(driver) else "none"
+
+
+def touch_session(driver, log=lambda *_: None) -> bool:
+    """세션 유지용 가벼운 요청.
+
+    실측: 로그인 직후 egovExpireSessionTime - egovLatestServerTime = 3,600,000ms.
+    즉 세션은 마지막 활동 기준 60분이면 끊긴다. 전날 밤에 인증서 로그인을 해두는
+    운영은 불가능하고, 09시 직전까지 세션을 살려둬야 한다.
+    """
+    try:
+        driver.execute_script(
+            "try{var x=new XMLHttpRequest();"
+            "x.open('HEAD','/?menuno=1&_ka='+Date.now(),true);x.send();}catch(e){}"
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log(f"세션 유지 요청 실패(무시): {type(exc).__name__}")
         return False
 
 
@@ -231,6 +268,38 @@ def start_cert_login(driver, cert_password: str, log=lambda *_: None,
     return False
 
 
+def wait_for_cert_session(driver, center: dict, log=lambda *_: None,
+                          stop_event=None, diag=None,
+                          deadline_epoch: float | None = None,
+                          clock=None, poll: float = 5.0) -> bool:
+    """예약 화면이 실제로 열릴 때까지(= 인증서 세션이 될 때까지) 기다린다.
+
+    '로그인했다' 가 아니라 '이 화면이 열린다' 를 기준으로 판정한다. 아이디
+    로그인도 로그인이긴 해서 로그아웃 링크 유무로는 구분이 안 되기 때문이다.
+    """
+    driver.get(config.BASE_URL + config.LOGIN_PAGE_CERT)
+    log("공동인증서 로그인 화면을 열었습니다. 인증서로 로그인해 주세요.")
+    while True:
+        if stop_event is not None and stop_event.is_set():
+            return False
+        if deadline_epoch is not None and clock is not None:
+            if clock.server_now() >= deadline_epoch:
+                log("인증서 로그인 대기 시간이 끝났습니다.")
+                capture(driver, diag, "cert_wait_timeout")
+                return False
+        time.sleep(poll)
+        try:
+            if not is_logged_in(driver):
+                continue
+            open_reservation_page(driver, center, log, None)
+            if not page_says_cert_required(driver):
+                log("공동인증서 세션이 확인되었습니다. 예약 화면이 열립니다.")
+                capture(driver, diag, "cert_session_ready")
+                return True
+        except Exception:
+            continue
+
+
 def wait_for_manual_login(driver, log=lambda *_: None, stop_event=None,
                           timeout: int = 1800) -> bool:
     """고객이 직접 로그인할 때까지 기다린다."""
@@ -281,11 +350,54 @@ def open_reservation_page(driver, center: dict, log=lambda *_: None,
     capture(driver, diag, "reservation_page")
 
 
+# 서버가 페이지에 직접 찍어 내려주는 두 변수. 실측(2026-08-24, 고객 계정)으로 확인:
+#   ?menuno=605 / 245 / 617  →  let targetMode = "CT";   (그 화면이 요구하는 인증 등급)
+#   아이디 로그인 세션        →  var loginMode  = "ID";
+#   둘이 다르면 화면은 "공동인증서 로그인이 필요합니다" 를 띄우고 인증서 로그인으로 보낸다.
+#   그리고 이때 <div id="contents"> 는 **완전히 비어 있다**(서버가 아예 안 그린다).
+_RE_LOGIN_MODE = re.compile(r'var\s+loginMode\s*=\s*"([^"]*)"')
+_RE_TARGET_MODE = re.compile(r'let\s+targetMode\s*=\s*"([^"]*)"')
+# 서버가 세션 메시지를 뿌리는 자리. 로그인 실패/제출 결과가 여기로 나온다.
+_RE_SESSION_MSG = re.compile(
+    r"<!--\s*세션 메세지 체크\s*-->\s*<script>\s*icmsLayerPopup\.alert\(\s*\{\s*"
+    r'contents\s*:\s*"([^"]*)"',
+    re.S,
+)
+
+
+def read_login_mode(page_source: str) -> tuple[str, str]:
+    """(loginMode, targetMode). 서버가 찍어준 값이라 추측이 아니다."""
+    lm = _RE_LOGIN_MODE.search(page_source or "")
+    tm = _RE_TARGET_MODE.search(page_source or "")
+    return (lm.group(1) if lm else ""), (tm.group(1) if tm else "")
+
+
+def read_session_message(page_source: str) -> str:
+    """서버가 내려보낸 안내 문구(로그인 실패, 신청 결과 등). 없으면 빈 문자열."""
+    m = _RE_SESSION_MSG.search(page_source or "")
+    return m.group(1) if m else ""
+
+
+def contents_is_empty(page_source: str) -> bool:
+    """<div id="contents"> 안이 비었는지. 인증 등급 미달이면 서버가 통째로 비운다."""
+    m = re.search(r'id="contents"[^>]*>(.*?)</div>', page_source or "", re.S)
+    if not m:
+        return False
+    return len(m.group(1).strip()) == 0
+
+
 def page_says_cert_required(driver) -> bool:
+    """이 화면이 공동인증서 세션을 요구하는데 지금 세션이 그게 아닌 상태인가."""
     try:
-        return "공동인증서 로그인이 필요합니다" in driver.page_source
+        src = driver.page_source
     except Exception:
         return False
+    if "공동인증서 로그인이 필요합니다" in src or "공동인증서/간편인증서 로그인이 필요합니다" in src:
+        return True
+    login_mode, target_mode = read_login_mode(src)
+    if target_mode == "CT" and login_mode != "CT":
+        return True
+    return False
 
 
 def handle_netfunnel(driver, log=lambda *_: None, max_wait: int = 60) -> None:
@@ -483,11 +595,27 @@ RESULT_FAIL = ("마감", "정원", "이미 신청", "불가", "실패", "없습�
 
 
 def read_result(driver) -> tuple[str, str]:
-    """(상태, 사이트가 보여준 문구). 상태는 ok/fail/unknown."""
+    """(상태, 사이트가 보여준 문구). 상태는 ok/fail/unknown.
+
+    이 사이트는 결과를 서버가 페이지에 찍는 '세션 메시지' 로 알려준다(실측:
+    로그인 실패 때 <!-- 세션 메세지 체크 --> 블록에 문구가 그대로 들어왔다).
+    그래서 그 문구를 최우선으로 읽고, 없을 때만 본문 키워드로 넘어간다.
+    """
     try:
         src = driver.page_source
     except Exception:
         return "unknown", ""
+
+    msg = read_session_message(src)
+    if msg:
+        for kw in RESULT_OK:
+            if kw in msg:
+                return "ok", msg
+        for kw in RESULT_FAIL:
+            if kw in msg:
+                return "fail", msg
+        return "unknown", msg
+
     for kw in RESULT_OK:
         if kw in src:
             return "ok", kw
@@ -505,8 +633,19 @@ def attempt_once(driver, center: dict, target_date: str, slots: list[str],
     handle_netfunnel(driver, log)
 
     if page_says_cert_required(driver):
-        return RunResult(False, "공동인증서 로그인이 필요한 상태입니다. 로그인 후 다시 시도합니다.",
-                         {"reason": "cert_required"})
+        grade = login_grade(driver)
+        if grade == "id":
+            msg = ("아이디로 로그인된 상태입니다. 이 화면은 공동인증서 세션에서만 열립니다. "
+                   "크롬 창에서 공동인증서로 다시 로그인해 주세요.")
+        else:
+            msg = "공동인증서 로그인이 필요한 상태입니다. 로그인 후 다시 시도합니다."
+        capture(driver, diag, "cert_required")
+        return RunResult(False, msg, {"reason": "cert_required", "loginGrade": grade})
+
+    if contents_is_empty(driver.page_source if hasattr(driver, "page_source") else ""):
+        capture(driver, diag, "empty_contents")
+        return RunResult(False, "예약 화면이 비어 있습니다(로그인 등급이 맞지 않습니다).",
+                         {"reason": "empty_contents"})
 
     if not select_date(driver, target_date, log):
         capture(driver, diag, "date_not_found")

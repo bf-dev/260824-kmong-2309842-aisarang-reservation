@@ -45,6 +45,20 @@ class ClockSync:
             return float("inf")
         return self.hi - self.lo
 
+    @property
+    def one_way(self) -> float:
+        """편도(보내는 쪽) 지연 추정치, 초.
+
+        고객이 손으로 성공시킬 때 누른 시각은 08:59:59.xxx 였다. 즉 맞춰야 하는
+        것은 '로컬에서 쏘는 시각'이 아니라 '서버에 도착하는 시각'이다.
+        도착시각 = 로컬발사시각 + 편도지연 이므로, 편도지연만큼 미리 쏴야 한다.
+        측정 가능한 것은 왕복(rtt)뿐이라 대칭을 가정해 절반으로 잡는다.
+        비대칭이면 그만큼 오차가 남고, 그 오차는 arrival_lead_ms 여유가 흡수한다.
+        """
+        if self.rtt_best == float("inf"):
+            return 0.0
+        return self.rtt_best / 2.0
+
     def server_now(self) -> float:
         return time.time() + self.offset
 
@@ -52,13 +66,22 @@ class ClockSync:
         """서버 기준 시각을 로컬 time.time() 기준으로 환산."""
         return server_epoch - self.offset
 
+    def local_fire_for_arrival(self, arrival_server_epoch: float) -> float:
+        """서버에 이 시각에 '도착'시키려면 로컬 시계로 언제 쏴야 하는가."""
+        return self.local_time_for(arrival_server_epoch) - self.one_way
+
+    def arrival_for_local_fire(self, local_epoch: float) -> float:
+        """로컬 시계로 이 시각에 쏘면 서버 기준 언제 도착하는가(추정)."""
+        return local_epoch + self.offset + self.one_way
+
     def describe(self) -> str:
         if not self.synced:
             return "서버 시각 동기화 실패 (PC 시계 사용)"
         return (
             f"서버 시각 동기화 완료: 보정 {self.offset * 1000:+.0f}ms "
             f"(오차 ±{self.uncertainty * 1000 / 2:.0f}ms, 샘플 {self.samples}개, "
-            f"최소왕복 {self.rtt_best * 1000:.0f}ms)"
+            f"최소왕복 {self.rtt_best * 1000:.0f}ms, "
+            f"편도 추정 {self.one_way * 1000:.0f}ms)"
         )
 
 
@@ -202,3 +225,101 @@ def sleep_until(clock: ClockSync, server_epoch: float, stop_event=None,
         if stop_event is not None and stop_event.is_set():
             return
         time.sleep(0.001)
+
+
+def sleep_until_local(local_epoch: float, stop_event=None,
+                      spin_ms: int = 40) -> None:
+    """로컬 time.time() 기준 시각까지 대기. 마지막 spin_ms 는 바쁜 대기."""
+    while True:
+        if stop_event is not None and stop_event.is_set():
+            return
+        remain = local_epoch - time.time()
+        if remain <= spin_ms / 1000.0:
+            break
+        time.sleep(min(remain - spin_ms / 1000.0, 0.25))
+    while time.time() < local_epoch:
+        if stop_event is not None and stop_event.is_set():
+            return
+        time.sleep(0.001)
+
+
+def sleep_until_arrival(clock: ClockSync, arrival_server_epoch: float,
+                        stop_event=None, spin_ms: int = 40) -> None:
+    """요청이 서버에 arrival_server_epoch 에 '도착'하도록 그만큼 미리 깨어난다."""
+    sleep_until_local(clock.local_fire_for_arrival(arrival_server_epoch),
+                      stop_event=stop_event, spin_ms=spin_ms)
+
+
+def measure_arrival(session=None, clock: ClockSync | None = None,
+                    deltas_ms=(-300, -120, 60, 250), url: str | None = None,
+                    log=lambda *_: None, diag=None) -> dict:
+    """도착시각 모델을 실제로 검증한다.
+
+    서버의 '초가 바뀌는 경계' B 를 골라, B + delta 에 도착하도록 쏜다.
+    응답의 Date 헤더는 서버가 요청을 처리한 초(=도착한 초)를 알려주므로,
+      delta < 0  이면 Date == B-1   (경계 직전에 도착)
+      delta > 0  이면 Date == B     (경계 직후에 도착)
+    가 나와야 한다. 이게 맞으면 '발사시각'이 아니라 '도착시각'을 맞추고 있다는
+    뜻이다. Date 헤더는 1초 해상도라 한 발로는 초 단위까지만 말할 수 있고,
+    경계 양쪽을 여러 delta 로 협공해서 sub-second 정확도를 보인다.
+    """
+    import requests
+
+    sess = session or requests.Session()
+    target = url or (config.BASE_URL + "/?menuno=1")
+    c = clock if (clock is not None and clock.synced) else sync(
+        session=sess, samples=12, log=log)
+
+    rows = []
+    for delta in deltas_ms:
+        now_srv = c.server_now()
+        boundary = float(int(now_srv) + 2)          # 넉넉히 2초 뒤 경계
+        want_arrival = boundary + delta / 1000.0
+        fire_local = c.local_fire_for_arrival(want_arrival)
+
+        while time.time() < fire_local - 0.04:
+            time.sleep(min(fire_local - time.time() - 0.04, 0.2))
+        while time.time() < fire_local:
+            time.sleep(0.0005)
+
+        t0 = time.time()
+        try:
+            r = sess.head(target, timeout=8, allow_redirects=False,
+                          headers={"Cache-Control": "no-cache"})
+        except Exception as exc:  # noqa: BLE001
+            rows.append({"deltaMs": delta, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        t1 = time.time()
+        served = _parse_date_header(r.headers.get("Date", "")) or 0.0
+        expected = boundary - 1 if delta < 0 else boundary
+        rows.append({
+            "deltaMs": delta,
+            "fireLateMs": round((t0 - fire_local) * 1000, 2),   # 스케줄러 오차
+            "estArrivalOffsetMs": round(
+                (c.arrival_for_local_fire(t0) - boundary) * 1000, 1),
+            "serverSecond": int(served),
+            "expectedSecond": int(expected),
+            "match": int(served) == int(expected),
+            "rttMs": round((t1 - t0) * 1000, 1),
+        })
+        log(f"도착 검증 delta={delta:+}ms → 서버 처리 초 {int(served)} "
+            f"(기대 {int(expected)}) {'일치' if rows[-1].get('match') else '불일치'}")
+        time.sleep(0.4)
+
+    ok = [r for r in rows if r.get("match")]
+    out = {
+        "offsetMs": round(c.offset * 1000, 1),
+        "uncertaintyMs": (round(c.uncertainty * 1000, 1)
+                          if c.uncertainty != float("inf") else None),
+        "rttBestMs": round(c.rtt_best * 1000, 1) if c.rtt_best != float("inf") else None,
+        "oneWayMs": round(c.one_way * 1000, 1),
+        "matched": len(ok),
+        "total": len(rows),
+        "samples": rows,
+    }
+    if diag is not None:
+        try:
+            diag.add_json("arrival_check.json", out)
+        except Exception:
+            pass
+    return out

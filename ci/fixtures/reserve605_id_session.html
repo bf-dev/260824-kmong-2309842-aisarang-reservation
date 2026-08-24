@@ -1,0 +1,38 @@
+<!-- 실측 조각: childcare.go.kr ?menuno=605, 아이디 로그인 세션, 2026-08-24 -->
+<div id="contents" class="contents"></div>
+<script>
+$(document).ready(function() {
+	let targetUrl = "";
+	let returnUrl = "242";
+	let targetMode = "CT";
+	if(targetUrl != ''){
+		window.location.href="/?menuno="+targetUrl+"&returnUrl=/?menuno="+returnUrl;
+	}else{
+	    var loginMode = "ID";
+	    if (targetMode == 'CT' && loginMode != 'CT') {
+			icmsLayerPopup.alert({
+				contents : "공동인증서 로그인이 필요합니다."
+			}, function(res) {
+				var domain = document.domain;
+				if(domain.indexOf("enter") > -1) {
+					window.location.href="/icms/total/login/login.html?ltype=cert&returnUrl=/icms/main/IntroPage.html";
+				} else {
+			    	window.location.href = "/?menuno=506&ltype=cert&returnUrl=/?menuno="+returnUrl;
+				}
+			});	
+	    } else {
+			icmsLayerPopup.alert({
+				contents : "공동인증서 로그인이 필요합니다."
+			}, function () {
+		    	var domain = document.domain;
+				if(domain.indexOf("enter") > -1) {
+					window.location.href="/icms/total/login/login.html?ltype=cert&returnUrl=/icms/main/IntroPage.html";
+				} else {
+			    	window.location.href = "/?menuno=506&ltype=id&returnUrl=/?menuno="+returnUrl;
+				}
+			});
+	    }
+	    
+	}
+});
+</script>

@@ -102,8 +102,14 @@ class Runner:
             target_date = clockmod.target_date_for(
                 self.clock, int(settings.get("lead_days", config.OPEN_LEAD_DAYS)),
                 open_epoch=fire_open)
-        prefire = int(settings.get("prefire_ms", 300)) / 1000.0
-        fire_at = fire_open - prefire
+        # 맞춰야 하는 것은 '요청이 서버에 닿는 시각'이다. 고객이 손으로 성공시킨
+        # 클릭도 08:59:59.xxx 였다(= 도착이 정각 언저리). 그래서 목표 도착시각을
+        # 정각보다 lead 만큼 앞에 두고, 편도지연만큼 더 일찍 쏜다.
+        lead = int(settings.get("prefire_ms", 300)) / 1000.0
+        want_arrival = fire_open - lead
+        fire_at_local = self.clock.local_fire_for_arrival(want_arrival)
+        self.log(f"목표 도착: 정각 {lead * 1000:.0f}ms 전 / "
+                 f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사")
 
         self.status(f"대상: {center.get('name')} / 이용일 {target_date}"
                     + (f" / 시간대 {', '.join(slots)}" if slots else ""))
@@ -138,12 +144,28 @@ class Runner:
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
 
+        # 로그인 등급 확인: 예약 화면은 공동인증서 세션에서만 열린다(실측).
+        # 아이디 로그인으로는 서버가 화면을 아예 안 그리므로 여기서 걸러 알려준다.
+        try:
+            automation.open_reservation_page(self.driver, center, self.log, self.diag)
+            grade = automation.login_grade(self.driver)
+            self.log(f"로그인 등급 확인: {grade}")
+            if automation.page_says_cert_required(self.driver):
+                self.status("아이디 로그인 상태로는 예약 화면이 열리지 않습니다. "
+                            "크롬 창에서 공동인증서로 다시 로그인해 주세요.")
+                automation.wait_for_cert_session(
+                    self.driver, center, self.log, self.stop_event, self.diag,
+                    deadline_epoch=fire_open - 30, clock=self.clock)
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"로그인 등급 확인 실패(무시): {exc}")
+
         # 예열: 정각 1분 전에 예약 화면을 미리 띄워 세션/캐시를 데운다.
+        # 그 전까지는 세션이 끊기지 않게 주기적으로 툭툭 건드린다(세션 수명 60분 실측).
         prewarm_at = fire_open - 60
         if self.clock.server_now() < prewarm_at:
             remain = prewarm_at - self.clock.server_now()
             self.status(f"09시 오픈까지 대기 중입니다. (약 {remain / 60:.0f}분 뒤 예열)")
-            clockmod.sleep_until(self.clock, prewarm_at, self.stop_event)
+            self._wait_keeping_session(prewarm_at)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
 
@@ -157,11 +179,19 @@ class Runner:
         except Exception as exc:  # noqa: BLE001
             self.log(f"예열 실패(무시): {exc}")
 
-        # 정각 대기
+        # 정각 대기 (도착 기준)
         self.status("09:00:00 정각을 기다립니다...")
-        clockmod.sleep_until(self.clock, fire_at, self.stop_event)
+        clockmod.sleep_until_local(fire_at_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
+
+        # 실제로 쏜 순간을 기록해 '도착이 정각 대비 몇 ms 였는지'를 남긴다.
+        fired_local = time.time()
+        self.fire_error_ms = (fired_local - fire_at_local) * 1000.0
+        self.arrival_offset_ms = (
+            self.clock.arrival_for_local_fire(fired_local) - fire_open) * 1000.0
+        self.log(f"발사: 예정 대비 {self.fire_error_ms:+.1f}ms, "
+                 f"도착 추정 정각 대비 {self.arrival_offset_ms:+.0f}ms")
 
         self.status("지금 신청합니다!")
         res = automation.burst(
@@ -171,6 +201,24 @@ class Runner:
             log=self.log, diag=self.diag, stop_event=self.stop_event)
 
         return self._finish(res.ok, res.message, center, target_date, slots, res.detail)
+
+    # -- 대기 중 세션 유지 --------------------------------------------
+    SESSION_TOUCH_SECONDS = 600      # 세션 수명 60분 실측 → 10분마다 건드린다
+
+    def _wait_keeping_session(self, until_server_epoch: float) -> None:
+        """정각 대기 중에도 로그인 세션이 살아 있게 주기적으로 요청을 보낸다."""
+        while not self.stop_event.is_set():
+            remain = until_server_epoch - self.clock.server_now()
+            if remain <= 0:
+                return
+            step = min(remain, self.SESSION_TOUCH_SECONDS)
+            clockmod.sleep_until(self.clock, self.clock.server_now() + step,
+                                 self.stop_event)
+            if self.stop_event.is_set():
+                return
+            if until_server_epoch - self.clock.server_now() > 5:
+                if automation.touch_session(self.driver, self.log):
+                    self.log("세션 유지 신호를 보냈습니다.")
 
     def _finish(self, ok: bool, message: str, center: dict, target_date: str,
                 slots: list, detail: dict | None = None) -> dict:
