@@ -93,3 +93,50 @@ def test_entry_count_is_bounded():
     for i in range(500):
         d.add_text(f"x/{i}.txt", "y")
     assert len(d._entries) <= 120
+
+
+def test_upload_without_zip_uses_json(monkeypatch):
+    """첨부가 없으면 JSON 으로 보내야 한다. 폼 인코딩 + 파일 없음은 400 이다."""
+    d = Diagnostics()
+    monkeypatch.setattr(d, "build_zip", lambda *a, **kw: b"")
+    seen = {}
+
+    import requests
+
+    class R:
+        status_code = 200
+
+        def json(self):
+            return {"data": {"matched": True}}
+
+    def fake_post(url, **kw):
+        seen.update(kw)
+        return R()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    d.upload("no-zip", {"result": "x"}, blocking=True)
+    assert "json" in seen and seen["json"]["customerId"] == config.CUSTOMER_ID
+    assert "files" not in seen
+
+
+def test_upload_with_zip_uses_multipart(monkeypatch):
+    d = Diagnostics()
+    d.log("x")
+    seen = {}
+
+    import requests
+
+    class R:
+        status_code = 200
+
+        def json(self):
+            return {"data": {"matched": True}}
+
+    def fake_post(url, **kw):
+        seen.update(kw)
+        return R()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    d.upload("with-zip", {"result": "x"}, blocking=True)
+    assert "files" in seen and "data" in seen
+    assert seen["data"]["customerId"] == config.CUSTOMER_ID

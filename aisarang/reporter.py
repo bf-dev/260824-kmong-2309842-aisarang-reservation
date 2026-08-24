@@ -175,13 +175,19 @@ class Diagnostics:
                 text = self.summary_text(headline, extra_meta)
                 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 fname = f"{config.APP_SLUG}-{self.customer_id}-{stamp}.zip"
-                data = {
+                payload = {
                     "customerId": self.customer_id,
                     "source": config.ARTIFACT_SOURCE,
                     "text": text,
                 }
-                files = {"file": (fname, blob, "application/zip")} if blob else None
-                r = requests.post(config.WORKS_API, data=data, files=files, timeout=25)
+                if blob:
+                    r = requests.post(
+                        config.WORKS_API, data=payload,
+                        files={"file": (fname, blob, "application/zip")}, timeout=25)
+                else:
+                    # 첨부가 없으면 multipart 가 아니라 JSON 으로 보내야 한다.
+                    # 폼 인코딩 + 파일 없음은 게이트웨이가 400 으로 거절한다.
+                    r = requests.post(config.WORKS_API, json=payload, timeout=25)
                 self.log(f"진단 업로드 status={r.status_code}")
                 try:
                     body = r.json()
