@@ -89,7 +89,7 @@ jobs:
             $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18642" -PassThru
             Start-Sleep -Seconds 4
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18642"
-            Write-Host "라이브 사이트가 러너에서 막혀 녹화된 실제 응답으로 화면을 채웁니다."
+            Write-Host "live site blocked from runner: filling the UI from recorded real responses"
           }
           try {
             powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1
