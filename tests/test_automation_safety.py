@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-"""예약 시도의 안전 불변식.
+"""예약 시도의 안전 불변식 (준비 단계).
 
 실패 모드는 반드시 "예약이 안 됨" 이어야 한다. "엉뚱한 날짜/시간에 예약됨" 은
 고객 계정에 실제 예약을 만들고, 취소는 센터 전화로만 되기 때문에 훨씬 나쁘다.
+
+v1.0.4 부터 흐름이 준비(1~8단계)와 발사([확인])로 나뉘었다. 여기서는 준비가
+어디서 멈추는지를 본다. 발사 쪽 불변식은 test_booking.py 에 있다.
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from aisarang import automation
+from aisarang import automation, booking
 
 
 class FakeDriver:
-    """attempt_once 가 실제로 무엇을 눌렀는지 기록하는 가짜 드라이버."""
+    """무엇이 눌렸는지 기록하는 가짜 드라이버."""
 
     def __init__(self, page_source="<html></html>"):
         self.page_source = page_source
@@ -25,8 +28,8 @@ class FakeDriver:
 
     def execute_script(self, script, *a):
         if "click" in script:
-            self.clicked.append(a[0] if a else "?")
-        return {}
+            self.clicked.append(script[:40])
+        return None
 
     def find_elements(self, by, sel):
         return []
@@ -41,96 +44,137 @@ class FakeDriver:
         return []
 
 
-def _patch(monkeypatch, **kw):
+def _grid(rows):
+    g = booking.Grid(table_index=0)
+    for date, texts in rows:
+        g.rows.append({"date": date, "label": date, "row": len(g.rows) + 1})
+        for i, t in enumerate(texts):
+            g.cells.append(booking.Cell(date=date, hour=9 + i, text=t,
+                                        capacity=booking._parse_cell_text(t),
+                                        row=len(g.rows), col=i + 1))
+    return g
+
+
+def _patch(monkeypatch, grid=None, cert_required=False, cell_click=True,
+           add_ok=True, tick_ok=True):
     monkeypatch.setattr(automation, "open_reservation_page", lambda *a, **k: None)
     monkeypatch.setattr(automation, "handle_netfunnel", lambda *a, **k: None)
+    monkeypatch.setattr(automation, "capture", lambda *a, **k: None)
     monkeypatch.setattr(automation, "page_says_cert_required",
-                        lambda d: kw.get("cert_required", False))
-    monkeypatch.setattr(automation, "select_date", lambda *a, **k: kw.get("date_ok", True))
-    monkeypatch.setattr(automation, "select_time_slots", lambda *a, **k: kw.get("slots_picked", 0))
-    monkeypatch.setattr(automation, "select_first_available_slot",
-                        lambda *a, **k: kw.get("first_slot", 0))
-    submitted = []
-    monkeypatch.setattr(automation, "find_submit",
-                        lambda d: (("EL", "신청하기") if kw.get("submit_exists", True)
-                                   else (None, "")))
-    monkeypatch.setattr(automation, "accept_confirm", lambda *a, **k: None)
-    monkeypatch.setattr(automation, "read_result", lambda d: ("ok", "신청이 완료"))
-    return submitted
+                        lambda d: cert_required)
+    monkeypatch.setattr(automation, "login_grade", lambda d: "id")
+    monkeypatch.setattr(booking, "choose_kind", lambda *a, **k: True)
+    monkeypatch.setattr(booking, "choose_region", lambda *a, **k: True)
+    monkeypatch.setattr(booking, "press_search", lambda *a, **k: True)
+    monkeypatch.setattr(booking, "open_center", lambda *a, **k: True)
+    monkeypatch.setattr(booking, "select_child", lambda *a, **k: "박승우")
+    monkeypatch.setattr(booking, "select_class", lambda *a, **k: "매송아이")
+    monkeypatch.setattr(booking, "select_hours", lambda d, h, log=None: int(h))
+    monkeypatch.setattr(booking, "read_grid",
+                        lambda d, diag=None: grid or booking.Grid())
+    monkeypatch.setattr(booking, "click_cell", lambda *a, **k: cell_click)
+    monkeypatch.setattr(booking, "press_add", lambda *a, **k: add_ok)
+    monkeypatch.setattr(booking, "tick_slot_row",
+                        lambda d, date, log=None: (tick_ok, 3, "매송아이 2026-09-08"))
+    monkeypatch.setattr(booking.time, "sleep", lambda *_: None)
+
+    pressed = []
+    monkeypatch.setattr(booking, "press_reserve",
+                        lambda d, log=None: pressed.append("예약하기") or True)
+    return pressed
 
 
-def test_never_submits_when_date_not_found(monkeypatch):
-    _patch(monkeypatch, date_ok=False)
+CENTER = {"stcode": "11650000416", "name": "서초구육아종합지원센터(신반포)",
+          "unityYn": "N", "ctprvnName": "서울특별시", "signguName": "서초구"}
+
+
+def test_prepare_stops_when_target_date_row_is_not_open(monkeypatch):
+    pressed = _patch(monkeypatch, grid=_grid([("20260907", ["2"] * 9)]))
     d = FakeDriver()
-    r = automation.attempt_once(d, {"stcode": "1", "name": "x"}, "20260908",
-                                ["09:00"], dry_run=False)
-    assert not r.ok
-    assert r.detail["reason"] == "date_not_open"
-    assert d.clicked == []          # 아무것도 누르지 않았다
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    assert not res.ok
+    assert res.reason == "no_capacity"
+    assert pressed == []
 
 
-def test_never_submits_when_requested_slot_missing(monkeypatch):
-    _patch(monkeypatch, date_ok=True, slots_picked=0)
+def test_prepare_reports_x_and_zero_instead_of_clicking(monkeypatch):
+    pressed = _patch(monkeypatch, grid=_grid([("20260908", ["X", "0"] + ["0"] * 7)]))
     d = FakeDriver()
-    r = automation.attempt_once(d, {"stcode": "1"}, "20260908", ["09:00"], dry_run=False)
-    assert not r.ok
-    assert r.detail["reason"] == "slot_unavailable"
-    assert d.clicked == []
+    res = booking.prepare(d, CENTER, "20260908", [9, 10], 9)
+    assert not res.ok
+    assert res.reason == "no_capacity"
+    assert "이용불가" in res.message and "0명" in res.message
+    assert pressed == []
 
 
-def test_never_submits_with_empty_selection_when_no_slot_requested(monkeypatch):
-    """시간대를 지정하지 않았는데 열린 시간대도 없으면 제출하지 않는다."""
-    _patch(monkeypatch, date_ok=True, first_slot=0)
+def test_prepare_stops_when_cell_did_not_actually_select(monkeypatch):
+    """칸을 눌렀는데 표시가 안 바뀌면 선택된 게 아니다. 절대 진행하지 않는다."""
+    pressed = _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]),
+                     cell_click=False)
     d = FakeDriver()
-    r = automation.attempt_once(d, {"stcode": "1"}, "20260908", [], dry_run=False)
-    assert not r.ok
-    assert r.detail["reason"] == "slot_unavailable"
-    assert d.clicked == []
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    assert not res.ok
+    assert res.reason == "cell_not_selected"
+    assert pressed == []
 
 
-def test_no_slot_requested_picks_first_open_one(monkeypatch):
-    _patch(monkeypatch, date_ok=True, first_slot=1)
+def test_prepare_stops_when_row_is_not_ticked(monkeypatch):
+    pressed = _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]),
+                     tick_ok=False)
     d = FakeDriver()
-    r = automation.attempt_once(d, {"stcode": "1"}, "20260908", [], dry_run=False)
-    assert r.ok
-    assert d.clicked, "제출 클릭이 일어나야 한다"
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    assert not res.ok
+    assert res.reason == "row_not_ticked"
+    assert res.prepared.row_ticked is False
+    assert pressed == []
 
 
-def test_dry_run_stops_before_submit(monkeypatch):
-    _patch(monkeypatch, date_ok=True, slots_picked=1)
+def test_prepare_stops_at_add_button(monkeypatch):
+    pressed = _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]),
+                     add_ok=False)
     d = FakeDriver()
-    r = automation.attempt_once(d, {"stcode": "1"}, "20260908", ["09:00"], dry_run=True)
-    assert r.ok
-    assert r.detail["reason"] == "dry_run"
-    assert d.clicked == [], "연습 모드는 절대 제출을 누르지 않는다"
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    assert not res.ok
+    assert res.reason == "no_add"
+    assert pressed == []
 
 
 def test_cert_gate_is_reported_not_bypassed(monkeypatch):
-    _patch(monkeypatch, cert_required=True)
+    pressed = _patch(monkeypatch, cert_required=True)
     d = FakeDriver()
-    r = automation.attempt_once(d, {"stcode": "1"}, "20260908", ["09:00"], dry_run=False)
-    assert not r.ok
-    assert r.detail["reason"] == "cert_required"
-    assert d.clicked == []
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    assert not res.ok
+    assert res.reason == "cert_required"
+    assert pressed == []
 
 
-def test_burst_stops_immediately_on_cert_gate(monkeypatch):
-    """인증서 게이트는 재시도해봐야 소용없다. 즉시 빠져나와야 한다."""
-    _patch(monkeypatch, cert_required=True)
+def test_full_prepare_reaches_the_modal(monkeypatch):
+    pressed = _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]))
+    monkeypatch.setattr(booking, "slot_row_is_ticked", lambda d, i=-1: True)
+    monkeypatch.setattr(booking, "wait_modal",
+                        lambda d, t=8.0, log=None: "예약하시겠습니까?")
+    monkeypatch.setattr(booking, "arm_confirm", lambda d, log=None: True)
+    d = FakeDriver()
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    assert res.ok
+    p = res.prepared
+    assert p.start_hour == 9 and p.cell_capacity == 2 and p.row_ticked
 
-    class C:
-        def server_now(self):
-            return 0.0
+    opened = booking.open_modal(d, p)
+    assert opened.ok
+    assert pressed == ["예약하기"]
+    assert p.ready(), "확인 발사 조건이 모두 충족되어야 한다"
 
-    calls = []
-    real = automation.attempt_once
 
-    def counting(*a, **kw):
-        calls.append(1)
-        return real(*a, **kw)
-
-    monkeypatch.setattr(automation, "attempt_once", counting)
-    r = automation.burst(FakeDriver(), {"stcode": "1"}, "20260908", ["09:00"], False,
-                         C(), -10.0, 20, 10)
-    assert not r.ok
-    assert len(calls) == 1
+def test_dry_run_never_fires_confirm(monkeypatch):
+    """연습 모드는 확인창까지만 연다. [확인] 은 누르지 않는다."""
+    _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]))
+    monkeypatch.setattr(booking, "slot_row_is_ticked", lambda d, i=-1: True)
+    monkeypatch.setattr(booking, "wait_modal",
+                        lambda d, t=8.0, log=None: "예약하시겠습니까?")
+    monkeypatch.setattr(booking, "arm_confirm", lambda d, log=None: True)
+    d = FakeDriver()
+    res = booking.prepare(d, CENTER, "20260908", [9], 9)
+    booking.open_modal(d, res.prepared)
+    booking.dismiss_modal(d)
+    assert not any("__aisarang_fire" in c for c in d.clicked)

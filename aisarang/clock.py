@@ -38,6 +38,9 @@ class ClockSync:
     synced: bool = False
     detail: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    # 서버가 "예약시간전" 이라고 답했을 때 붙는 보정치(초). 아래 note_too_early 참고.
+    correction: float = 0.0
+    correction_notes: list = field(default_factory=list)
 
     @property
     def uncertainty(self) -> float:
@@ -68,11 +71,40 @@ class ClockSync:
 
     def local_fire_for_arrival(self, arrival_server_epoch: float) -> float:
         """서버에 이 시각에 '도착'시키려면 로컬 시계로 언제 쏴야 하는가."""
-        return self.local_time_for(arrival_server_epoch) - self.one_way
+        return self.local_time_for(arrival_server_epoch) - self.one_way + self.correction
 
     def arrival_for_local_fire(self, local_epoch: float) -> float:
         """로컬 시계로 이 시각에 쏘면 서버 기준 언제 도착하는가(추정)."""
-        return local_epoch + self.offset + self.one_way
+        return local_epoch + self.offset + self.one_way - self.correction
+
+    def note_too_early(self, est_arrival_offset: float,
+                       margin: float = 0.03) -> float:
+        """서버가 "예약시간전" 이라고 답한 사실로 도착 추정을 보정한다.
+
+        우리 추정으로는 정각 대비 est_arrival_offset(초) 에 도착했다. 서버가
+        "아직 예약시간이 아니다" 라고 답했다면, 실제 도착은 정각 **이전**이었다.
+        즉 추정오차 err = (추정 도착 - 실제 도착) 에 대해
+
+            추정 - err < 정각        →      err > est_arrival_offset
+
+        est_arrival_offset 이 0 이상일 때만 새로운 정보다(우리는 정각 이후에
+        도착했다고 믿었는데 서버는 아니라고 했으니, 그만큼은 확실히 이르다).
+        일부러 앞당겨 쏜 경우(음수)에는 "예약시간전" 이 당연하므로 아무것도
+        배우지 못한다. 배운 만큼 다음 발사를 뒤로 미룬다.
+
+        돌려주는 값은 이번에 추가된 보정치(초). 0 이면 배운 게 없다는 뜻이다.
+        """
+        if est_arrival_offset is None or est_arrival_offset < 0:
+            return 0.0
+        want = est_arrival_offset + margin
+        if want <= self.correction:
+            return 0.0
+        added = want - self.correction
+        self.correction = want
+        self.correction_notes.append(
+            {"estArrivalOffsetMs": round(est_arrival_offset * 1000, 1),
+             "correctionMs": round(self.correction * 1000, 1)})
+        return added
 
     def describe(self) -> str:
         if not self.synced:

@@ -337,23 +337,65 @@ class App:
         self.lbl_date = tk.Label(c, text="", bg=CARD, fg=MUTED, font=("맑은 고딕", 9))
         self.lbl_date.grid(row=1, column=1, columnspan=3, sticky="w", pady=(6, 0))
 
-        tk.Label(c, text="원하는 시간대", bg=CARD, fg=INK,
-                 font=("맑은 고딕", 10)).grid(row=2, column=0, sticky="nw", pady=(14, 0))
-        self.slots = SlotPicker(c, per_row=9 if self.compact else 5)
-        self.slots.grid(row=2, column=1, columnspan=4, sticky="w",
-                        padx=(10, 0), pady=(14, 0))
-        tk.Label(c, text="아무것도 고르지 않으면 그 날 열린 시간대 중 먼저 잡히는 것으로 신청합니다.",
+        tk.Label(c, text="아동 이름", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
+            row=2, column=0, sticky="w", pady=(14, 0))
+        self.ent_child = tk.Entry(c, width=14, font=("맑은 고딕", 11), relief="flat",
+                                  bg="#f0f2f6")
+        self.ent_child.grid(row=2, column=1, sticky="w", padx=(10, 0), pady=(14, 0),
+                            ipady=6, ipadx=6)
+        tk.Label(c, text="반명", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
+            row=2, column=2, sticky="e", pady=(14, 0))
+        self.ent_class = tk.Entry(c, width=14, font=("맑은 고딕", 11), relief="flat",
+                                  bg="#f0f2f6")
+        self.ent_class.grid(row=2, column=3, sticky="w", padx=(10, 0), pady=(14, 0),
+                            ipady=6, ipadx=6)
+        tk.Label(c, text="비워두면 화면에 나온 첫 번째 아동/반을 그대로 씁니다.",
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
-            row=3, column=0, columnspan=5, sticky="w", pady=(8, 0))
+            row=3, column=0, columnspan=5, sticky="w", pady=(6, 0))
 
-        tk.Label(c, text="연습 모드", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
+        tk.Label(c, text="이용시간", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
             row=4, column=0, sticky="w", pady=(14, 0))
-        self.tg_dry = WordToggle(c, on_text="연습 (신청 안 함)", off_text="실제 신청",
-                                 value=False, width=16)
-        self.tg_dry.grid(row=4, column=1, sticky="w", padx=(10, 0), pady=(14, 0))
-        tk.Label(c, text="연습 모드는 마지막 신청 버튼 직전까지만 진행하고 멈춥니다.",
+        self.cb_hours = ttk.Combobox(c, width=6, state="readonly",
+                                     font=("맑은 고딕", 10),
+                                     values=[str(h) for h in range(1, 10)])
+        self.cb_hours.grid(row=4, column=1, sticky="w", padx=(10, 0), pady=(14, 0))
+        tk.Label(c, text="시간 (사이트의 '이용시간' 선택칸과 같은 값입니다. 9 = 09:00~18:00)",
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
             row=4, column=2, columnspan=3, sticky="w", padx=(10, 0), pady=(14, 0))
+
+        tk.Label(c, text="시작 시간대", bg=CARD, fg=INK,
+                 font=("맑은 고딕", 10)).grid(row=5, column=0, sticky="nw", pady=(14, 0))
+        self.slots = SlotPicker(c, per_row=9 if self.compact else 5)
+        self.slots.grid(row=5, column=1, columnspan=4, sticky="w",
+                        padx=(10, 0), pady=(14, 0))
+        tk.Label(c, text="고른 순서가 우선순위입니다. 첫 번째가 정원초과면 다음 것으로 한 번 더 갑니다. "
+                         "아무것도 고르지 않으면 그 날 열려 있는 첫 칸으로 갑니다.",
+                 bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
+                 justify="left").grid(row=6, column=0, columnspan=5, sticky="w",
+                                      pady=(8, 0))
+
+        tk.Label(c, text="연습 모드", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
+            row=7, column=0, sticky="w", pady=(14, 0))
+        self.tg_dry = WordToggle(c, on_text="연습 (예약 안 함)", off_text="실제 예약",
+                                 value=False, width=16)
+        self.tg_dry.grid(row=7, column=1, sticky="w", padx=(10, 0), pady=(14, 0))
+        tk.Label(c, text="연습 모드는 예약 확인창까지만 열고 [확인] 을 누르지 않습니다.",
+                 bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
+            row=7, column=2, columnspan=3, sticky="w", padx=(10, 0), pady=(14, 0))
+
+        # 4. 타이밍 안내 — 이 프로그램이 실제로 무엇을 정각에 하는지.
+        c = card(outer, "4. 9시 정각에 하는 일", self.compact)
+        tk.Label(c, text="검색 → 센터 → 아동 → 반/이용시간 → 날짜 칸 → 추가 → 체크 → [예약하기] 까지는\n"
+                         "9시가 되기 전에 미리 끝내고, 예약 확인창을 열어둔 채 기다립니다.\n"
+                         "정각에 누르는 것은 확인창의 [확인] 하나뿐입니다.",
+                 bg=CARD, fg=INK, font=("맑은 고딕", 10), anchor="w",
+                 justify="left").grid(row=0, column=0, columnspan=4, sticky="w")
+        tk.Label(c, text="너무 이르면 사이트가 '예약시간전' 이라고 답합니다. 자리는 남아 있으므로 "
+                         "곧바로 다시 누릅니다.\n"
+                         "너무 늦으면 '정원초과' 입니다. 그때는 두들기지 않고 결과를 알려드립니다.",
+                 bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
+                 justify="left").grid(row=1, column=0, columnspan=4, sticky="w",
+                                      pady=(8, 0))
 
     def _build_bottom(self, shell):
         """항상 보여야 하는 것들. 바닥부터 역순으로 붙인다."""
@@ -433,6 +475,12 @@ class App:
         self.login_choice.set(s.get("login_mode", "manual"))
         self._on_login_mode(s.get("login_mode", "manual"))
         self.slots.set(s.get("time_slots") or [])
+        self.ent_child.insert(0, s.get("child_name") or "")
+        self.ent_class.insert(0, s.get("class_name") or "")
+        try:
+            self.cb_hours.set(str(int(s.get("use_hours", 9) or 9)))
+        except Exception:
+            self.cb_hours.set("9")
         self.tg_dry.set(bool(s.get("dry_run")))
         center = s.get("center") or dict(config.DEFAULT_CENTER)
         self.centers = [center]
@@ -589,6 +637,12 @@ class App:
             }
         s["login_mode"] = self.login_choice.get()
         s["time_slots"] = self.slots.get()
+        s["child_name"] = self.ent_child.get().strip()
+        s["class_name"] = self.ent_class.get().strip()
+        try:
+            s["use_hours"] = int(self.cb_hours.get() or 9)
+        except Exception:
+            s["use_hours"] = 9
         s["dry_run"] = self.tg_dry.get()
         s["target_date"] = (self.ent_date.get().strip()
                             if self.date_choice.get() == "fixed" else "")
@@ -682,11 +736,27 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None):
             app.set_status(offset_line)
             app.root.after(0, lambda: app.slots.set(["09:00", "10:00"]))
             app.root.after(0, lambda: app.date_choice.set("auto"))
-            ok = out.get("default_found") and isinstance(out.get("centers"), int)
+            app.root.after(0, lambda: app.cb_hours.set("9"))
+            # 4·5단계 판정기도 같이 돌려 화면에 남긴다. 정각에 쓰이는 바로 그 함수다.
+            from . import booking
+            checks = {
+                "예약시간전": booking.classify("예약시간전입니다."),
+                "정원초과": booking.classify("정원초과 되었습니다."),
+                "완료": booking.classify("예약이 완료되었습니다."),
+            }
+            app.log(f"응답 판정기: {checks}")
+            grader_ok = (checks["예약시간전"] == booking.R_TOO_EARLY
+                         and checks["정원초과"] == booking.R_FULL
+                         and checks["완료"] == booking.R_OK)
+            app.log("확인창 흐름: 준비(검색→센터→아동→반/이용시간→칸→추가→체크→예약하기) "
+                    "후 [확인] 만 정각 발사")
+            ok = (out.get("default_found") and isinstance(out.get("centers"), int)
+                  and grader_ok)
             if ok:
                 app.set_result(
                     f"점검 완료 · 서초구 센터 {out['centers']}곳 조회, "
-                    f"기본 센터(신반포) 확인, {offset_line}", "ok")
+                    f"기본 센터(신반포) 확인, 예약시간전/정원초과 판정 정상, "
+                    f"{offset_line}", "ok")
             else:
                 app.set_result(f"점검 결과: {out}", "bad")
         except Exception as exc:  # noqa: BLE001

@@ -28,17 +28,8 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
 
-from . import clock as clockmod
 from . import config
-
-
-@dataclass
-class RunResult:
-    ok: bool = False
-    message: str = ""
-    detail: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- 드라이버
@@ -464,303 +455,27 @@ def handle_netfunnel(driver, log=lambda *_: None, max_wait: int = 60) -> None:
         time.sleep(1.0)
 
 
-# ------------------------------------------------------- 날짜/시간대 선택
+# ------------------------------------------------------- 예약 흐름
 
-def _date_variants(yyyymmdd: str) -> list[str]:
-    y, m, d = yyyymmdd[:4], yyyymmdd[4:6], yyyymmdd[6:8]
-    return [
-        yyyymmdd,
-        f"{y}-{m}-{d}",
-        f"{y}.{m}.{d}",
-        f"{y}/{m}/{d}",
-    ]
-
-
-def select_date(driver, yyyymmdd: str, log=lambda *_: None) -> bool:
-    """예약 달력에서 이용일 셀을 고른다."""
-    from selenium.webdriver.common.by import By
-
-    variants = _date_variants(yyyymmdd)
-    # 1) 값/속성에 날짜가 박힌 요소
-    for v in variants:
-        for sel in (f"[data-date='{v}']", f"[data-ymd='{v}']", f"[value='{v}']",
-                    f"[id='{v}']", f"a[onclick*='{v}']", f"td[onclick*='{v}']",
-                    f"[data-day='{v}']"):
-            try:
-                for el in driver.find_elements(By.CSS_SELECTOR, sel):
-                    if el.is_displayed() and el.is_enabled():
-                        driver.execute_script("arguments[0].click();", el)
-                        log(f"이용일 {yyyymmdd} 을 선택했습니다.")
-                        return True
-            except Exception:
-                continue
-    # 2) 날짜 입력칸
-    for sel in ("input#resDate", "input[name*=date i]", "input[name*=ymd i]",
-                "input.datepicker"):
-        try:
-            for el in driver.find_elements(By.CSS_SELECTOR, sel):
-                if el.is_displayed():
-                    driver.execute_script(
-                        "arguments[0].value=arguments[1];"
-                        "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",
-                        el, yyyymmdd)
-                    log(f"이용일 {yyyymmdd} 을 입력했습니다.")
-                    return True
-        except Exception:
-            continue
-    # 3) 달력의 '일' 숫자 셀
-    day = str(int(yyyymmdd[6:8]))
-    try:
-        for el in driver.find_elements(By.XPATH,
-                                       f"//td[normalize-space(text())='{day}']"
-                                       f"|//a[normalize-space(text())='{day}']"):
-            cls = (el.get_attribute("class") or "").lower()
-            if "disabled" in cls or "off" in cls:
-                continue
-            if el.is_displayed():
-                driver.execute_script("arguments[0].click();", el)
-                log(f"달력에서 {day}일을 선택했습니다.")
-                return True
-    except Exception:
-        pass
-    log(f"이용일 {yyyymmdd} 셀을 찾지 못했습니다.")
-    return False
-
-
-def select_time_slots(driver, slots: list[str], log=lambda *_: None) -> int:
-    """원하는 시간대를 고른다. 고른 개수를 돌려준다."""
-    from selenium.webdriver.common.by import By
-
-    if not slots:
-        return 0
-    picked = 0
-    for slot in slots:
-        hh = slot.split(":")[0].lstrip("0") or "0"
-        needles = [slot, slot.replace(":", ""), f"{hh}시"]
-        done = False
-        for needle in needles:
-            if done:
-                break
-            xp = (f"//label[contains(.,'{needle}')]"
-                  f"|//td[contains(.,'{needle}')]//input"
-                  f"|//*[@data-time='{needle}']"
-                  f"|//input[@value='{needle}']")
-            try:
-                for el in driver.find_elements(By.XPATH, xp):
-                    cls = (el.get_attribute("class") or "").lower()
-                    if "disabled" in cls or el.get_attribute("disabled"):
-                        continue
-                    if not el.is_displayed():
-                        continue
-                    driver.execute_script("arguments[0].click();", el)
-                    picked += 1
-                    done = True
-                    log(f"시간대 {slot} 선택")
-                    break
-            except Exception:
-                continue
-        if not done:
-            log(f"시간대 {slot} 은 화면에 없습니다(마감이거나 미운영).")
-    return picked
-
-
-def select_first_available_slot(driver, log=lambda *_: None) -> int:
-    """시간대를 지정하지 않았을 때, 그 날 열려 있는 첫 시간대를 고른다.
-
-    아무것도 안 고른 채로 신청 버튼을 누르면 사이트가 무엇을 잡을지 알 수 없다.
-    화면에 약속한 동작("먼저 잡히는 것으로 신청")을 코드로도 정확히 지킨다.
-    """
-    from selenium.webdriver.common.by import By
-
-    for sel in ("input[type=checkbox]", "input[type=radio]",
-                "[data-time]", "td[onclick*=':']"):
-        try:
-            for el in driver.find_elements(By.CSS_SELECTOR, sel):
-                cls = (el.get_attribute("class") or "").lower()
-                if el.get_attribute("disabled") or "disabled" in cls:
-                    continue
-                if not el.is_displayed():
-                    continue
-                driver.execute_script("arguments[0].click();", el)
-                label = (el.get_attribute("value") or el.text or "").strip()
-                log(f"열려 있는 첫 시간대를 선택했습니다{(' (' + label + ')') if label else ''}.")
-                return 1
-        except Exception:
-            continue
-    log("선택 가능한 시간대를 찾지 못했습니다.")
-    return 0
-
-
-SUBMIT_TEXTS = ("신청하기", "예약하기", "신청", "예약", "확인")
-
-
-def find_submit(driver):
-    from selenium.webdriver.common.by import By
-    for text in SUBMIT_TEXTS:
-        xp = (f"//button[contains(normalize-space(.),'{text}')]"
-              f"|//a[contains(normalize-space(.),'{text}')]"
-              f"|//input[@type='submit' and contains(@value,'{text}')]")
-        try:
-            for el in driver.find_elements(By.XPATH, xp):
-                if el.is_displayed() and el.is_enabled():
-                    return el, text
-        except Exception:
-            continue
-    return None, ""
-
-
-def accept_confirm(driver, log=lambda *_: None) -> None:
-    """사이트 자체 확인 레이어(icmsLayerPopup)의 확인 버튼을 누른다."""
-    from selenium.webdriver.common.by import By
-    time.sleep(0.4)
-    for sel in (".type-confirm .btn_confirm", ".type-confirm a.btn",
-                "#dimmed1 ~ div a", ".popup_wrap:not([style*='display: none']) a"):
-        try:
-            for el in driver.find_elements(By.CSS_SELECTOR, sel):
-                if el.is_displayed() and "확인" in (el.text or ""):
-                    driver.execute_script("arguments[0].click();", el)
-                    log("확인 창을 눌렀습니다.")
-                    return
-        except Exception:
-            continue
-    try:
-        driver.switch_to.alert.accept()
-        log("브라우저 알림을 확인했습니다.")
-    except Exception:
-        pass
-
-
-RESULT_OK = ("신청이 완료", "예약이 완료", "정상적으로 신청", "신청되었습니다",
-             "예약되었습니다", "완료되었습니다")
-RESULT_FAIL = ("마감", "정원", "이미 신청", "불가", "실패", "없습니다", "초과")
+# 4·5단계(검색 → 센터 → 아동 → 반/이용시간 → 날짜칸 → 추가 → 체크 →
+# 예약하기 → 확인)는 booking.py 가 담당한다. 그 순서는 고객이 보내준
+# 인증서 세션 화면녹화에서 그대로 읽어낸 것이다
+# (docs/site-map/recording/, NOTES.md 4·5단계).
+#
+# 이 파일에는 드라이버/로그인/세션/진단만 남긴다.
 
 
 def read_result(driver) -> tuple[str, str]:
-    """(상태, 사이트가 보여준 문구). 상태는 ok/fail/unknown.
-
-    이 사이트는 결과를 서버가 페이지에 찍는 '세션 메시지' 로 알려준다(실측:
-    로그인 실패 때 <!-- 세션 메세지 체크 --> 블록에 문구가 그대로 들어왔다).
-    그래서 그 문구를 최우선으로 읽고, 없을 때만 본문 키워드로 넘어간다.
-    """
+    """(상태, 사이트가 보여준 문구). booking.classify 로 판정한다."""
+    from . import booking
     try:
         src = driver.page_source
     except Exception:
-        return "unknown", ""
-
+        return booking.R_UNKNOWN, ""
     msg = read_session_message(src)
     if msg:
-        for kw in RESULT_OK:
-            if kw in msg:
-                return "ok", msg
-        for kw in RESULT_FAIL:
-            if kw in msg:
-                return "fail", msg
-        return "unknown", msg
-
-    for kw in RESULT_OK:
-        if kw in src:
-            return "ok", kw
-    for kw in RESULT_FAIL:
-        if kw in src:
-            return "fail", kw
-    return "unknown", ""
-
-
-# ---------------------------------------------------------------- 한 번의 시도
-
-def attempt_once(driver, center: dict, target_date: str, slots: list[str],
-                 dry_run: bool, log=lambda *_: None, diag=None) -> RunResult:
-    open_reservation_page(driver, center, log, diag)
-    handle_netfunnel(driver, log)
-
-    if page_says_cert_required(driver):
-        grade = login_grade(driver)
-        if grade == "id":
-            msg = ("아이디로 로그인된 상태입니다. 이 화면은 공동인증서 세션에서만 열립니다. "
-                   "크롬 창에서 공동인증서로 다시 로그인해 주세요.")
-        else:
-            msg = "공동인증서 로그인이 필요한 상태입니다. 로그인 후 다시 시도합니다."
-        capture(driver, diag, "cert_required")
-        return RunResult(False, msg, {"reason": "cert_required", "loginGrade": grade})
-
-    if contents_is_empty(driver.page_source if hasattr(driver, "page_source") else ""):
-        capture(driver, diag, "empty_contents")
-        return RunResult(False, "예약 화면이 비어 있습니다(로그인 등급이 맞지 않습니다).",
-                         {"reason": "empty_contents"})
-
-    if not select_date(driver, target_date, log):
-        capture(driver, diag, "date_not_found")
-        return RunResult(False, f"{target_date} 이용일이 아직 열리지 않았습니다.",
-                         {"reason": "date_not_open"})
-
-    time.sleep(0.3)
-    if slots:
-        picked = select_time_slots(driver, slots, log)
-        if picked == 0:
-            capture(driver, diag, "slot_not_found")
-            return RunResult(False, "원하는 시간대가 열려 있지 않습니다.",
-                             {"reason": "slot_unavailable"})
-    else:
-        # 지정이 없으면 빈 선택으로 제출하지 않고 열린 첫 시간대를 고른다.
-        picked = select_first_available_slot(driver, log)
-        if picked == 0:
-            capture(driver, diag, "no_slot_open")
-            return RunResult(False, "그 날 열린 시간대가 없습니다.",
-                             {"reason": "slot_unavailable"})
-
-    el, text = find_submit(driver)
-    if el is None:
-        capture(driver, diag, "submit_not_found")
-        return RunResult(False, "신청 버튼을 찾지 못했습니다.", {"reason": "no_submit"})
-
-    if dry_run:
-        capture(driver, diag, "dry_run_before_submit")
-        return RunResult(True, f"[연습 모드] 여기서 '{text}' 를 누르면 신청됩니다. "
-                               "실제 신청은 하지 않았습니다.",
-                         {"reason": "dry_run", "button": text, "slots": picked})
-
-    driver.execute_script("arguments[0].click();", el)
-    log(f"'{text}' 를 눌렀습니다.")
-    accept_confirm(driver, log)
-    time.sleep(1.2)
-    capture(driver, diag, "after_submit")
-
-    status, kw = read_result(driver)
-    if status == "ok":
-        return RunResult(True, f"예약 신청이 완료되었습니다. ({kw})", {"reason": "submitted"})
-    if status == "fail":
-        return RunResult(False, f"신청이 반려되었습니다: {kw}", {"reason": "rejected"})
-    return RunResult(True, "신청을 전송했습니다. 신청현황에서 확인해 주세요.",
-                     {"reason": "submitted_unconfirmed"})
-
-
-def burst(driver, center: dict, target_date: str, slots: list[str], dry_run: bool,
-          clock_sync, fire_epoch: float, retry_seconds: int, retry_interval_ms: int,
-          log=lambda *_: None, diag=None, stop_event=None) -> RunResult:
-    """정각에 쏘고, 열릴 때까지 짧게 반복한다."""
-    deadline = fire_epoch + retry_seconds
-    attempt = 0
-    last = RunResult(False, "시도하지 못했습니다.")
-    while clock_sync.server_now() < deadline:
-        if stop_event is not None and stop_event.is_set():
-            return RunResult(False, "사용자가 중지했습니다.", {"reason": "stopped"})
-        attempt += 1
-        log(f"--- {attempt}번째 시도 (서버시각 기준 "
-            f"{clock_sync.server_now() - fire_epoch:+.2f}초) ---")
-        try:
-            last = attempt_once(driver, center, target_date, slots, dry_run, log, diag)
-        except Exception as exc:  # noqa: BLE001
-            last = RunResult(False, f"시도 중 오류: {type(exc).__name__}")
-            log(str(last.message))
-            if diag is not None:
-                try:
-                    diag.add_text(f"error/attempt_{attempt}.txt", repr(exc))
-                except Exception:
-                    pass
-        if last.ok:
-            return last
-        if last.detail.get("reason") in ("cert_required",):
-            return last
-        time.sleep(max(retry_interval_ms, 100) / 1000.0)
-    last.detail["attempts"] = attempt
-    return last
+        return booking.classify(msg), msg
+    for word in (booking.OK_WORDS + booking.TOO_EARLY_WORDS + booking.FULL_WORDS):
+        if word in src:
+            return booking.classify(word), word
+    return booking.R_UNKNOWN, ""

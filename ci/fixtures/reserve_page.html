@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시간제보육 이용 신청 (재현 화면)</title>
+<!--
+  고객이 보내준 인증서 세션 화면녹화(docs/site-map/recording/)를 보고 다시 만든
+  4·5단계 화면이다. 실제 사이트의 id/class 를 알 수 없어서(녹화가 흐리고
+  서버가 인증서 세션에만 그려준다) **구조만** 같게 만들었다:
+
+    · 반명 select, 이용시간 select(1~9)
+    · 날짜 x 시간 표: 행 = 2026-09-02(수)~2026-09-08(화), 열 = 09~17
+      칸 = 남은 정원 숫자 또는 X
+    · 숫자 칸을 누르면 이용시간만큼 연속 칸이 칠해진다
+    · [추가] → 선택표에 행 추가 (선택/반명/이용일/이용시간)
+    · [예약하기] → "예약" 모달 (월 60시간 안내 + 예약하시겠습니까? / 확인 / 취소)
+
+  booking.py 의 선택자가 진짜 브라우저에서 이 구조를 잡아내는지 검증하는 용도다.
+  선택자를 이 파일에 맞춰 고정하면 안 된다. 여기에 없는 마크업도 잡아야 한다.
+-->
+<style>
+ body { font-family: sans-serif; }
+ table { border-collapse: collapse; }
+ td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: center; }
+ .cell { cursor: pointer; }
+ .cell.on { background: #1b64da; color: #fff; }
+ .cell.x { color: #444; background: #eee; }
+ #layer { display: none; position: fixed; left: 30%; top: 25%; width: 380px;
+          background: #fff; border: 2px solid #1b64da; padding: 16px; }
+ #layer.open { display: block; }
+ #notice { display: none; }
+ #notice.open { display: block; color: #c3352b; }
+</style>
+</head>
+<body>
+<div id="contents">
+  <h2>시간제보육 이용 신청</h2>
+
+  <table id="child">
+    <tr><th>선택</th><th>아동명</th><th>생년월일</th><th>개월수</th></tr>
+    <tr><td><input type="radio" name="child" value="1"></td>
+        <td>박승우</td><td>2025.10.22</td><td>10개월</td></tr>
+  </table>
+
+  <p>이용기관명 서초구육아종합지원센터(신반포) (02-596-9340)</p>
+  <p>주소 [06504] 서울특별시 서초구 신반포로19길 26</p>
+  <p>· 예약방법 : 이용시간 선택 &gt; 이용시간의 숫자선택 &gt; 추가 버튼 클릭 &gt; 예약하기 클릭</p>
+
+  <div><span>예약 가능일</span> <span>2026-08-25 ~ 2026-09-08</span></div>
+  <div><span>반명</span>
+    <select id="ban"><option value="">선택</option><option>매송아이</option></select>
+  </div>
+  <div><span>이용시간</span>
+    <select id="usehour">
+      <option value="">선택</option>
+      <option>1</option><option>2</option><option>3</option><option>4</option>
+      <option>5</option><option>6</option><option>7</option><option>8</option>
+      <option>9</option>
+    </select>
+  </div>
+
+  <p>· 예약상태 <b>0</b> 이용가능시간대 <b>X</b> 이용불가시간대 (숫자는 이용 가능한 아동수)</p>
+
+  <table id="grid">
+    <tr><th>날짜/시간</th><th>09</th><th>10</th><th>11</th><th>12</th><th>13</th>
+        <th>14</th><th>15</th><th>16</th><th>17</th></tr>
+  </table>
+
+  <button type="button" id="add">추가</button>
+  <button type="button" id="del">삭제</button>
+
+  <p>· 8월 예약시간 : 75시간</p>
+  <p>· 9월 예약시간 : 35시간</p>
+
+  <table id="picked">
+    <tr><th>선택</th><th>반명</th><th>이용일</th><th>이용시간</th></tr>
+  </table>
+
+  <button type="button" id="reserve">예약하기</button>
+</div>
+
+<div id="layer" role="dialog">
+  <div class="ttl">예약</div>
+  <div class="body">
+    월 이용 시간이 60시간을 초과할 경우 바우처 지원이 되지 않습니다.
+    ※ 시간당 5,000원으로 이용<br>
+    8월 현재 예약 시간 포함하여 60시간을 초과합니다<br>
+    예약하시겠습니까?
+  </div>
+  <button type="button" id="ok">확인</button>
+  <button type="button" id="cancel">취소</button>
+</div>
+
+<div id="notice" class="layer"></div>
+
+<script>
+// --- 표 만들기 -------------------------------------------------------------
+// 영상 그대로: 09-06 은 전부 X, 09-07 은 전부 0, 09-08 은 전부 2.
+var ROWS = [
+  ['2026-09-02(수)', ['0','0','0','0','0','0','0','0','0']],
+  ['2026-09-03(목)', ['1','0','0','0','0','0','0','0','0']],
+  ['2026-09-04(금)', ['0','0','0','0','0','0','0','0','0']],
+  ['2026-09-05(토)', ['X','X','X','X','X','X','X','X','X']],
+  ['2026-09-06(일)', ['X','X','X','X','X','X','X','X','X']],
+  ['2026-09-07(월)', ['0','0','0','1','0','0','0','0','0']],
+  ['2026-09-08(화)', ['2','2','2','2','2','2','2','2','2']]
+];
+var grid = document.getElementById('grid');
+ROWS.forEach(function (r, ri) {
+  var tr = document.createElement('tr');
+  var th = document.createElement('th');
+  th.textContent = r[0];
+  tr.appendChild(th);
+  r[1].forEach(function (v, ci) {
+    var td = document.createElement('td');
+    td.className = 'cell' + (v === 'X' ? ' x' : '');
+    td.textContent = v;
+    td.setAttribute('data-r', ri);
+    td.setAttribute('data-c', ci);
+    td.onclick = function () { onCell(ri, ci, v); };
+    tr.appendChild(td);
+  });
+  grid.appendChild(tr);
+});
+
+var sel = null;   // {row, col, hours}
+
+function hours() {
+  var v = document.getElementById('usehour').value;
+  return v ? parseInt(v, 10) : 0;
+}
+
+function onCell(ri, ci, v) {
+  if (v === 'X' || v === '0') return;          // 사이트도 못 누르게 되어 있다
+  var h = hours();
+  if (!h) { show('이용시간을 먼저 선택하세요.'); return; }
+  clearMarks();
+  for (var k = 0; k < h && ci + k < 9; k++) {
+    var td = grid.querySelector('td[data-r="' + ri + '"][data-c="' + (ci + k) + '"]');
+    if (td) td.classList.add('on');
+  }
+  sel = {row: ri, col: ci, hours: h};
+}
+
+function clearMarks() {
+  var on = grid.querySelectorAll('td.on');
+  for (var i = 0; i < on.length; i++) on[i].classList.remove('on');
+}
+
+document.getElementById('add').onclick = function () {
+  if (!sel) { show('시간대를 먼저 선택하세요.'); return; }
+  var ban = document.getElementById('ban');
+  var date = ROWS[sel.row][0];
+  var start = 9 + sel.col;
+  var end = start + sel.hours;
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td><input type="checkbox"></td>' +
+    '<td>' + (ban.value || ban.options[ban.selectedIndex].text) + '</td>' +
+    '<td>' + date + '</td>' +
+    '<td>' + pad(start) + ' 00 - ' + pad(end) + ' 00 (' + sel.hours + '시간)</td>';
+  document.getElementById('picked').appendChild(tr);
+};
+
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+document.getElementById('reserve').onclick = function () {
+  var boxes = document.querySelectorAll('#picked input[type=checkbox]');
+  var any = false;
+  for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) any = true;
+  if (!any) { show('예약할 시간을 선택하세요.'); return; }
+  document.getElementById('layer').classList.add('open');
+};
+
+document.getElementById('cancel').onclick = function () {
+  document.getElementById('layer').classList.remove('open');
+};
+
+// 서버 응답 흉내. ?answers=too_early,too_early,ok 로 순서를 정한다.
+var ANSWERS = (function () {
+  var m = location.search.match(/answers=([^&]*)/);
+  return m ? decodeURIComponent(m[1]).split(',') : ['ok'];
+})();
+var fired = 0;
+window.__fired = 0;
+
+document.getElementById('ok').onclick = function () {
+  var i = Math.min(fired, ANSWERS.length - 1);
+  fired++;
+  window.__fired = fired;
+  document.getElementById('layer').classList.remove('open');
+  var a = ANSWERS[i];
+  if (a === 'too_early') show('예약시간전');
+  else if (a === 'full') show('정원초과');
+  else show('예약이 완료되었습니다.');
+};
+
+function show(msg) {
+  var n = document.getElementById('notice');
+  n.textContent = msg;
+  n.classList.add('open');
+}
+</script>
+</body>
+</html>

@@ -71,9 +71,11 @@ def test_result_prefers_the_server_message():
     src = ('<!-- 세션 메세지 체크 -->\n<script>\nicmsLayerPopup.alert({\n'
            '\tcontents : "신청이 완료되었습니다."\n});\n</script>')
     assert automation.read_result(FakeDriver(src)) == ("ok", "신청이 완료되었습니다.")
+    # v1.0.4: 정원 관련 문구는 일반 실패가 아니라 'full' 로 따로 분류한다.
+    # 재시도해서는 안 되는 결과이기 때문이다(booking.classify).
     src2 = src.replace("신청이 완료되었습니다.", "정원이 마감되었습니다.")
     status, msg = automation.read_result(FakeDriver(src2))
-    assert status == "fail" and msg == "정원이 마감되었습니다."
+    assert status == "full" and msg == "정원이 마감되었습니다."
 
 
 def test_no_message_and_no_keyword_is_unknown():

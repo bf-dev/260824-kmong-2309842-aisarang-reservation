@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 
 # Kmong 고객 식별자. 로그/진단/업로드 경로 전부에 이 값이 찍힌다.
 CUSTOMER_ID = "2309842"
@@ -68,15 +68,28 @@ DEFAULT_SETTINGS = {
     "center": dict(DEFAULT_CENTER),
     "login_mode": "manual",      # manual | cert
     "mbrid": "",
-    "time_slots": [],            # 예: ["09:00", "10:00"]
+    "child_name": "",            # 시간제보육 아동 선택 화면의 아동명 (비우면 첫 번째)
+    "class_name": "",            # 반명 (비우면 첫 번째 실제 값)
+    "use_hours": 9,              # 이용시간 select 의 값 (1~9시간)
+    "time_slots": [],            # 시작 시간대 우선순위. 예: ["09:00", "10:00"]
     "lead_days": OPEN_LEAD_DAYS,
     "target_date": "",           # 비우면 lead_days 로 자동 계산
-    "prefire_ms": 300,           # 서버시간 09:00:00 기준 몇 ms 앞서 쏠지
-    "retry_seconds": 20,         # 정각 이후 재시도 지속 시간
-    "retry_interval_ms": 400,
-    "dry_run": False,            # True 면 마지막 신청 버튼 직전에서 멈춤
+    # 준비(검색~예약하기)를 정각 몇 초 전에 시작할지. 준비는 여유 있게 끝내고
+    # 모달을 열어둔 채 기다린다. 정각에 쏘는 것은 [확인] 하나뿐이다.
+    "setup_seconds": 240,
+    # [확인] 요청이 서버 09:00:00 보다 몇 ms 먼저 '도착'하게 할지.
+    # 조금 이르면 서버가 "예약시간전" 이라고 답하고 자리는 살아 있으므로
+    # 곧바로 다시 쏜다. 조금 늦으면 "정원초과" 라 되돌릴 수 없다.
+    # 그래서 기본값은 이른 쪽이다.
+    "arrival_lead_ms": 300,
+    "retry_seconds": 20,         # 정각 이후 [확인] 재시도 지속 시간
+    "confirm_retry_ms": 90,      # '예약시간전' 일 때 재발사 간격
+    "dry_run": False,            # True 면 [확인] 직전에서 멈춘다
     "keep_browser_open": True,
 }
+
+# 옛 설정 파일 호환. v1.0.3 까지는 prefire_ms 였고 의미가 같다.
+_RENAMED = {"prefire_ms": "arrival_lead_ms"}
 
 
 def _appdata_dir() -> Path:
@@ -121,6 +134,7 @@ def load_settings() -> dict:
             saved = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
                 for k, v in saved.items():
+                    k = _RENAMED.get(k, k)
                     if k in data:
                         data[k] = v
                 if not isinstance(data.get("center"), dict) or not data["center"].get("stcode"):
