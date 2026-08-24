@@ -227,8 +227,34 @@ class App:
         # side="bottom" 으로 먼저 pack 한 것이 가장 아래를 차지한다.
         self._build_bottom(shell)
 
-        outer = tk.Frame(shell, bg=BG)
-        outer.pack(side="top", fill="both", expand=True)
+        # 설정 영역은 스크롤된다. 화면이 낮아도 카드가 찌그러지지 않고,
+        # 아래 실행/결과/로그는 언제나 제자리에 남는다.
+        mid = tk.Frame(shell, bg=BG)
+        mid.pack(side="top", fill="both", expand=True)
+        canvas = tk.Canvas(mid, bg=BG, highlightthickness=0, bd=0)
+        vsb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        outer = tk.Frame(canvas, bg=BG)
+        win = canvas.create_window((0, 0), window=outer, anchor="nw")
+
+        def _on_content(_=None):
+            try:
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                need = outer.winfo_reqheight() > canvas.winfo_height()
+                if need and not vsb.winfo_ismapped():
+                    vsb.pack(side="right", fill="y")
+                elif not need and vsb.winfo_ismapped():
+                    vsb.pack_forget()
+            except Exception:
+                pass
+
+        outer.bind("<Configure>", _on_content)
+        canvas.bind("<Configure>",
+                    lambda e: (canvas.itemconfigure(win, width=e.width), _on_content()))
+        canvas.bind_all(
+            "<MouseWheel>",
+            lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
         # 머리말
         head = tk.Frame(outer, bg=BG)
