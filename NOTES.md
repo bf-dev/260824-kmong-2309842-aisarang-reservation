@@ -11,10 +11,11 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 44 passed
+.venv/bin/python -m pytest tests/ -q        # 61 passed
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
+python3 main.py --arrivaltest                # 도착시각 모델 실검증 (서버 Date 헤더로 대조)
 ```
 
 빌드는 GitHub Actions `windows-latest` (`.github/workflows/build.yml`).
@@ -79,14 +80,17 @@ spending limit 때문에 즉시 막힌다.
 
 ### 방해 요소
 - `disable-devtool.0.3.7.min.js` — **개발자도구를 열면 `/logout` 으로 강제 로그아웃**된다.
-  자동화 중 devtools 를 절대 열지 말 것. Selenium 자체는 문제없다.
+  그리고 **셀레니움 크롬 자체를 오탐한다**(2026-08-24 실측, 6단계 참고).
+  v1.0.3 부터 이 파일만 네트워크에서 막는다. devtools 는 여전히 열지 말 것.
 - `netfunnel-pcms.js` (넷퍼널 가상대기열) 이 배포돼 있다. 목록 화면에서는 주석 처리돼
   있지만 9시 몰릴 때 서버가 켤 수 있다. `automation.handle_netfunnel()` 이 대기 처리.
 
-## 실사이트 단계별 검증 맵 (2026-08-24, 전부 KR 프록시 egress 115.68.232.141 경유)
+## 실사이트 단계별 검증 맵 (2026-08-24)
 
-증거 파일은 `docs/site-map/` 에 그대로 저장돼 있다. **추정으로 채운 칸은 없다.
-못 본 것은 못 봤다고 적는다.**
+1·3단계는 KR 프록시(egress 115.68.232.141), 2·4·5·6단계는 KR 프록시와 직접 접속
+양쪽으로 확인했다. 증거 파일은 `docs/site-map/` 에 그대로 저장돼 있다.
+저장 전에 전부 `masking.mask()` 를 통과시켰고 세션 식별자도 지웠다.
+**추정으로 채운 칸은 없다. 못 본 것은 못 봤다고 적는다.**
 
 ### 1단계 — 시간제보육 진입과 로그인 게이트  ✅ 확인함
 - 진입: `GET /?menuno=242` → HTTP 200, 69,654B (`01-entry-242.html`)
@@ -122,15 +126,36 @@ spending limit 때문에 즉시 막힌다.
   `aResult` 를 채운 뒤 폼을 submit 한다. 서버에서 재현 불가능하고, 그래서
   인증서와 비밀번호가 고객 PC 를 떠나지 않는다.
 - 아이디 로그인도 웹에 존재한다(`02-login-id.html`, `frmLoginId` →
-  `mbrid/uspass/ltype=id/flag=PISl/kybrdscrtyyn=N`). 하지만 아이디 로그인만으로는
-  아래 4·5단계가 열리지 않는다(그래서 고객이 인증서 안내를 받은 것).
-- **자격증명은 일절 시도하지 않았다.** 로그인 POST 는 한 번도 보내지 않았다.
+  `mbrid/uspass/ltype=id/flag=PISl/kybrdscrtyyn=N`). **아이디 로그인만으로는
+  4·5단계가 열리지 않는다는 것을 이제 실측으로 확정했다** (2·4단계 참고).
 
-### 2단계 — 로그인 후 세션 상태  ❌ **도달 못 함**
-실제 공동인증서와 고객 계정이 있어야만 만들어지는 상태다. 우리가 확인한 것은
-경계뿐이다: 비로그인 세션에서 `icms/usr/MemberCertRegCheckAjax.html` 은 error
-페이지를 돌려준다(`menuno=242` 로 POST, 자격증명 없이).
-**없는 것: 실제 공동인증서 + 그 인증서가 등록된 고객 계정.**
+### 2단계 — 로그인 후 세션 상태  ✅ 확인함 (2026-08-24, 고객 계정 아이디 로그인)
+
+고객이 자기 아이디/비밀번호를 알려주어 **실제로 로그인해서** 확인했다.
+(자격증명은 이 문서를 포함해 어떤 파일에도 적지 않는다. 채팅에만 있다.)
+
+- 로그인 요청: `POST /icms/login/login.html` (폼 `frmLoginId` 그대로)
+  `mbrid uspass ltype=id flag=PISl loginPageType=01 nMbrYN=N kybrdscrtyyn=N
+   introYN= returnUrl= ssoReturnMenuno=1 issacweb_data=`
+  → **302** `Location: /?menuno=1&loginPageType=01&flag=DR&introYN=`  = 성공
+- 실패는 → **302** `Location: /?menuno=50&returnUrl=&introYN=` 이고, 이어지는
+  페이지에 서버가 문구를 찍어 내려준다(`04-login-id-fail.html`):
+  ```html
+  <!-- 세션 메세지 체크 -->
+  <script>icmsLayerPopup.alert({ contents : "아이디 또는 패스워드가 일치하지 않습니다." });</script>
+  ```
+  빈 값으로 보내면 같은 자리에 `"잘못된 정보입니다."` 가 오고 302 도 안 난다.
+  → **결과 판정은 이 블록을 읽는 게 정답이다.** `automation.read_session_message()`
+  가 이 정규식을 들고 있고 `read_result()` 가 본문 키워드보다 먼저 본다.
+- 성공 후 쿠키: `JSESSIONID WMONID egovExpireSessionTime egovLatestServerTime`
+  **+ `mbrno` + `uid`** (뒤 두 개가 로그인 표식)
+- **세션 수명 60분(실측).** 로그인 직후
+  `egovExpireSessionTime - egovLatestServerTime = 3,600,000 ms`.
+  → 전날 밤에 인증서 로그인을 해두는 운영은 **불가능**하다. 그래서
+  `runner._wait_keeping_session()` 이 09시까지 10분마다 세션을 건드린다.
+- **`kybrdscrtyyn=N` 이면 비밀번호는 평문 폼필드로 간다.** 로그인 페이지의
+  `npPfsStart()`(키보드보안)는 버튼을 눌러야만 돌고 자동 실행되지 않는다.
+  `issacweb_data` 는 빈 hidden 그대로다(암호화 모듈 JS 자체가 페이지에 없다).
 
 ### 3단계 — 지역/센터 목록과 서초구 신반포의 실제 코드  ✅ 확인함
 - `POST /icms/nursery/NurseryMapSidoList.html` → 200, 787B (`03-sido.json`)
@@ -146,41 +171,59 @@ spending limit 때문에 즉시 막힌다.
   ```
   (`03-centers-seocho-N.html` 8번째 항목. 고객이 말한 "서초구 신반포 센터"와 일치)
 
-### 4단계 — 2주 뒤 오픈분의 날짜/시간대 화면  ❌ **도달 못 함**
-`POST /?menuno=605` (body `stcode=11650000416&unityYn=N&unityynall=`) 는
-비로그인에서도 HTTP 200 을 주지만 **내용이 없다** (`05-reserve-605-anon.html`):
+### 4단계 — 2주 뒤 오픈분의 날짜/시간대 화면  ❌ **여전히 도달 못 함. 이유가 확정됐다.**
 
-| 측정 | 값 |
+이번엔 **고객 계정으로 로그인한 상태**에서 열어봤다
+(`07-reserve-605-idsession.html`). 결과는 비로그인 때와 같은 빈 화면이고,
+**왜 비었는지를 서버가 직접 말해준다.** 605 페이지의 인라인 스크립트에
+서버가 두 값을 찍어 내려준다:
+
+```js
+let targetMode = "CT";      // 이 화면이 요구하는 인증 등급 = 공동인증서
+var loginMode  = "ID";      // 지금 내 세션의 인증 등급 = 아이디 로그인
+if (targetMode == 'CT' && loginMode != 'CT') {
+    icmsLayerPopup.alert({ contents : "공동인증서 로그인이 필요합니다." },
+        function(res){ window.location.href = "/?menuno=506&ltype=cert&returnUrl=/?menuno=242"; });
+}
+```
+
+| 측정 (아이디 로그인 세션) | 값 |
 |---|---|
-| `#contents` 블록 | 3,861 B |
-| `#contents` 보이는 텍스트 | **70자** (팝업 "닫기/확인/취소" 뿐) |
-| `<form>` 개수 | **0** |
-| `<input>` 개수 | **0** |
-| 달력/datepicker 위젯 | **0** |
-| 신청·예약 버튼 | **0** |
+| `POST /?menuno=605` | HTTP 200, 60,003 B |
+| `<div id="contents">` 안 | **0 B (완전히 빈 div)** |
+| 날짜/시간대/신청 버튼 | **0개** |
+| 서버가 찍은 `loginMode` / `targetMode` | **`ID` / `CT`** |
+| 화면이 띄우는 문구 | "공동인증서 로그인이 필요합니다." |
 
-`?menuno=245`(신청현황), `?menuno=617`(아동등록)도 **완전히 동일한 3,861B / 70자 /
-form 0개** 껍데기를 준다. 즉 시간제보육 거래 화면 전체가 하나의 인증 게이트 뒤에 있다.
+`?menuno=245`(신청현황), `?menuno=617`(아동등록)도 **똑같이 `targetMode="CT"`**.
+617 만 문구가 `"공동인증서/간편인증서 로그인이 필요합니다."` 다
+→ **간편인증도 CT 등급으로 쳐준다는 뜻**(605 에서도 될 가능성이 높지만,
+간편인증을 실제로 해본 것은 아니라 확정은 아니다).
 
-09:00 규칙 자체는 사이트 공지로 확인됨(아래 참조). **없는 것: 실제 공동인증서.**
+**즉 아이디 로그인으로는 4·5단계가 절대 안 열린다. 클라이언트 우회도 불가능하다**
+— 자바스크립트 분기만 막는 문제가 아니라 `#contents` 자체를 서버가 안 그린다.
+고객이 처음에 말한 "사이트에서는 공동인증서로 로그인합니다"가 정확했다.
+
+**없는 것: 고객 PC 에 설치된 실제 공동인증서(또는 간편인증) 세션.**
+이건 서버에서 만들 수 없다. AnySign4PC 가 고객 PC 에서 도는 프로그램이라서다.
 
 ### 5단계 — 최종 예약 제출 요청 (URL/메서드/헤더/전체 파라미터)  ❌ **도달 못 함**
-프론트엔드 번들에서 뽑아보려 했으나 **그런 번들이 없다.** 확인한 것:
-- 비로그인 605 페이지가 부르는 외부 JS 20개는 전부 공용(jquery, AnySign, 레이어팝업 등).
-  예약 로직이 든 파일은 없다.
-- 공용 번들 `/icms/js/cpcommon.js`(113KB), `common.js`(126KB), `fncommon.js`(23KB)를
-  받아 `Occasion|TmpCare|ChildRes|fnRes` 로 훑었다 → **일치 0건**.
-- 비로그인 605 의 인라인 스크립트 8개에도 예약 로직 없음(SSO/인증서 체크 보일러플레이트뿐).
-- 목록 화면에 주석으로 남은 구경로는 죽어 있다:
+4단계가 안 열리므로 5단계도 못 본다. 4단계와 달리 여기는 **추가 정보가 아예 없다**:
+- 로그인 상태 605 응답에도 예약 로직은 **한 줄도 없다**. 인라인 스크립트 8개는
+  전부 공용 보일러플레이트(로딩 표시, devtools 차단, 인증등급 체크)뿐이다.
+- 외부 JS 24개 중 예약 로직이 든 파일 없음. 공용 번들
+  `cpcommon.js`(113KB) / `common.js`(126KB) / `fncommon.js`(23KB) 를
+  `Occasion|TmpCare|ChildRes|fnRes` 로 훑어도 **일치 0건**.
+- 목록 화면 주석의 구경로는 죽어 있다:
   `POST /cpis2gi/occasion/OccasionChildResIs.jsp` → **404 "시스템 점검 중"**
   `POST /cpis2gi/occasion/OccasionChildResPiIs.jsp` → **404**
 
-→ 결론: 예약 폼과 제출 로직은 **정적 파일이 아니라 인증된 세션에만 서버가 찍어주는
-인라인 JSP 출력**이다. 인증서 없이는 URL도 파라미터 목록도 알아낼 방법이 없다.
-**없는 것: 실제 공동인증서 (+ 그 인증서가 등록된 계정).**
+→ 예약 폼과 제출 로직은 **인증서 세션에만 서버가 찍어주는 인라인 JSP 출력**이다.
 
-우리가 확실히 아는 5단계의 유일한 부분은 진입 요청이다(실측):
-`POST /?menuno=605`, body `stcode`/`unityYn`/`unityynall`, HTTP 200, 51,666B.
+확실히 아는 5단계의 유일한 부분은 진입 요청이다(실측, 목록 화면
+`gotoOccasionRes()` 원문 그대로):
+`document.pfrm` 에 `stcode`/`unityYn`/`unityynall` 을 넣고
+`action="/?menuno=605"` 로 POST. `automation.open_reservation_page()` 가 이걸 그대로 한다.
 
 ### 그래서 코드가 이 공백을 어떻게 다루는가
 4·5단계를 추측으로 채우지 않았다. `automation.py` 의 `select_date` /
@@ -189,6 +232,77 @@ form 0개** 껍데기를 준다. 즉 시간제보육 거래 화면 전체가 하
 못하면 절대 제출하지 않는다**(`attempt_once` 가 `date_not_open` 으로 먼저 빠진다).
 즉 실패 모드가 "엉뚱한 날짜를 예약함"이 아니라 "예약이 안 됨"이다.
 연습 모드는 마지막 버튼 직전에서 멈추므로 예약을 만들지 않고 DOM 만 받아올 수 있다.
+
+이번에 추가된 것: **인증 등급을 먼저 판정한다.** `login_grade()` 가 서버가 찍어준
+`loginMode` 를 읽어 `cert`/`id`/`none` 을 돌려주고, 아이디 세션이면
+`attempt_once` 가 제출 근처도 안 가고 이렇게 끝낸다(실브라우저 실측 문구):
+
+> 아이디로 로그인된 상태입니다. 이 화면은 공동인증서 세션에서만 열립니다.
+> 크롬 창에서 공동인증서로 다시 로그인해 주세요.
+
+그리고 `runner` 는 09시를 기다리기 전에 이 판정을 먼저 하고, 등급이 모자라면
+`wait_for_cert_session()` 으로 "예약 화면이 실제로 열릴 때까지" 기다린다
+(로그아웃 링크 유무가 아니라 **화면이 열리는지**로 판정한다. 아이디 로그인도
+로그인이라 로그아웃 링크는 똑같이 보이기 때문이다).
+
+### 6단계 — 치명적 함정: 사이트의 devtools 감지가 셀레니움을 오탐한다  ✅ 확인 + 수정함
+
+**v1.0.2 를 그대로 돌렸으면 09시에 로그아웃당했다.** 실측:
+
+```
+셀레니움으로 크롬 실행 → https://www.childcare.go.kr/?menuno=242 열기
+→ 1초 안에 alert("부정 사용 방지를 위하여 개발자 도구 사용을 차단합니다.")
+→ window.location.href = "/logout"
+```
+
+개발자도구를 연 적이 없다. `disable-devtool.0.3.7.min.js` 가 자동화된 크롬을
+devtools 로 오탐한다. 우리 `build_driver()` 옵션 그대로 재현했고, 두 번 다 1초 안에 터졌다.
+
+수정: `neutralize_devtool_blocker()` 가 CDP `Network.setBlockedURLs` 로
+`*disable-devtool*` **파일 하나만** 막는다(+ 크롬 버전 대비용 무해한 stub 이중화).
+페이지 인라인 코드는 `typeof DisableDevtool !== 'undefined'` 로 감싸여 있어서
+없으면 `console.error` 한 줄 남기고 정상 동작한다. 수정 후 실측:
+16초간 alert 없음 / `/logout` 없음 / 제목 "시간제보육기관찾기..." 정상 / `#pagingForm` 존재.
+
+> 여전히 **개발자도구는 절대 열지 말 것**. 우리가 끈 것은 "열지도 않았는데 튀는 오탐"이다.
+
+## 맞춰야 하는 건 '발사'가 아니라 '도착' (v1.0.3)
+
+고객 보고: 손으로 성공시킬 때 누른 시각은 **08:59:59.xxx**, 정각 전이었다.
+즉 기준은 요청이 **서버에 닿는 시각**이다. 로컬에서 09:00:00.000 에 쏘면
+편도지연만큼 늦게 도착한다.
+
+```
+목표도착 = 09:00:00 - prefire_ms(기본 300ms)
+발사시각 = clock.local_fire_for_arrival(목표도착)
+         = (목표도착 - 서버오프셋) - 편도지연(=최소왕복/2)
+```
+
+`prefire_ms` 의 의미가 바뀌었다: 예전엔 "로컬에서 몇 ms 일찍 쏠지",
+지금은 "**서버에 몇 ms 일찍 도착시킬지**". 편도지연 보정은 그 위에 자동으로 붙는다.
+
+**도착 모델을 실제로 검증했다** (`main.py --arrivaltest`, `clock.measure_arrival`).
+서버 초 경계 B 의 앞뒤로 겨냥해 쏘고, 응답 `Date:` 헤더가 가리키는 초를 본다.
+delta<0 이면 B-1, delta>0 이면 B 가 나와야 한다. 실측 (이 서버 → childcare.go.kr):
+
+| 실행 | 최소왕복 | 편도추정 | delta -300 / -120 / +60 / +250ms | 결과 |
+|---|---|---|---|---|
+| 1 | 778ms | 389ms | 전부 기대한 초 | **4/4** |
+| 2 | 793ms | 396ms | 전부 기대한 초 | **4/4** |
+| 3 | 856ms | 428ms | 전부 기대한 초 | **4/4** |
+
+스케줄러 발사 오차는 **0.15 ~ 0.52ms**. 즉 오차의 지배 요인은 여전히
+서버시각 추정치와 왕복지연이지, 우리 타이머가 아니다.
+왕복 800ms 짜리 회선에서도 12/12 로 맞았으니, 고객 PC(국내 회선, 왕복 10~30ms)
+에서는 훨씬 좁게 맞는다.
+
+`runner` 는 실제로 쏜 순간을 기록해 **"도착 추정이 정각 대비 몇 ms 였는지"** 를
+로그와 진단에 남긴다(`fire_error_ms`, `arrival_offset_ms`).
+
+> 아직 모르는 것: 서버가 **정각보다 이른 도착을 거부하는지**, 거부한다면 몇 ms부터인지.
+> 확인하려면 실제 예약을 만들어야 해서 안 했다. 그래서 기본값을 고객이 손으로
+> 성공시킨 구간(정각 300ms 전 도착)에 두고, 거부당해도 `retry_seconds`(기본 20초)
+> 동안 재시도가 정각 이후로 이어진다.
 
 ## 서버 시각 동기화 (`clock.py`)
 
@@ -273,16 +387,32 @@ unityYn  N (독립반)
 
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
-**`?menuno=605` 의 로그인 후 DOM 을 우리는 못 봤다.** 고객 계정 없이는 볼 수 없고,
-고객 계정으로 반복 테스트를 하면 실제 예약이 생기므로 하지 않았다.
-그래서 `automation.py` 의 날짜/시간대/신청버튼 선택은 **여러 후보를 순서대로
-시도하는 적응형**이고, 시도할 때마다 그 시점의 DOM 을 진단 ZIP 으로 올린다.
+**`?menuno=605` 의 인증서 세션 DOM 을 우리는 여전히 못 봤다.**
+고객 아이디/비밀번호로는 열리지 않는다는 것만 확정했다(4단계 참고).
+공동인증서는 고객 PC 에 있고 AnySign4PC 로만 풀리므로 서버에서 만들 수 없다.
 
-→ **고객의 첫 실제 실행(또는 연습 모드 실행) 직후 `artifacts/private/05788f12-.../`
-의 최신 ZIP 에서 `page_source/*_reservation_page.html` 를 열어 실제 선택자를 확인하고
-`select_date` / `select_time_slots` / `find_submit` 을 그 DOM 에 맞게 굳혀라.**
-연습 모드(`dry_run`)로 돌리면 실제 예약을 만들지 않고 DOM 만 안전하게 받아올 수 있다.
-이게 이 프로젝트에서 제일 먼저 할 일이다.
+→ **다음 사람이 제일 먼저 할 일은 그대로다.** 고객이 프로그램을 한 번 돌리면
+(연습 모드 권장) 진단 ZIP 이 `artifacts/private/05788f12-.../` 에 올라온다.
+거기 `page_source/*_reservation_page.html` 를 열어 실제 선택자를 확인하고
+`select_date` / `select_time_slots` / `find_submit` 을 그 DOM 에 맞게 굳혀라.
+연습 모드(`dry_run`)는 마지막 버튼 직전에서 멈추므로 예약을 만들지 않는다.
+
+두 번째로 확인할 것: **간편인증도 `loginMode == "CT"` 로 쳐주는가.**
+617 의 문구가 "공동인증서/간편인증서 로그인이 필요합니다" 라 그럴 가능성이 높다.
+사실이면 고객이 인증서 없이 간편인증(카카오/PASS 등)으로도 돌릴 수 있어서
+운영이 훨씬 편해진다. 고객 실행 진단의 `loginMode` 값 한 줄이면 판정된다.
+
+세 번째: **서버가 정각보다 이른 도착을 거부하는지.** 실제 예약을 만들어야
+알 수 있어서 확인하지 않았다.
+
+### 고객 계정으로 실제로 해본 것 / 하지 않은 것 (2026-08-24)
+했다: 아이디 로그인(성공 1회), `?menuno=242/605/245/617` 조회, 서초구 센터 목록,
+실브라우저로 로그인→예약화면→등급판정→**로그아웃**까지 1회.
+안 했다: **예약 제출은 단 한 번도 시도하지 않았다.** 신청 버튼 근처에도 가지 않았다.
+`attempt_once` 는 인증 등급에서 먼저 막혀 끝났다(`reason: cert_required`).
+디스크에 남긴 것 없음: 자격증명, 쿠키값, 세션파일 전부 남기지 않았다.
+(로그인 확인 중 부수적으로 확인된 것: 이 계정의 즐겨찾기에 신반포 센터가
+이미 등록돼 있다 → 기본 센터 선택이 맞다는 교차확인.)
 
 ## 하면 안 되는 것
 
