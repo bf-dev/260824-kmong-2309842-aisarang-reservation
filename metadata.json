@@ -1,0 +1,21 @@
+{
+  "project": "260824-kmong-2309842-aisarang-reservation",
+  "customerId": "05788f12-b025-48ba-bb01-7c45121013d8",
+  "partnerId": 2309842,
+  "customerName": "거대한고봉밥",
+  "kmongOrderIds": [
+    7566483
+  ],
+  "status": "active",
+  "createdAt": "2026-08-24",
+  "deploy": {
+    "kind": "windows-exe",
+    "repo": "bf-dev/260824-kmong-2309842-aisarang-reservation",
+    "build": "GitHub Actions windows-latest (.github/workflows/build.yml)",
+    "artifactsCustomerKey": "2309842",
+    "publish": "~/workspace/scripts/works-publish 2309842 out/aisarang-reservation-<ver>.exe",
+    "manifest": "https://works.insu.ng/works/public/2309842/version-aisarang.json",
+    "version": "1.0.0"
+  },
+  "notes": "아이사랑(childcare.go.kr) 시간제보육 09:00 오픈분 자동 예약 Windows 프로그램. Default center is 서초구육아종합지원센터(신반포) stcode 11650000416, unityYn=N, 서울특별시 11000 / 서초구 11650 (customer's own words 2026-08-24: '서초구 신반포 센터 기본값으로 넣어주시면 될거같습니다')."
+}
