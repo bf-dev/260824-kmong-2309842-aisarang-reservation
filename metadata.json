@@ -15,12 +15,12 @@
     "artifactsCustomerKey": "2309842",
     "publish": "~/workspace/scripts/works-publish 2309842 out/aisarang-reservation-<ver>.exe",
     "manifest": "https://works.insu.ng/works/public/2309842/version-aisarang.json",
-    "version": "1.0.2",
-    "exe": "https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.2.exe",
-    "exeSha256Prefix": "1c7a3f3a1c76596504ef13e68149b9a872931432",
+    "version": "1.0.3",
+    "exe": "https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.3.exe",
     "screenshot": "out/gui.png",
-    "ciRun": "GitHub Actions windows-latest, all steps green",
-    "siteMap": "docs/site-map/ (1~5단계 실측 증거; 4·5단계는 공동인증서 없이는 도달 불가)"
+    "ciRun": "GitHub Actions windows-latest run 32720166581, all steps green (live selftest included)",
+    "siteMap": "docs/site-map/ (1~6단계 실측 증거. 2단계는 고객 계정 아이디 로그인으로 확인, 4·5단계는 공동인증서 세션이 아니면 서버가 화면을 아예 안 그림)",
+    "exeSha256": "b09c19d67eec0887e7df0fbebda6dd8aa7c49e5321efce044caba58ed88eeb28"
   },
-  "notes": "아이사랑(childcare.go.kr) 시간제보육 09:00 오픈분 자동 예약 Windows 프로그램. 기본 센터 = 서초구육아종합지원센터(신반포) stcode 11650000416, unityYn=N (고객 원문 2026-08-24: '서초구 신반포 센터 기본값으로 넣어주시면 될거같습니다'). 핵심 제약: 예약 화면 ?menuno=605 는 공동인증서 세션에만 그려지고, 공동인증서 로그인은 AnySign4PC 로컬 모듈이 처리한다. 그래서 고객 PC 의 크롬을 Selenium 으로 몬다. 서버 시각은 Date 헤더 구간 교집합으로 동기화(저지연 회선에서 ±67ms 실측), 발사 정밀도는 목표 대비 +1ms 이내 실측. 미결: 로그인 후 ?menuno=605 의 DOM 을 못 봐서 날짜/시간대/신청버튼 선택자가 아직 적응형이다. 고객 첫 실행(연습 모드 권장) 진단 ZIP 의 page_source/*_reservation_page.html 로 굳혀야 한다."
+  "notes": "아이사랑(childcare.go.kr) 시간제보육 09:00 오픈분 자동 예약 Windows 프로그램. 기본 센터 = 서초구육아종합지원센터(신반포) stcode 11650000416, unityYn=N (고객 계정 즐겨찾기에도 등록돼 있는 것을 확인). 확정된 제약: 예약 화면 ?menuno=605 는 서버가 targetMode=CT 로 표시하고 세션이 loginMode=ID 면 #contents 를 통째로 비운다. 즉 아이디/비밀번호 자동 로그인으로는 예약이 불가능하고 고객이 공동인증서(또는 간편인증)로 로그인해야 한다. 2026-08-24 고객 계정으로 실제 로그인해 실측했고, 예약 제출은 한 번도 시도하지 않았다. v1.0.3 에서 고친 치명적 버그: 사이트의 disable-devtool 이 셀레니움 크롬을 오탐해 1초 안에 /logout 시키던 문제(그대로 뒀으면 09시에 로그아웃당했다). 타이밍은 '발사'가 아니라 '도착' 기준으로 바뀌었다(고객이 손으로 성공시킨 클릭이 08:59:59.xxx 였다는 보고 반영). 도착 모델은 서버 Date 헤더로 3회 12/12 검증. 미결: 인증서 세션의 예약 화면 DOM 은 여전히 못 봤다. 고객 첫 실행(연습 모드) 진단 ZIP 의 page_source/*_reservation_page.html 로 선택자를 굳혀야 한다."
 }

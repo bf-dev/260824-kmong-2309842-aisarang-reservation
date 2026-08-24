@@ -353,37 +353,36 @@ unityYn  N (독립반)
 > `value=` 만 지우고 정작 서명값을 그대로 남긴다. `_PW_ATTR` / `_PW_ATTR_REV`
 > 로 따로 처리한다. `tests/test_masking.py::test_signed_blob_masked` 가 잡아냈다.
 
-## 배포 현황 (v1.0.2, 2026-08-24)
+## 배포 현황 (v1.0.3, 2026-08-24)
 
-- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.2.exe
-  (29,112,880 bytes, `PE32+ executable (GUI) x86-64`, mode 644,
-  서빙 바이트 sha256 = 빌드 바이트 sha256 = `1c7a3f3a1c765965...` 로 대조 확인)
-  (1.0.0 도 같은 경로에 남아 있다. 이미 서빙된 파일명은 덮어쓰지 않는다.)
-- 업데이트 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
-- CI: GitHub Actions run 성공 (unit tests → build → PE 확인 → 라이브 selftest →
-  fixture selftest → GUI construct → GUI 스크린샷)
-- 스크린샷: `out/gui.png` (실제 Windows 창을 PrintWindow 로 캡처, 실측 결과 표시)
+- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.3.exe
+  (29,123,682 bytes, `PE32+ executable (GUI) x86-64`, mode 644)
+  **서빙 바이트 sha256 = 빌드 바이트 sha256 = `b09c19d67eec0887e7df0fbebda6dd8aa7c49e5321efce044caba58ed88eeb28`**
+  (Caddy 경유로 실제 내려받아 대조했다. 게이트웨이 루프백으로 확인하면 안 된다.)
+  1.0.0 / 1.0.2 도 같은 경로에 그대로 남아 있다. **이미 서빙된 파일명은 절대 덮어쓰지 않는다.**
+- 업데이트 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json → 1.0.3
+- CI: GitHub Actions run **32720166581**, 전 단계 green
+  (unit tests 61 → build → PE 확인 → **라이브 selftest** → fixture selftest →
+   GUI construct → GUI 스크린샷)
+- 스크린샷: `out/gui.png` (실제 Windows 창을 캡처, v1.0.3 표기와 실측 결과 표시:
+  "서초구 센터 10곳 조회, 기본 센터(신반포) 확인, 보정 -349ms, 최소왕복 900ms, 편도 추정 450ms")
+- Artifacts: `artifacts-check 2309842` 에 프로즌 exe 가 올린 v1.0.3 행 2건
+  (2026-08-24T11:08, Windows 2025Server, `aisarang-reservation-diag`)
 
 ### 측정된 근거
 
-프로즌 exe 가 실제 Windows(2025Server, `frozen: True`)에서 매 실행 진단을 올렸다.
-왕복지연에 따라 정밀도가 갈리는 것이 그대로 찍혔다:
+프로즌 exe 가 실제 Windows(`frozen: True`)에서 매 실행 진단을 올린다.
+왕복지연에 따라 정밀도가 갈리는 것이 그대로 찍힌다:
 
 | 대상 | 최소 왕복 | 동기화 오차 |
 |---|---|---|
-| 라이브 childcare.go.kr (러너→한국) | 870~900ms | ±531 ~ ±882ms |
+| 라이브 childcare.go.kr (러너→한국) | 870~900ms | ±481 ~ ±882ms |
 | 로컬 fixture 서버 | 0~1ms | **±67 ~ ±171ms** |
 
 고객 PC(국내 회선 → 국내 정부 서버)는 아래쪽 구간에 해당한다.
 
-발사 정밀도 실측(실서버 동기화 후 목표 시각에 쏘기, 3회):
-목표 대비 **+0.4ms / +0.5ms / +1.1ms** (의도한 300ms prefire 제외 기준).
-즉 오차의 지배 요인은 스케줄러가 아니라 서버 시각 추정치와 왕복지연이다.
-
-기본 센터로 실제 예약 화면 POST 도 던져봤다:
-`POST /?menuno=605 stcode=11650000416` → HTTP 200, 51,666 bytes,
-제목 "시간제보육 입소신청". 비로그인 세션이라 신청 폼 자체는 안 그려진다
-(= 사이트의 공동인증서 게이트가 정확히 여기서 걸린다).
+발사 정밀도 실측: 목표 대비 **0.15 ~ 0.52ms**.
+도착 정확도 실측: **3회 연속 4/4 (합계 12/12)** — 위 "도착" 절 표 참고.
 
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
