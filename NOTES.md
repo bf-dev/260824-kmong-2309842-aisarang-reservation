@@ -815,6 +815,13 @@ python ci/selector_audit.py --verbose      # 항목별
   찍히는 원문으로 좁혀라. 그 전까지 CI 초록불은 "우리 분류기가 우리
   픽스처와 일치한다" 는 뜻일 뿐이라는 것을 잊지 마라.
 
+  **게시 직전에 두 ZIP 을 다시 통째로 훑어 재확인했다**(2026-08-25 10:35Z):
+  `page_source/` 14장, `record/bodies/` 전부, `record/network.json` 373건의
+  응답 본문, `record/wanted/`, `run.log` 까지 `grep -r` 로 봤다.
+  `예약시간전` 0건, `정원초과` 0건, **`정원` 이라는 두 글자조차 0건.**
+  우리 CI 픽스처(`ci/fixture_server.py`)는 그 문구를 찍지만 그건 우리가 쓴
+  것이므로 증거가 아니다. 그것을 서버 원문의 근거로 쓰지 말 것.
+
 `제품 동작 검증 13개` 는 다른 질문이다: "사이트에 그 요소가 있는가" 가 아니라
 "우리 코드가 그것을 실제로 맞히는가". 13/13 통과.
 
@@ -859,6 +866,56 @@ $("#layer-alert-popup2").show();
 - CSS 를 손대지 마라(예전에 `url(...)` 을 `data:,` 로 바꿨다가 CSS 가 깨져
   같은 증상이 났다). 바깥 네트워크는 위 플래그로 막으면 된다.
 - `<link>` 순서를 원본대로 유지한다. 알파벳순으로 붙이면 캐스케이드가 달라진다.
+
+## 배포 현황 (v1.0.7, 2026-08-25 10:40Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.7.zip
+  (29,199,016 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.7/`
+   = `aisarang-reservation.exe` + `_internal/` + `사용안내.txt`, 1,352 항목)
+  **빌드 바이트 sha256 = CI 가 찍은 값 = Caddy 로 실제 내려받은 바이트 sha256 =
+  `cf27c315d8a1125b73be95d892d252f57318066bf6e69824598462ee1fd2e6cc`**
+  (게이트웨이 루프백으로 확인하면 안 된다. `--resolve works.insu.ng:443:127.0.0.1`)
+- 매니페스트: `version-aisarang.json` → 1.0.7 (`zipUrl` 만, `exeUrl` 없음)
+  실제 게시된 매니페스트를 받아 `updater.choose_download` 를 돌린 결과:
+  1.0.4 → zip, 1.0.5 → zip, **1.0.6 → zip(1.0.7)**, 1.0.7 → None.
+  **1.0.6 을 쓰는 PC 는 프로그램을 켜두면 15분 안에 자동으로 1.0.7 이 된다**
+  (`CHECK_SECONDS = 900`). 고객은 08-25 저녁에 1.0.6 으로 진단 기록을 돌렸으므로
+  1.0.6 이다. 1.0.4 는 옛 업데이터라 `exeUrl` 만 보므로 자동 갱신되지 않는다.
+- CI: GitHub Actions run **32837296603** (커밋 b39a29c), 전 단계 green.
+  unit **151** → 실물 캡처 회귀(진짜 크롬) → 셀렉터 감사 → onedir 빌드 → PE 확인 →
+  ZIP → 디펜더 정의 갱신 + 실제 스캔 3건 → fixture selftest → GUI construct →
+  ZIP 을 풀어서 그 exe 로 selftest → 시각 재측정(프로즌) → 진단 기록(프로즌) →
+  스크린샷 2장 → sha256.
+- 감사(같은 스크립트, CI 로그): `의존성 53개: 확인 51 / 영상복원본만 1 / 미확인 1`,
+  `제품 동작 검증 13개 중 13개 통과`.
+- 프로즌 exe 실측: `CLOCKTEST OK resyncs=3`,
+  `RECTEST pages=4 requests=13 wanted=2 clicks=3 reserved=False skipped=0` → RECTEST OK.
+  `clicks=3` 은 CI 하네스(사람 역할)가 누른 수이고 `reserved=False` 는 예약 계기가
+  끝까지 꺼져 있었다는 뜻이다. 기록기는 한 번도 누르지 않았다.
+- 디펜더 실제 판정: `VERDICT v1.0.7-onedir: CLEAN`, `VERDICT v1.0.7-zip: CLEAN`.
+  러너는 `RealTimeProtectionEnabled: False` 라 실행 시점 동작 감시는 재현되지 않는다.
+  그 이상으로 말하지 말 것.
+- 스크린샷(진짜 윈도우 창, 세션 1): `docs/gui-1.0.7.png`(라이브가 막혀서 실측
+  응답으로 채운 조회 결과 + 5분 재측정 로그가 화면에 보인다),
+  `docs/gui-1.0.7-record.png`(진단 기록 카드). 896x717, 192 / 156 colours.
+- Artifacts: 프로즌 exe 가 CI 에서 올린 진단 5건이 실제로 저장됐고
+  (`aisarang-reservation-diag`, v1.0.7 표기), 배포 기록 `aisarang-devnote` 1건도
+  `matched:true` 로 들어갔다. `artifacts-check 2309842` 로 확인.
+
+### 이번 판에서 CI 가 세 번 섰다. 원인은 전부 게시물이 아니라 발판이었다.
+
+1. **run 32834436312 (d724df6)** `selector_audit.py` 가 윈도우 러너의 cp1252
+   stdout 에 한글을 찍다 `UnicodeEncodeError`. 감사 판정은 이미 다 나온 뒤였다.
+   → 콘솔 전용 CI 스크립트라 stdout/stderr 을 utf-8 로 재설정. **제품에는 넣지 말 것**
+   (`--noconsole` 이라 `sys.stdout` 이 None 이다).
+2. **run 32835549489** `test_real_markup.py` 의 **첫 테스트만** 실패.
+   `read_slot_rows` 가 `{how:'none', tableIndex:-1}` = 표를 하나도 못 봄 = 그 순간
+   문서가 없었다는 뜻(픽스처에는 table 이 2개다). 단정을 풀지 않고, 드라이버
+   픽스처가 문서를 실제로 확인하고 넘기도록 고쳤다(+ 바깥 네트워크 차단).
+3. **run 32836231656** 얼린 exe 의 `--rectest` 가 `#btnAdd` / `#btnReserve` 를
+   눌렀다. v1.0.7 에서 fixture 를 실물 id 로 바꿨는데(`#timecareTableAddBtn` /
+   `#timecareConfirm`) `main.py` 의 하네스만 안 고쳐져 있었다.
+   → **픽스처의 id 를 바꾸면 `main.py --rectest` 하네스도 같이 고쳐라.**
 
 ## 배포 현황 (v1.0.6, 2026-08-25 07:50Z) ← 지난 판
 
