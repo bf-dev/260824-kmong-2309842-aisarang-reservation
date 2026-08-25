@@ -140,8 +140,12 @@ def main(argv: list[str] | None = None) -> int:
                 # 아무것도 누르지 않는다(recorder.py 에 클릭 경로가 없다).
                 if _wait("!!document.querySelector('input[name=occasionChk]')"):
                     drv.find_element("css selector", "input[name=occasionChk]").click()
-                _wait("!!document.getElementById('btnAdd')")
-                for sel in ("#btnAdd", "#btnReserve"):
+                # 실물 id 다. v1.0.7 에서 fixture 를 고객 캡처의 진짜 마크업으로
+                # 바꿨는데(#timecareTableAddBtn / #timecareConfirm) 이 하네스만
+                # 예전에 우리가 지어낸 #btnAdd / #btnReserve 를 계속 눌러서
+                # NoSuchElement 로 헛발질했고, 클릭 3회를 못 채워 CI 가 섰다.
+                _wait("!!document.getElementById('timecareTableAddBtn')")
+                for sel in ("#timecareTableAddBtn", "#timecareConfirm"):
                     try:
                         drv.find_element("css selector", sel).click()
                         _t.sleep(1.5)
