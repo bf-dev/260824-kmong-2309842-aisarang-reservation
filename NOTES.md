@@ -11,7 +11,7 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 88 passed (크롬 있으면 브라우저 6개 포함)
+.venv/bin/python -m pytest tests/ -q        # 96 passed (크롬 있으면 브라우저 8개 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
@@ -24,11 +24,24 @@ python3 main.py --arrivaltest                # 도착시각 모델 실검증 (�
 Actions 는 public repo 라 무료분으로 돌아간다. private 로 바꾸면 계정 전체
 spending limit 때문에 즉시 막힌다.
 
+**빌드 산출물은 v1.0.5 부터 exe 가 아니라 ZIP 이다** (`--onedir`, 아래
+"배포 형식이 바뀌었다" 절 참고). CI 가 `out/aisarang-reservation-<ver>.zip` 을
+만들고 그 안에서 실제로 실행까지 해본다. 게시 전에 CI 에서 **윈도우 디펜더
+실제 스캔**을 통과해야 한다(`ci/defender_scan.ps1`, FLAGGED 면 빌드 실패).
+
 배포:
 ```bash
-~/workspace/scripts/works-publish 2309842 out/aisarang-reservation-<ver>.exe
-# 그리고 version-aisarang.json 의 exeUrl 을 새 파일로 갱신
+gh run download <runId> -n aisarang-reservation -D out/ci-<ver>       # CI 산출물
+sha256sum out/ci-<ver>/out/aisarang-reservation-<ver>.zip             # CI 로그의 값과 대조
+~/workspace/scripts/works-publish 2309842 out/ci-<ver>/out/aisarang-reservation-<ver>.zip
+# Caddy 로 실제 내려받아 sha256 다시 대조한 뒤에만 매니페스트를 갱신한다
+curl -s -o /tmp/x.zip --resolve works.insu.ng:443:127.0.0.1 \
+  "https://works.insu.ng/works/public/2309842/aisarang-reservation-<ver>.zip?cb=$RANDOM"
+install -m 0644 version-aisarang.json \
+  /home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json
 ```
+매니페스트에는 `zipUrl` 만 넣는다. `exeUrl` 을 같이 넣으면 1.0.4 이하의 옛
+업데이터가 ZIP 을 exe 자리에 덮어써서 프로그램을 망가뜨린다.
 
 ## 사이트 구조 (실측, 2026-08-24)
 
@@ -414,7 +427,133 @@ unityYn  N (독립반)
 > `value=` 만 지우고 정작 서명값을 그대로 남긴다. `_PW_ATTR` / `_PW_ATTR_REV`
 > 로 따로 처리한다. `tests/test_masking.py::test_signed_blob_masked` 가 잡아냈다.
 
-## 배포 현황 (v1.0.4, 2026-08-25)
+## 배포 형식이 바뀌었다: 한 파일 exe → 폴더 ZIP (v1.0.5, 2026-08-25)
+
+### 무슨 일이 있었나
+
+고객이 v1.0.4 exe 를 내려받아 더블클릭했더니 윈도우가 이렇게 답했다(고객 사진):
+
+> 지정한 장치, 경로 또는 파일에 액세스할 수 없습니다.
+> 이 항목에 액세스할 수 있는 권한이 없는 것 같습니다.
+
+### 진단 (추측이 아니라 측정한 것)
+
+1. **호스팅 문제가 아니다.** Caddy 경유로 실제 내려받은 바이트의 sha256 이
+   빌드 바이트와 같다(`da8f84b2…b77d1`), 200, mode 644. 다운로드는 성공했다.
+2. **정적 시그니처 탐지도 아니다.** windows-latest 에서 정의를 최신
+   (엔진 1.1.26070.7 / 서명 1.457.329.0)으로 올린 뒤 그 파일 그대로 스캔:
+   `Scanning …\v104.exe found no threats` → **VERDICT v1.0.4-onefile: CLEAN**.
+   즉 "이 파일은 바이러스다" 라는 판정이 아니다.
+   (러너는 `RealTimeProtectionEnabled: False` 라 실행 시점 동작 감시와
+   클라우드 평판은 재현할 수 없다. 그래서 여기서 CLEAN 이 나온 것이
+   "고객 PC 에서도 안 막힌다" 는 뜻은 아니다. 못 본 것은 못 봤다고 적는다.)
+3. **고객 PC 의 실제 측정치가 남았다.** 2026-08-25T05:24Z 에 고객 PC 에서
+   v1.0.4 진단 ZIP 이 올라왔다(`frozen: true`, Windows 10 19045).
+   `run.log` 의 첫 줄이 **14:15:30**, 다음 줄(서버 시각 동기화 시작)이
+   **14:19:14**. 즉 프로세스가 뜨고 파이썬 코드 첫 줄이 도는 데까지
+   **3분 44초**가 걸렸다. `--onefile` 은 실행할 때마다 29MB 를 %TEMP% 에
+   풀어놓고, 실시간 감시가 그 1,300여 개 파일을 전부 훑는다. 이것이
+   같은 exe 가 "안 열린다 → 한참 뒤 열린다" 로 보이는 이유이고,
+   9시 정각 작업에서는 그 자체로 치명적이다.
+
+→ 결론: **범인은 onefile 의 %TEMP% 자가압축해제다.** 파일 내용이 아니라 실행
+   방식이 문제이므로, 그 동작을 없애는 것이 고칠 수 있는 유일한 지점이다.
+   (고객에게 백신을 끄라고 하지 않는다.)
+
+### 무엇을 바꿨나
+
+| | v1.0.4 | v1.0.5 |
+|---|---|---|
+| 패키징 | `--onefile` exe 1개 | **`--onedir` + ZIP** (`exe` + `_internal/`) |
+| 실행 시 | 매번 %TEMP% 에 자가압축해제 | 푸는 동작 **없음** |
+| 파일 메타데이터 | 없음 | **버전 리소스 + 아이콘** (`ci/version_info.txt`, `ci/app.ico`) |
+| 자동 업데이트 | `exeUrl` 한 파일 교체 | **`zipUrl` 폴더 통째 교체**(robocopy), 옛 `exeUrl` 경로도 유지 |
+| 디펜더 검증 | 없었다 | **CI 에서 실제 스캔**(`ci/defender_scan.ps1`), FLAGGED 면 빌드 실패 |
+
+`MpCmdRun.exe -Scan -ScanType 3 -File <path> -DisableRemediation` 를 쓴다.
+`-MustBeClean` 을 주면 탐지 시 빌드를 세운다. **스캔하지 않은 것은 올리지 않는다.**
+
+고객 쪽 순서는 `_읽어주세요.txt` 2번에 적어뒀다: ZIP **속성 → 차단 해제**
+(MOTW 제거) → 압축 풀기 → 폴더 안의 exe 실행. exe 만 따로 옮기면 안 된다.
+
+### 아동 선택 단계도 같이 고쳤다 (진짜 마크업을 처음 봤다)
+
+같은 진단 ZIP 의 `page_source/0002_reservation_page.html` 이 **인증서 세션의
+진짜 예약 화면**이다. NOTES 가 "다음 사람이 굳혀라" 라고 적어둔 바로 그 파일이다.
+읽은 것:
+
+```html
+<input type="radio" name="occasionChk" onclick="listChildSelect();"
+       data-usereqstcnt="1" data-chcaregbyn="Y" ...>
+```
+```js
+function listChildSelect() {
+  if (usereqstcnt < 1) { alert('이용신청서를 먼저 등록해주세요.'); ... }
+  else if ($('#unityyn').val() == 'N') $('[data-tab=divOccasionTimeSlPL]').trigger('click');
+  else                                 $('[data-tab=divOccasionTimePils]').trigger('click');
+}
+// 탭 클릭 → fnChildInfo() → POST /icms/occasion/OccasionTimeMainSlPL.html
+//         → 반명/이용시간/날짜표를 ajax 로 그려넣는다
+```
+
+여기서 v1.0.4 의 실제 버그 두 개가 드러난다.
+
+1. **라디오가 이미 켜져 있으면 우리는 누르지 않았다.** 그런데 이 클릭이
+   이용정보 화면(반명/이용시간/날짜표)을 여는 **유일한 트리거**다.
+   안 누르면 그 뒤 단계가 전부 빈 화면을 뒤진다. → 항상 누른다.
+2. **화면이 ajax 로 늦게 그려진다.** 곧바로 다음 단계로 가면 아직 없다.
+   → `_JS_USEINFO_READY` 로 최대 15초 기다린다. 라디오 onclick 이 안 돌았을
+   때를 위해 `[data-tab=…]` 탭을 직접 누르는 두 번째 경로도 둔다.
+   그리고 `alert()` 이 뜨면(이용신청서 미등록) 닫고 그대로 보고한다.
+   안 닫으면 셀레니움의 이후 모든 명령이 그 자리에서 막힌다.
+
+`ci/fixtures/child_select.html` 이 그 실제 구조를 재현한 것이고(개인정보는
+가짜 값), `tests/test_browser_flow.py` 의 마지막 두 개가 **진짜 크롬**으로
+"이미 체크된 라디오도 눌러서 화면을 연다 / alert 을 닫고 보고한다" 를 검증한다.
+
+> 개인정보 주의: 원본 `page_source` 에는 아동 이름이 그대로 있다. 저장소에는
+> 절대 넣지 않는다. 예전에 fixture 에 실명이 들어가 있던 것도 이번에 지웠다.
+
+### 아직 못 본 것 (그대로 남아 있다)
+
+날짜×시간 표 / [추가] / 선택표 / [예약하기] / 예약 모달의 **진짜 마크업은
+여전히 못 봤다.** 고객 실행이 09시 대기 상태에서 멈춰서 그 화면까지는
+진단에 안 담겼다. 다음 실행 진단의 `page_source/*_after_add_and_tick.html`,
+`*_modal_open_armed.html` 을 보고 굳혀라.
+
+## 배포 현황 (v1.0.5, 2026-08-25 05:40Z) ← 지금 살아 있는 것
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.5.zip
+  (29,155,070 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.5/`
+   = `aisarang-reservation.exe`(8.7MB, PE32+ GUI) + `_internal/` + `사용안내.txt`, 1,352 항목)
+  **서빙 바이트 sha256 = 빌드 바이트 sha256 = CI 가 찍은 값 =
+  `9c98e7030d7e96cdb87db5221c7f94e58f1d67f351059a2451a0c888eb64fdde`**
+  (Caddy 경유로 실제 내려받아 대조. 게이트웨이 루프백으로 확인하면 안 된다.)
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json → 1.0.5 (`zipUrl`)
+- CI: GitHub Actions run **32813175739**, 전 단계 green
+  (unit **96** → onedir 빌드 → PE + 버전리소스 확인 → ZIP 패키징 →
+   **디펜더 정의 갱신 + 실제 스캔 3건** → fixture selftest → GUI construct →
+   **ZIP 을 풀어서 그 exe 로 selftest** → GUI 스크린샷 → sha256)
+  96개에 **진짜 크롬 8개**가 들어 있다(4·5단계 흐름 6 + 아동선택 2).
+  이 판에서는 러너가 childcare.go.kr 에 못 닿아(ConnectTimeout) 라이브
+  selftest 는 skip 됐다. 5분 전 run **32812690275** 에서는 같은 코드로
+  라이브 selftest exit 0 이었다. 러너 IP 대역 문제이지 제품 문제가 아니다.
+- 디펜더 실제 판정 (엔진 1.1.26070.7 / 서명 1.457.329.0):
+  ```
+  VERDICT v1.0.4-onefile: CLEAN (no threats found)
+  VERDICT v1.0.5-onedir : CLEAN (no threats found)
+  VERDICT v1.0.5-zip    : CLEAN (no threats found)
+  ```
+  러너는 `RealTimeProtectionEnabled: False` 다. 즉 **실행 시점 동작 감시는
+  여기서 재현되지 않는다.** 이 CLEAN 은 "정적 시그니처로는 안 걸린다" 까지만
+  증명한다. 그 이상으로 말하지 말 것.
+- 스크린샷: `docs/gui-1.0.5.png` (이번 빌드, fixture 데이터),
+  `docs/gui-1.0.5-live.png` (5분 전 빌드, **라이브 조회** 결과가 찍힌 것).
+  둘 다 실제 윈도우 창이고 화면은 v1.0.4 와 같다(버전 표기만 다르다).
+- Artifacts: `aisarang-reservation-devnote` v1.0.5 1건 (`matched: true`,
+  id 130fe445-1541-4352-a20b-1afd56149aa4)
+
+## 배포 현황 (v1.0.4, 2026-08-25) ← 지난 판, 기록용
 
 - exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.4.exe
   (29,149,406 bytes, `PE32+ executable (GUI) x86-64`, mode 644)
@@ -473,13 +612,14 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
-1. **진짜 마크업(id/class)은 여전히 못 봤다.** 녹화는 568x320 이라 글자는
-   읽혀도 속성은 안 읽힌다. 그래서 `booking.py` 는 이름이 아니라 구조/글자로
-   찾는다. 고객이 한 번 돌리면(연습 모드 권장) 진단 ZIP 이
-   `artifacts/private/05788f12-.../` 에 올라온다. 거기
+1. **진짜 마크업은 절반만 확보했다.** 2026-08-25T05:24Z 고객 진단 ZIP 으로
+   **아동 선택 화면까지는 실제 마크업을 봤다**(위 v1.0.5 절 참고).
+   **날짜×시간 표 / [추가] / 선택표 / [예약하기] / 예약 모달은 여전히 못 봤다.**
+   고객 실행이 09시 대기 상태에서 멈춰 거기까지 안 갔다. 다음 실행 진단의
    `page_source/*_modal_open_armed.html`, `*_after_add_and_tick.html`,
-   `grid.json` 을 열어 실제 선택자로 굳혀라. 그때
-   `ci/fixtures/reserve_page.html` 도 진짜 마크업으로 바꿔라.
+   `grid.json` 을 열어 굳히고, 그때 `ci/fixtures/reserve_page.html` 도
+   진짜 마크업으로 바꿔라. 그 전까지 `booking.py` 의 뒷단계는 여전히
+   이름이 아니라 구조/글자로 찾는다.
 2. **"예약시간전" / "정원초과" 의 정확한 원문**을 아직 우리 눈으로 본 적은
    없다(고객이 말로 알려준 문구다). `booking.TOO_EARLY_WORDS` /
    `FULL_WORDS` 에 표기 흔들림까지 넣어뒀지만, 첫 실전 실행의
@@ -501,6 +641,13 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 했다(2026-08-25): 고객이 보내준 **녹화 영상 프레임 판독**, 재현 화면으로
 헤드리스 크롬 실행 검증.
 
+**고객이 직접 돌린 기록(2026-08-25T05:15~05:24Z = 14:15~14:24 KST, v1.0.4).**
+진단 ZIP `1787635468018-…-142428.zip` 에 다 남아 있다. 읽을 수 있는 것:
+인증서 로그인 성공(`로그인 등급 확인: cert`), 예약 화면 진입 성공, 이용일
+20260909 로 09시 대기 진입, 4분 뒤 고객이 [중지]. **예약은 만들어지지 않았다.**
+동시에 두 가지가 확인됐다: (1) exe 가 결국 뜨기는 뜬다, (2) 뜨는 데 3분 44초가
+걸린다(onefile %TEMP% 해제 + 실시간 감시). 그래서 v1.0.5 가 필요했다.
+
 **안 했다: 예약 제출은 단 한 번도 시도하지 않았다.** 이번 판에서도
 고객 사이트에는 아무 요청도 보내지 않았다(검증은 전부 로컬 fixture).
 디스크에 남긴 것 없음: 자격증명, 쿠키값, 세션파일 전부 남기지 않았다.
@@ -517,5 +664,12 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 - 선택표 행 체크가 꺼진 채로 [예약하기]/[확인] 을 누르지 말 것
   (엉뚱한 행이 예약될 수 있다). `Prepared.ready()` 가 막는다.
 - 개발자도구 열기 금지 (자동 로그아웃).
-- 이미 서빙된 exe 파일명 덮어쓰기 금지 (Cloudflare 엣지 캐시 → 업데이트 루프).
+- 이미 서빙된 파일명(exe/zip) 덮어쓰기 금지 (Cloudflare 엣지 캐시 → 업데이트 루프).
+- **`--onefile` 로 되돌리지 말 것.** 고객 PC 에서 실행 자체가 막혔고, 뜨더라도
+  시작에만 3분 44초가 걸렸다. 9시 정각 작업에서는 그것만으로 실패다.
+- 매니페스트에 `zipUrl` 과 `exeUrl` 을 같이 넣지 말 것 (옛 업데이터가 ZIP 을
+  exe 자리에 덮어쓴다).
+- **고객 진단 ZIP 의 `page_source` 원본을 저장소에 넣지 말 것.** 아동 이름 등이
+  마스킹을 빠져나와 그대로 들어 있다. 구조만 재현해서 가짜 값으로 넣어라
+  (`ci/fixtures/child_select.html` 이 그 방식이다).
 - 인증서 비밀번호를 로그/커밋/메시지에 남기지 말 것. 화면 입력 → 메모리 → 즉시 폐기.
