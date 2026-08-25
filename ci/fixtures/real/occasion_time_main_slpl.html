@@ -1,0 +1,263 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>OccasionTimeMainSlPL</title><link rel="stylesheet" href="assets/20221201_37145513442998453.css">
+<link rel="stylesheet" href="assets/xkp_html5.css">
+<link rel="stylesheet" href="assets/common.css">
+<link rel="stylesheet" href="assets/font-face.css">
+<link rel="stylesheet" href="assets/jquery-ui.css">
+<link rel="stylesheet" href="assets/main.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/sub.css">
+<link rel="stylesheet" href="assets/swiper.min.css"></head><body>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	<form name="sfrm" method="post">
+		<input type="hidden" name="stcode" value="11650000416" />
+		<input type="hidden" name="chilinnb" value="0" />
+		<input type="hidden" name="chage" value="" /> <!-- 예약 시점의 아동 개월 -->
+		<input type="hidden" name="reswaityn" value="" /> <!-- 예약 대기 가능여부 -->
+		<input type="hidden" name="reswaitdt" value="" /> <!-- 예약 대기 일자 -->
+		<input type="hidden" name="reswaitbgntm" value="" /> <!-- 예약 대기 시작시간 -->
+		<input type="hidden" name="reswaitendtm" value="" /> <!-- 예약 대기 종료시간 -->
+		<input type="hidden" name="chobschk"  id="chobschk" value="" />
+		<input type="hidden" name="field1" value="" />
+		<input type="hidden" name="field2" value="" />
+		<input type="hidden" name="bigo" id="bigo" value="" /> <!--비고 -->
+		<!-- 20160721_박정현 : 코드레이 조치 시작 -->
+		<input type="hidden" name="stmm"  value="6" /> 
+		<input type="hidden" name="edmm"  value="36" /> 
+		
+		<input type="hidden" name="f_sdate" id="f_sdate" value=""/>
+		<input type="hidden" name="sdate" id="sdate" />
+		<input type="hidden" name="resbgntm" id="resbgntm1" value=""/>
+		<input type="hidden" name="resendtm" value=""/>
+		
+		<p class="point mt20">* 예약방법 : 이용시간 선택 > 이용시간의 숫자선택 > 추가 버튼 클릭 > 시간정정완료 클릭</p>
+		<div class="board responsive t_left mt10">
+			<table>
+				<caption>이용정보 신청의 이용기관명, 예약가능일, 반선택, 이용시간에 대한 내용의 테이블</caption>
+				<colgroup class="medium_none">
+					<col style="width: 20%">
+					<col style="width: auto;">
+				</colgroup>
+				<tbody>
+					<tr>
+						<th scope="row">이용기관명</th>
+						<td>서초구육아종합지원센터(신반포)<input type="hidden" name="crname" value="서초구육아종합지원센터(신반포)" /></td>
+					</tr>  
+					<tr>
+						<th scope="row">예약 가능일</th>
+						<td>2026-08-26 ~ 2026-09-08</td>
+					</tr> 
+					<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 태그 추가.(INDEX_YBH_20260129) - START -->
+					<tr>
+						<th scope="row">반명 <i class="required" aria-label="필수입력사항">*</i></th>
+						<td>
+							<select class="selectbox" name="clname" id="clname" onchange="fnSerChange();" title="반명 선택">
+								<option value="">선택</option>
+							</select>
+						</td>
+					</tr>   
+					<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 태그 추가.(INDEX_YBH_20260129) - END -->
+					<tr>
+						<th scope="row">이용시간 <i class="required" aria-label="필수입력사항">*</i></th>
+						<td>
+		                    <select class="selectbox" name="rtm" id="rtm" onchange="fnTimeReset();" title="이용시간 선택">
+								<option value="">선택</option>
+								
+									<option value="1" >1</option>
+								
+									<option value="2" >2</option>
+								
+									<option value="3" >3</option>
+								
+									<option value="4" >4</option>
+								
+									<option value="5" >5</option>
+								
+									<option value="6" >6</option>
+								
+									<option value="7" >7</option>
+								
+									<option value="8" >8</option>
+								
+									<option value="9" >9</option>
+								
+							</select>
+		                </td>
+		            </tr>                            
+		        </tbody>
+	    	</table>
+		</div>
+
+		<ul class="dot_list_blue mt80">
+			<li class="mb22">
+				<b>예***</b> 
+				<i class="count ml30" title="이용가능">0</i> 이용가능시간대 
+				<i class="count not ml30" title="예약 불가능">X</i> 이용불가시간대 (숫자는 이용 가능한 아동수) 
+			</li>
+			<li class="mb22">
+				<b>당일예약 및 예약완료 건에 대한 추가 예약 가능여부나 기타 문의사항은 육아종합지원센터(1661-9361)로 문의하여 주시기를 바랍니다.</b> 
+			</li>
+			<li>
+				<b>시간제보육 결제금액 :</b> 시간당 정부지원 3,000원, 부모부담금 2,000원
+			</li>
+		</ul>
+                
+		<p class="exclamation mt70">점심시간(12시)를 포함하여 예약하신 경우 점심도시락을 지참하여 주시기를 바랍니다.</p>
+		
+		<!-- 예약 가능 테이블 -->
+		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 테이블 주석 처리.(INDEX_YBH_20260129) - START -->
+		<div id="crtminfo" class="board boardlist sticky_th t_center">
+		</div>
+		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 테이블 주석 처리.(INDEX_YBH_20260129) - END -->
+                
+		<div class="btn_right">
+			<a href="javascript:;" id="timecareTableAddBtn" class="btn h50" onclick="f_AddQualRow();">추가</a>
+			<a href="javascript:;" id="timecareTableCancelBtn" class="btn gray h50" onclick="f_DelQualRow();">삭제</a>
+			<a href="javascript:;" id="timecareTableRefreshBtn" class="btn line navy h50" onclick="fnRefresh();">새로고침</a>
+		</div>
+		
+		<ul class="dot_list_blue mt20" id="monthList">
+		</ul>
+                
+		<div class="board boardlist t_center mt20">
+			<table id="INFOQUALF">
+				<caption>시간제보육사업 이용일, 이용시간 예약하기 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 10%">
+					<col style="width: 20%">
+					<col style="width: 35%;">
+					<col style="width: 35%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">선택</th>
+						<th scope="col">반명</th>		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 반명 컬럼 추가.(INDEX_YBH_20260129) -->
+						<th scope="col">이용일</th>
+						<th scope="col">이용시간</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+		</div>
+                
+		<div class="btn_right">
+			<a href="javascript:;" class="btn h50" id="timecareConfirm" onClick="fnSave();">예약하기</a>
+			<a href="javascript:;" class="btn lightgray h50" id="tooltip" data-rel="pop_bb" pop-href="#pop-up-tt01">예약대기</a>
+		</div>
+                
+		<dl class="dot_list_blue large mt70">
+			<dt>시간제보육 이용 시 주의사항</dt>
+			<dd>
+				<ul class="dash_list">
+					<li><em class="caution">바우처 지원은 월 최대 60시간까지만 가능합니다.</em></li>
+					<li><em class="caution">예약한 이용시간을 준수</em>해 주시기바랍니다.</li>
+					<li>이용시간이 예약시관과 다를 경우 별점제가 적용됩니다.</li>
+				</ul>
+			</dd>
+			<dt>시간제보육 이용 시 제출서류</dt>
+			<dd>
+				<ul class="dash_list">
+					<li>제출서류 : 이용신청 서 및 운영규정서약서 <a href="/icms/board/web/common/DownloadBoardFile.html?BBSGB=42&BID=264699&ATCHMNFLSEQ=1" class="btn_file_download" title="이용신청 서 및 운영규정서약서 다운로드">다운로드</a>, 가족관계증명서, 신분증 사본</li>
+					<li>제출시기 : 시간제보육 기관 처음 방문 시 제출 (보완이 필요할 경우 1주일 이내 제출)
+						<p class="ml0">* 첫 방문 시에는 초기 적응 및 서류 제출 등을 고려하여 예약시간을 설정하여 주시기 바랍니다.</p>
+					</li>
+				</ul>
+			</dd>
+			<dt>시간제보육 이용 시 개인 준비물</dt>
+			<dd>
+				<ul class="dash_list">
+					<li>기저귀, 여벌옷, 간식 등  (필요 시)
+						<p class="ml0">* 시간제보육기관에서 급간식은 별도로 제공하지 않습니다.</p>
+					</li>
+				</ul>
+			</dd>
+		</dl>
+		
+		<p class="dot_list_blue bold">시간제보육 문의</p>
+                
+		<div class="board boardlist t_center mt20">
+			<table>
+				<caption>시간제보육 문의 기관명, 업무분장, 연락처 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 20%">
+					<col style="width: 60%;">
+					<col style="width: 20%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">기관명</th>
+						<th scope="col">업무분장</th>
+						<th scope="col">연락처</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>시도육아종합지원센터</td>
+						<td>시간제보육 이용안내, 정책 및 지침 등 사업 관련 문의</td>
+						<td>1661-9361</td>
+					</tr>
+					<tr>
+						<td>한국사회보장정보원</td>
+						<td>사용법 등 시스템 관련 문의</td>
+						<td>1566-3232</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</form>
+
+
+
+		
+
+
+<div id="pop-up-tt01" class="popup_wrap" style="display:none;">
+	<div class="popup_inner_wrap maxw1000">
+		<a href="javascript:;" onclick="fnWaitCancel();" class="popup_close" role="button" aria-label="예약대기 등록 팝업 닫기"><span class="hidden">닫기</span></a>
+		<h3>예약대기 등록</h3>
+		<section class="t_left">
+
+			<div class="board responsive t_left">
+				<table>
+					<caption>보호자 기본정보의 성명, 주민등록번호, 관계, 이메일, 휴대전화, 추가 연락처 내용의 테이블</caption>
+					<colgroup class="medium_none">
+						<col style="width: 25%">
+						<col style="width: auto;">
+					</colgroup>
+					<tbody>
+		                <tr>
+							<th scope="row"><label for="">비고</label></th>
+							<td>
+		                        <textarea title="내용 입력" class="textarea textarea_maxlength" id="etc" name="etc"></textarea>
+		                    </td>
+						</tr>
+					</tbody>
+				</table>
+			</div>	
+    		
+    		<div class="btn_right mt100">
+       		 	<a href="javascript:;" id="waitConfirmBtn" role="button" aria-label="예약대기 등록 저장" onclick="fnWaitSave();" class="btn h50">저장</a>
+        		<a href="javascript:;" id="cancelConfirmBtn" role="button" aria-label="예약대기 등록 취소" onclick="fnWaitCancel();" class="btn lightgray h50">취소</a>
+    		</div>
+						            
+		</section>
+	</div>
+</div>
+</body></html>

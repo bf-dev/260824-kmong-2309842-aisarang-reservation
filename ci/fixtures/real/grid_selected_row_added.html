@@ -1,19 +1,3 @@
-<!--
-  ci/fixtures/real_reservation_page.html
-
-  고객 PC 진단 ZIP 의 page_source/0002_reservation_page.html **원본 마크업**이다
-  (2026-08-25T05:24Z, 공동인증서 세션에서만 열리는 화면. 서버에서는 볼 수 없다).
-  재현이 아니라 실제 응답이고, 바꾼 것은 개인정보뿐이다:
-      아동명   박승우 -> 아동가
-      보호자명 김혜승 -> 보호자가
-      아동식별번호 100000000000000001 -> 100000000000000001
-  그 밖의 마크업/스크립트/클래스 이름은 서버가 내려준 그대로다.
-  선택자 회귀 테스트(tests/test_real_markup.py)가 이 파일을 진짜 크롬으로 연다.
-
-  주의: 이 화면에는 이용정보(반명/이용시간/날짜표/선택표/예약 모달)가 없다.
-  그 UI 는 아동 라디오를 눌러야 오는 ajax 응답 안에 있고, 우리는 아직 그것을
-  본 적이 없다. 그래서 v1.0.6 에 진단 기록 모드를 넣었다.
--->
 <!-- https://www.childcare.go.kr/?menuno=605 -->
 <html lang="ko" style="--vh: 8.65px;"><head><title>시간제보육 입소신청 &gt; 시간제보육신청 &gt; 시간제보육사업 &gt; 어린이집 &gt; 임신육아종합포털 아이사랑</title>
 <meta charset="UTF-8">
@@ -25,58 +9,57 @@
 <!--[if lt IE 10]>
 <![endif]-->
 <!--[if lt IE 9]>
-<script type="text/javascript" src="/com/js/html5.js"></script>
+
 <![endif]-->
-<link rel="stylesheet" href="/cms/gen/css/20221201_37145513442998453.css" type="text/css"> <!--zcms css-->
-<script src="/com/js/jquery-1.12.4.min.js"></script>
-<link id="xkStyle_lite" rel="stylesheet" type="text/css" href="https://www.childcare.go.kr/icms/AnySign/xecurekeypad/theme_white/css/xkp_html5.css"></head>
+ <!--zcms css-->
+
+<link rel="stylesheet" href="assets/20221201_37145513442998453.css">
+<link rel="stylesheet" href="assets/xkp_html5.css">
+<link rel="stylesheet" href="assets/common.css">
+<link rel="stylesheet" href="assets/font-face.css">
+<link rel="stylesheet" href="assets/jquery-ui.css">
+<link rel="stylesheet" href="assets/main.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/sub.css">
+<link rel="stylesheet" href="assets/swiper.min.css">
+</head>
 <body>
 
 <meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="format-detection" content="telephone=no, address=no, email=no">
-<script src="/icms/js/cpcommon.js"></script>
-<script src="/icms/js/fncommon.js"></script>
-<script src="/icms/js/common.js"></script>
-<script src="/icms/js/is.js"></script>
-<script src="/icms/js/ajaxCommon.js"></script>
-<script src="/icms/js/layerpopup.js"></script>
+
+
+
+
+
+
 
 <!-- 유보통합 신규 디자인 JS, CSS 파일 시작 -->
-<script src="/cms/gen/js/common.js"></script>
-<script src="/cms/gen/js/include.js"></script>
-<script src="/cms/gen/js/jquery.ui.datepicker.js"></script>
-<script src="/cms/gen/js/jquery-1.12.4.min.js"></script>
-<script src="/cms/gen/js/main.js"></script>
-<script src="/cms/gen/js/sub.js"></script>
-<script src="/cms/gen/js/swiper.min.js"></script>
 
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/common.css">
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/font-face.css">
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/jquery-ui.css">
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/main.css">
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/style.css">
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/sub.css">
-<link rel="stylesheet" type="text/css" href="/cms/gen/css/swiper.min.css">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!-- 유보통합 신규 디자인 JS, CSS 파일 끝 -->
 
 <!-- 인증서 로그인 Non-ActiveX 변경 -->
-<script type="text/javascript" src="/icms/AnySign/anySign4PCInterface.js"></script><script type="text/javascript" src="/icms/AnySign/interface/commSign4PCInterface.js"></script><script type="text/javascript" src="/icms/AnySign/interface/anySignOld4PCInterface.js"></script><!-- AnySign stylesheet --><link rel="stylesheet" id="anySignCSS" type="text/css" href="/icms/AnySign/AnySign4PC/css/common.css"><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/crossStorageClient.min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/xcryptoCore_min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/SecureProto.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/xcrypto_min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/FileSaver.min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/integrity_min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/ClassList.js"></script>
-<script type="text/javascript" src="/icms/AnySign/xecureCommon.js"></script>
-<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_config.js"></script>
-<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_html5.js"></script>
+<!-- AnySign stylesheet -->
 
-<script type="text/javascript">
-  var activexPath     = "";
-  var activexRootPath = "";
-  var imagePath       = "";
-  var imageRootPath   = "";
-  var serverType      = "";
-  var serverId        = "";
-  var ServerNumber    = "";
-  var ccisDomain      = "";
-  var prefixServerName = "";
-</script>
+
+
+
+
 
 <!-- loadingbar -->
 <style>
@@ -97,7 +80,7 @@ to {opacity:0}
 }
 </style>
 
-<div class="loading_wrap" style="display:none;">
+<div class="loading_wrap" style="display: none;">
 	<section class="loading">
 		<h1 class="loading-title">Loading...</h1>
 		<div class="progress-bar" aria-hidden="true">
@@ -106,15 +89,7 @@ to {opacity:0}
 	</section>
 </div>
 <!-- //loadingbar -->
-<script type="text/javascript">
-function fnLoddingStart () {
-	$('.loading_wrap').show();
-}
 
-function fnLoddingEnd () {
-	$('.loading_wrap').hide();
-}
-</script>
 
 <style>
 	.type-confirm, .type-confirm2, .type-alert, .type-alert2, .type-alert3 {
@@ -233,115 +208,9 @@ function fnLoddingEnd () {
 <div id="dimmed2"></div>
 <div id="dimmed3"></div>
 <div id="dimmed_confirm2"></div><!-- 세션 메세지 체크 -->
-<script src="/cms/gen/js/disable-devtool.0.3.7.min.js"></script>
-
-<script>
-/* 20250711 스크립트 위변조 방지 추가 */
-window.addEventListener('DOMContentLoaded', function () {
-    if (typeof DisableDevtool !== 'undefined') {
-      DisableDevtool({
-        ondevtoolopen: function (type) {
-          // 감지 시 로그아웃 처리
-          alert('부정 사용 방지를 위하여 개발자 도구 사용을 차단합니다.');
-          window.location.href = "/logout";
-        },
-        disableMenu: true,
-        disableSelect: true,
-        disableCopy: true
-      });
-    } else {
-      console.error("DisableDevtool is not defined");
-    }
-  });
 
 
-        /*
-        if('' == '') {
-                customAjax.ajax({
-                                type : "POST",
-                                url : "/icms/login/ssoCheck.html",
-                                data : { menuno : '605' },
-                                success : function(data) {    
-                                        if(data.result == "SUCCESS"){
-                                                location.href = data.ssoRedirectUrl;
-                                        }
-                                },
-                                error : function(xhr, status, error){
-                                        console.log(xhr);
-                                        console.log(status);
-                                        console.log(error);
-                                }
-                        });  
-        } 
-        */
 
-        
-    
-        var urlParams = new URLSearchParams(window.location.search);
-        var fromYubo = urlParams.get("fromYubo");
-        var ssoCheck = '';
-
-
-        if (fromYubo == "Y" && (ssoCheck == '' || !ssoCheck)) {
-                customAjax.ajax({
-                        type : "POST",
-                        url : "/icms/login/ssoCheck.html",
-                        data : { menuno : '605', returnUrl: location.href },
-                        success : function(data) {
-                                if(data.result == "SUCCESS"){
-                                        if(data.ssoRedirectUrl.includes(",") ){
-                                                console.log("SUCCESS");
-                                        } else {
-                                                location.href = data.ssoRedirectUrl;
-                                        }
-                                        //console.log("SUCCESS");
-                        
-                                } else if (data.result == "IS_LOGIN") {
-                                        console.log("IS_LOGIN");
-                                }
-                        },
-                        error : function(xhr, status, error){
-                                console.log(xhr, status, error);
-                        }
-                });
-        } else {
-                console.log("SSO 조건 아님");
-        }
-
-
-    function fnMemberInfoCheck(pMode) {
-        if (pMode == "EDUAGREYN") {
-            icmsLayerPopup.alert({
-                contents : "회원정보에서 유치원입학시스템을 동의하셔야 이동할 수 있습니다."
-            }, function() {
-                location.href = "/?menuno=400";
-            });
-        } else if (pMode == "CERT") {
-            customAjax.ajax({
-                type : "POST",
-                url : "/icms/usr/MemberCertRegCheckAjax.html",
-                data : { menuno : '605' },
-                success : function(data) {
-                    icmsLayerPopup.alert({
-                        contents : data.sMessage
-                    }, function() {
-                        location.href = data.sRedirectUrl;
-                    });
-                } ,
-                error : function(xhr, status, error){
-                    console.log(xhr, status, error);
-                    icmsLayerPopup.alert({
-                        contents : "잘못된 접근입니다. 다시 로그인 후 진행하세요."
-                    }, function() {
-                        location.href = "/?menuno=50";
-                    });
-                }
-            });
-        }
-        
-        return false;
-    }
-</script>
 
 
 
@@ -388,7 +257,7 @@ window.addEventListener('DOMContentLoaded', function () {
 </section>
 
 <!-- header -->
-<header id="header" class="header">
+<header id="header" class="header action">
     <div class="navi">
        <h1><a href="https://www.childcare.go.kr/" aria-label="아이사랑"><span class="hidden">아***</span></a></h1>
         <nav id="gnbMenu">
@@ -817,17 +686,13 @@ window.addEventListener('DOMContentLoaded', function () {
                     <a href="https://vt.childcare.go.kr/">Tiếng Việt</a>
                 </div>
             </li>
-                            <script>
-                                $('.icon_language').click(function() {
-                                    $('.language').toggleClass('active');
-                                });
-                            </script>
+                            
                         </ul>        
                 </div>                
             </div>
         </nav>
         <ul class="member">
-            <li class="my_account"><a href="?menuno=49">보호자가</a>(인증서)</li>
+            <li class="my_account"><a href="?menuno=49">***REDACTED***</a>(인증서)</li>
                         <li class="login"><a href="https://www.childcare.go.kr/logout">로그아웃</a></li>
                 <li class="all_menu_btn">
                 <a class="all_menu" href="#" role="button" aria-label="전체메뉴 보기">
@@ -880,14 +745,7 @@ window.addEventListener('DOMContentLoaded', function () {
         </form>
     </fieldset>
 </div>
-<script>
-$(function() {
-	$(".menu04").addClass("on");	
-	$("#subbg").css("background-image","url(/usr/images/sub/sub_background_04.jpg)");
-	$(".sub_title h2").text('어린이집');
-	$(".sub_title p").text('사랑하는 아이를 기르는 일, "아이사랑"이 함께 하겠습니다.');
-});
-</script>
+
 
 <meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
 <meta http-equiv="Cache-Control" content="no-cache, no-stor, must-revalidate">
@@ -895,22 +753,12 @@ $(function() {
 <meta name="format-detection" content="telephone=no, address=no, email=no">
 
 <!-- 인증서 로그인 Non-ActiveX 변경 -->
-<script type="text/javascript" src="/icms/AnySign/anySign4PCInterface.js"></script><script type="text/javascript" src="/icms/AnySign/interface/commSign4PCInterface.js"></script><script type="text/javascript" src="/icms/AnySign/interface/anySignOld4PCInterface.js"></script><!-- AnySign stylesheet --><link rel="stylesheet" id="anySignCSS" type="text/css" href="/icms/AnySign/AnySign4PC/css/common.css"><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/crossStorageClient.min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/xcryptoCore_min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/SecureProto.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/xcrypto_min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/FileSaver.min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/integrity_min.js"></script><script type="text/javascript" src="/icms/AnySign/AnySign4PC/ext/ClassList.js"></script>
-<script type="text/javascript" src="/icms/AnySign/xecureCommon.js"></script>
-<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_config.js"></script>
-<script type="text/javascript" src="/icms/AnySign/xecurekeypad/js/xkeypad_html5.js"></script>
+<!-- AnySign stylesheet -->
 
-<script type="text/javascript">
-  var activexPath     = "/activex/common";
-  var activexRootPath = "/activex";
-  var imagePath       = "https://img.childcare.go.kr/common";
-  var imageRootPath   = "https://img.childcare.go.kr";
-  var serverType      = "P";
-  var serverId        = "pcms";
-  var ServerNumber    = "w3";
-  var ccisDomain      = "www.childcare.go.kr";
-  var prefixServerName = "";
-</script>
+
+
+
+
 
 <!-- loadingbar -->
 <style>
@@ -931,7 +779,7 @@ to {opacity:0}
 }
 </style>
 
-<div class="loading_wrap" style="display:none;">
+<div class="loading_wrap" style="display: none;">
 	<section class="loading">
 		<h1 class="loading-title">Loading...</h1>
 		<div class="progress-bar" aria-hidden="true">
@@ -940,15 +788,7 @@ to {opacity:0}
 	</section>
 </div>
 <!-- //loadingbar -->
-<script type="text/javascript">
-function fnLoddingStart () {
-	$('.loading_wrap').show();
-}
 
-function fnLoddingEnd () {
-	$('.loading_wrap').hide();
-}
-</script>
 
 <style>
 	.type-confirm, .type-confirm2, .type-alert, .type-alert2, .type-alert3 {
@@ -1078,9 +918,9 @@ function fnLoddingEnd () {
 <div class="location">
     <ul>
         <li class="l_home"><a href="/?menuno=1" role="button" aria-label="홈으로 이동"><em class="hidden">홈</em></a></li>
-        <li class="l_depth_01"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">어린이집</div><div class="select_items"><div tabindex="-1" id="option-${index}"><a href="?menuno=4">임신</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=266">출산</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=282">육아</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=166">어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=297">소통·참여</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=301">상담실</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=326">홍보·알림</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=49">마이룸</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=511">포털이용안내</a></div></div></div></li>
-        <li class="l_depth_02"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">시간제보육사업</div><div class="select_items"><div tabindex="-1" id="option-${index}"><a href="?menuno=166">어린이집찾기</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=168">등록대기</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=180">국민행복카드</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=191">보육료결제</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=199">시간제보육사업</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=215">어린이집 이용 불편신고</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=612">보육교직원</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=226">지역개방 직장어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=664">근로복지공단 어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=227">직장어린이집 모집공고</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=228">민간업체 공개현황</a></div><div tabindex="-1" id="option-${index}"><a href="http://info.childcare.go.kr/info/pnis/search/NurseryEtntctClassAdditionSlL.jsp">연장반어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=229">어린이집 이용 신청</a></div></div></div></li>
-        <li class="l_depth_03"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">시간제보육신청</div><div class="select_items"><div tabindex="-1" id="option-${index}"><a href="?menuno=200">시간제보육안내</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=242">시간제보육신청</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=617">시간제보육아동등록</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=245">시간제보육이용현황</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=247">시간제보육결제</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=248">시간제보육결제현황</a></div></div></div></li>
+        <li class="l_depth_01"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">어린이집</div><div class="select_items" style="display: none;"><div tabindex="-1" id="option-${index}"><a href="?menuno=4">임신</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=266">출산</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=282">육아</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=166">어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=297">소통·참여</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=301">상담실</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=326">홍보·알림</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=49">마이룸</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=511">포털이용안내</a></div></div></div></li>
+        <li class="l_depth_02"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">시간제보육사업</div><div class="select_items" style="display: none;"><div tabindex="-1" id="option-${index}"><a href="?menuno=166">어린이집찾기</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=168">등록대기</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=180">국민행복카드</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=191">보육료결제</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=199">시간제보육사업</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=215">어린이집 이용 불편신고</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=612">보육교직원</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=226">지역개방 직장어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=664">근로복지공단 어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=227">직장어린이집 모집공고</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=228">민간업체 공개현황</a></div><div tabindex="-1" id="option-${index}"><a href="http://info.childcare.go.kr/info/pnis/search/NurseryEtntctClassAdditionSlL.jsp">연장반어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=229">어린이집 이용 신청</a></div></div></div></li>
+        <li class="l_depth_03"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">시간제보육신청</div><div class="select_items" style="display: none;"><div tabindex="-1" id="option-${index}"><a href="?menuno=200">시간제보육안내</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=242">시간제보육신청</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=617">시간제보육아동등록</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=245">시간제보육이용현황</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=247">시간제보육결제</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=248">시간제보육결제현황</a></div></div></div></li>
         
         
     </ul>
@@ -1094,30 +934,30 @@ function fnLoddingEnd () {
 			<input type="hidden" name="field1" id="field1">
 			<input type="hidden" name="field2" id="field2">
 			<input type="hidden" name="field3" id="field3">
-			<input type="hidden" name="sdateArray" id="sdateArray">
-			<input type="hidden" name="restimeArray" id="restimeArray">
-			<input type="hidden" name="resdtArray" id="resdtArray">
-			<input type="hidden" name="resbgntmArray" id="resbgntmArray">
-			<input type="hidden" name="resendtmArray" id="resendtmArray">
-			<input type="hidden" name="rtmArray" id="rtmArray">
-			<input type="hidden" name="resclseqArray" id="resclseqArray"> <!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반번호 항목 추가.(INDEX_YBH_20260129) -->
-			<input type="hidden" name="chage" id="chage">
-			<input type="hidden" name="infoNum" id="infoNum"> <!-- 이용정보갯수 -->
+			<input type="hidden" name="sdateArray" id="sdateArray" value="2026-08-28(금)">
+			<input type="hidden" name="restimeArray" id="restimeArray" value="09 : 00  ~  10 : 00  (1시간)">
+			<input type="hidden" name="resdtArray" id="resdtArray" value="20260828">
+			<input type="hidden" name="resbgntmArray" id="resbgntmArray" value="09 : 00">
+			<input type="hidden" name="resendtmArray" id="resendtmArray" value="10 : 00">
+			<input type="hidden" name="rtmArray" id="rtmArray" value="1">
+			<input type="hidden" name="resclseqArray" id="resclseqArray" value="1"> <!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반번호 항목 추가.(INDEX_YBH_20260129) -->
+			<input type="hidden" name="chage" id="chage" value="0">
+			<input type="hidden" name="infoNum" id="infoNum" value="1"> <!-- 이용정보갯수 -->
 			<input type="hidden" name="clseq" id="clseq" value="0"> <!-- 이용정보갯수 -->
 			<input type="hidden" name="resgb" id="resgb"> <!-- 예약구분 -->
 			<input type="hidden" name="resYn" id="N"> <!-- 예약등록처리중여부 -->
 			<input type="hidden" name="mlsvsnckreqstyn" id="N"> <!-- 23년 기능개선사업 - 시간제보육 기타활동 신청 기능 개발 : 급간식신청여부 컬럼 추가. (INDEX_YBH_20240530) -->
-			<input type="hidden" name="scnt" id="scnt">
-			<input type="hidden" name="chkTime" id="chkTime">
-			<input type="hidden" name="chname" id="chname" value="">
-			<input type="hidden" name="chobschk" id="chobschk"><!-- 장애여부 -->
-			<input type="hidden" name="chilinnb" id="chilinnb">
-			<input type="hidden" name="cntctelno1" id="cntctelno1"> <!-- 보호자 연락처1 -->
-			<input type="hidden" name="cntctelno2" id="cntctelno2"> <!-- 보호자 연락처2 -->
-			<input type="hidden" name="cntctelno3" id="cntctelno3"> <!-- 보호자 연락처3 -->
-			<input type="hidden" name="birthday" id="birthday"> <!-- 2016.12.27 아동개월수 추가 -->
-			<input type="hidden" name="chjumin" id="chjumin">
-			<input type="hidden" name="chcaregbyn" id="chcaregbyn" value="">
+			<input type="hidden" name="scnt" id="scnt" value="Y">
+			<input type="hidden" name="chkTime" id="chkTime" value="N">
+			<input type="hidden" name="chname" id="chname" value="0">
+			<input type="hidden" name="chobschk" id="chobschk" value="N"><!-- 장애여부 -->
+			<input type="hidden" name="chilinnb" id="chilinnb" value="0">
+			<input type="hidden" name="cntctelno1" id="cntctelno1" value="010"> <!-- 보호자 연락처1 -->
+			<input type="hidden" name="cntctelno2" id="cntctelno2" value="0000"> <!-- 보호자 연락처2 -->
+			<input type="hidden" name="cntctelno3" id="cntctelno3" value="0000"> <!-- 보호자 연락처3 -->
+			<input type="hidden" name="birthday" id="birthday" value="10"> <!-- 2016.12.27 아동개월수 추가 -->
+			<input type="hidden" name="chjumin" id="chjumin" value="0">
+			<input type="hidden" name="chcaregbyn" id="chcaregbyn" value="Y">
 			<input type="hidden" name="mons" id="mons" value="">
 			<input type="hidden" name="emyn" id="emyn" value="예약가능">
 			<input type="hidden" name="exmplbsnspartcptnyn" id="exmplbsnspartcptnyn" value="N">
@@ -1157,10 +997,10 @@ function fnLoddingEnd () {
 	            <tbody>
 	            	<tr>
 									<td>
-										<input onclick="listChildSelect();" type="radio" title="아동가선택" id="occasionChk100000000000000001" name="occasionChk" value="100000000000000001" data-birthday="10" data-scnt="Y" data-chcaregbyn="Y" data-usereqstcnt="1">
-										<label for="occasionChk100000000000000001" class="radio"><span></span><span class="sr-only">아동가 아동 선택</span></label>
+										<input onclick="listChildSelect();" type="radio" title="***REDACTED***선택" id="occasionChk100000000000000001" name="occasionChk" value="100000000000000001" data-birthday="10" data-scnt="Y" data-chcaregbyn="Y" data-usereqstcnt="1">
+										<label for="occasionChk100000000000000001" class="radio"><span></span><span class="sr-only">***REDACTED*** 아동 선택</span></label>
 									</td>
-									<td><a id="aOccasionChild" data-val="U02" data-chilinnb="100000000000000001">아동가</a></td>
+									<td><a id="aOccasionChild" data-val="U02" data-chilinnb="100000000000000001">***REDACTED***</a></td>
 									<td>2025.10.22</td>
 									<td>10개월</td>
 								</tr>
@@ -1196,12 +1036,530 @@ function fnLoddingEnd () {
 	</div>
 
     <div class="relative mt100">
-        <ul class="tab_wrap_inner tab_s">
-            <li class="on"><a id="tab1" href="javascript:;" data-tab="divOccasionTimeSlPL">이용정보 신청</a>
-            	<div id="divOccasionTimeSlPL" class="tab_con_inner"></div>
+        <ul class="tab_wrap_inner tab_s" style="height: 2000px;">
+            <li class="on"><a id="tab1" href="javascript:;" data-tab="divOccasionTimeSlPL" title="선택됨">이용정보 신청</a>
+            	<div id="divOccasionTimeSlPL" class="tab_con_inner" style="display: block;">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	<form name="sfrm" method="post">
+		<input type="hidden" name="stcode" value="11650000416">
+		<input type="hidden" name="chilinnb" value="0">
+		<input type="hidden" name="chage" value="0"> <!-- 예약 시점의 아동 개월 -->
+		<input type="hidden" name="reswaityn" value=""> <!-- 예약 대기 가능여부 -->
+		<input type="hidden" name="reswaitdt" value=""> <!-- 예약 대기 일자 -->
+		<input type="hidden" name="reswaitbgntm" value=""> <!-- 예약 대기 시작시간 -->
+		<input type="hidden" name="reswaitendtm" value=""> <!-- 예약 대기 종료시간 -->
+		<input type="hidden" name="chobschk" id="chobschk" value="">
+		<input type="hidden" name="field1" value="">
+		<input type="hidden" name="field2" value="">
+		<input type="hidden" name="bigo" id="bigo" value=""> <!--비고 -->
+		<!-- 20160721_박정현 : 코드레이 조치 시작 -->
+		<input type="hidden" name="stmm" value="6"> 
+		<input type="hidden" name="edmm" value="36"> 
+		
+		<input type="hidden" name="f_sdate" id="f_sdate" value="2026-08-28(금)">
+		<input type="hidden" name="sdate" id="sdate" value="20260828">
+		<input type="hidden" name="resbgntm" id="resbgntm1" value="09 : 00">
+		<input type="hidden" name="resendtm" value="10 : 00">
+		
+		<p class="point mt20">* 예약방법 : 이용시간 선택 &gt; 이용시간의 숫자선택 &gt; 추가 버튼 클릭 &gt; 시간정정완료 클릭</p>
+		<div class="board responsive t_left mt10">
+			<table>
+				<caption>이용정보 신청의 이용기관명, 예약가능일, 반선택, 이용시간에 대한 내용의 테이블</caption>
+				<colgroup class="medium_none">
+					<col style="width: 20%">
+					<col style="width: auto;">
+				</colgroup>
+				<tbody>
+					<tr>
+						<th scope="row">이용기관명</th>
+						<td>서초구육아종합지원센터(신반포)<input type="hidden" name="crname" value="서초구육아종합지원센터(신반포)"></td>
+					</tr>  
+					<tr>
+						<th scope="row">예약 가능일</th>
+						<td>2026-08-26 ~ 2026-09-08</td>
+					</tr> 
+					<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 태그 추가.(INDEX_YBH_20260129) - START -->
+					<tr>
+						<th scope="row">반명 <i class="required" aria-label="필수입력사항">*</i></th>
+						<td>
+							<select class="selectbox" name="clname" id="clname" onchange="fnSerChange();" title="반명 선택">
+								
+							<option value="">선택</option><option value="1">해솔아이</option></select>
+						</td>
+					</tr>   
+					<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 태그 추가.(INDEX_YBH_20260129) - END -->
+					<tr>
+						<th scope="row">이용시간 <i class="required" aria-label="필수입력사항">*</i></th>
+						<td>
+		                    <select class="selectbox" name="rtm" id="rtm" onchange="fnTimeReset();" title="이용시간 선택">
+								<option value="">선택</option>
+								
+									<option value="1">1</option>
+								
+									<option value="2">2</option>
+								
+									<option value="3">3</option>
+								
+									<option value="4">4</option>
+								
+									<option value="5">5</option>
+								
+									<option value="6">6</option>
+								
+									<option value="7">7</option>
+								
+									<option value="8">8</option>
+								
+									<option value="9">9</option>
+								
+							</select>
+		                </td>
+		            </tr>                            
+		        </tbody>
+	    	</table>
+		</div>
+
+		<ul class="dot_list_blue mt80">
+			<li class="mb22">
+				<b>예***</b> 
+				<i class="count ml30" title="이용가능">0</i> 이용가능시간대 
+				<i class="count not ml30" title="예약 불가능">X</i> 이용불가시간대 (숫자는 이용 가능한 아동수) 
+			</li>
+			<li class="mb22">
+				<b>당일예약 및 예약완료 건에 대한 추가 예약 가능여부나 기타 문의사항은 육아종합지원센터(1661-9361)로 문의하여 주시기를 바랍니다.</b> 
+			</li>
+			<li>
+				<b>시간제보육 결제금액 :</b> 시간당 정부지원 3,000원, 부모부담금 2,000원
+			</li>
+		</ul>
+                
+		<p class="exclamation mt70">점심시간(12시)를 포함하여 예약하신 경우 점심도시락을 지참하여 주시기를 바랍니다.</p>
+		
+		<!-- 예약 가능 테이블 -->
+		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 테이블 주석 처리.(INDEX_YBH_20260129) - START -->
+		<div id="crtminfo" class="board boardlist sticky_th t_center">
+
+
+
+
+			<table>
+				<caption>예약상태 날짜와 시간에 대한 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 18%">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">날짜/시간</th>
+						<th scope="col">09</th>
+						<th scope="col">10</th>
+						<th scope="col">11</th>
+						<th scope="col">12</th>
+						<th scope="col">13</th>
+						<th scope="col">14</th>
+						<th scope="col">15</th>
+						<th scope="col">16</th>
+						<th scope="col">17</th>
+					</tr>
+				</thead>
+				<tbody>
+					
+						
+							
+							<tr>
+								<th id="day_0" class="table_tit1" scope="row">2026-08-26(수)<input type="hidden" name="resdt" id="resdt" value="20260826"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_0" onclick="selectDay2(this,'9',0);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_0" onclick="selectDay2(this,'10',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_0" onclick="selectDay2(this,'11',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_0" onclick="selectDay2(this,'12',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_0" onclick="selectDay2(this,'13',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_0" onclick="selectDay2(this,'14',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_0" onclick="selectDay2(this,'15',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_0" onclick="selectDay2(this,'16',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_0" onclick="selectDay2(this,'17',0);"><i class="count" title="이용가능">1</i></a></td>
+								<td id="pp_0" style="display: none;">2</td> 
+								<td id="bm_0" style="display: none;">10</td>
+								<td id="nsc_0" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_1" class="table_tit1" scope="row">2026-08-27(목)<input type="hidden" name="resdt" id="resdt" value="20260827"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_1" onclick="selectDay2(this,'9',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_1" onclick="selectDay2(this,'10',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_1" onclick="selectDay2(this,'11',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_1" onclick="selectDay2(this,'12',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_1" onclick="selectDay2(this,'13',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_1" onclick="selectDay2(this,'14',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_1" onclick="selectDay2(this,'15',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_1" onclick="selectDay2(this,'16',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_1" onclick="selectDay2(this,'17',1);"><i class="count" title="이용가능">1</i></a></td>
+								<td id="pp_1" style="display: none;">2</td> 
+								<td id="bm_1" style="display: none;">10</td>
+								<td id="nsc_1" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_2" class="table_tit1" scope="row">2026-08-28(금)<input type="hidden" name="resdt" id="resdt" value="20260828"></th>
+								<td><a href="javascript:;" class="time-option on" id="tm_9_2" onclick="selectDay2(this,'9',2);" title="선택됨"><i class="count on" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_2" onclick="selectDay2(this,'10',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_2" onclick="selectDay2(this,'11',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_2" onclick="selectDay2(this,'12',2);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_2" onclick="selectDay2(this,'13',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_2" onclick="selectDay2(this,'14',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_2" onclick="selectDay2(this,'15',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_2" onclick="selectDay2(this,'16',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_2" onclick="selectDay2(this,'17',2);"><i class="count" title="이용가능">1</i></a></td>
+								<td id="pp_2" style="display: none;">2</td> 
+								<td id="bm_2" style="display: none;">10</td>
+								<td id="nsc_2" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_3" class="table_sat" scope="row">2026-08-29(토)<input type="hidden" name="resdt" id="resdt" value="20260829"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_3" onclick="selectDay2(this,'9',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_3" onclick="selectDay2(this,'10',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_3" onclick="selectDay2(this,'11',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_3" onclick="selectDay2(this,'12',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_3" onclick="selectDay2(this,'13',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_3" onclick="selectDay2(this,'14',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_3" onclick="selectDay2(this,'15',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_3" onclick="selectDay2(this,'16',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_3" onclick="selectDay2(this,'17',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_3" style="display: none;">2</td> 
+								<td id="bm_3" style="display: none;">10</td>
+								<td id="nsc_3" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_4" class="table_sun" scope="row">2026-08-30(일)<input type="hidden" name="resdt" id="resdt" value="20260830"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_4" onclick="selectDay2(this,'9',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_4" onclick="selectDay2(this,'10',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_4" onclick="selectDay2(this,'11',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_4" onclick="selectDay2(this,'12',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_4" onclick="selectDay2(this,'13',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_4" onclick="selectDay2(this,'14',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_4" onclick="selectDay2(this,'15',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_4" onclick="selectDay2(this,'16',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_4" onclick="selectDay2(this,'17',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_4" style="display: none;">2</td> 
+								<td id="bm_4" style="display: none;">10</td>
+								<td id="nsc_4" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_5" class="table_tit1" scope="row">2026-08-31(월)<input type="hidden" name="resdt" id="resdt" value="20260831"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_5" onclick="selectDay2(this,'9',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_5" onclick="selectDay2(this,'10',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_5" onclick="selectDay2(this,'11',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_5" onclick="selectDay2(this,'12',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_5" onclick="selectDay2(this,'13',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_5" onclick="selectDay2(this,'14',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_5" onclick="selectDay2(this,'15',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_5" onclick="selectDay2(this,'16',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_5" onclick="selectDay2(this,'17',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_5" style="display: none;">2</td> 
+								<td id="bm_5" style="display: none;">10</td>
+								<td id="nsc_5" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_6" class="table_tit1" scope="row">2026-09-01(화)<input type="hidden" name="resdt" id="resdt" value="20260901"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_6" onclick="selectDay2(this,'9',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_6" onclick="selectDay2(this,'10',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_6" onclick="selectDay2(this,'11',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_6" onclick="selectDay2(this,'12',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_6" onclick="selectDay2(this,'13',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_6" onclick="selectDay2(this,'14',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_6" onclick="selectDay2(this,'15',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_6" onclick="selectDay2(this,'16',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_6" onclick="selectDay2(this,'17',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_6" style="display: none;">0</td> 
+								<td id="bm_6" style="display: none;">10</td>
+								<td id="nsc_6" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_7" class="table_tit1" scope="row">2026-09-02(수)<input type="hidden" name="resdt" id="resdt" value="20260902"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_7" onclick="selectDay2(this,'9',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_7" onclick="selectDay2(this,'10',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_7" onclick="selectDay2(this,'11',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_7" onclick="selectDay2(this,'12',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_7" onclick="selectDay2(this,'13',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_7" onclick="selectDay2(this,'14',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_7" onclick="selectDay2(this,'15',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_7" onclick="selectDay2(this,'16',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_7" onclick="selectDay2(this,'17',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_7" style="display: none;">0</td> 
+								<td id="bm_7" style="display: none;">10</td>
+								<td id="nsc_7" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_8" class="table_tit1" scope="row">2026-09-03(목)<input type="hidden" name="resdt" id="resdt" value="20260903"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_8" onclick="selectDay2(this,'9',8);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_8" onclick="selectDay2(this,'10',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_8" onclick="selectDay2(this,'11',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_8" onclick="selectDay2(this,'12',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_8" onclick="selectDay2(this,'13',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_8" onclick="selectDay2(this,'14',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_8" onclick="selectDay2(this,'15',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_8" onclick="selectDay2(this,'16',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_8" onclick="selectDay2(this,'17',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_8" style="display: none;">0</td> 
+								<td id="bm_8" style="display: none;">10</td>
+								<td id="nsc_8" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_9" class="table_tit1" scope="row">2026-09-04(금)<input type="hidden" name="resdt" id="resdt" value="20260904"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_9" onclick="selectDay2(this,'9',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_9" onclick="selectDay2(this,'10',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_9" onclick="selectDay2(this,'11',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_9" onclick="selectDay2(this,'12',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_9" onclick="selectDay2(this,'13',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_9" onclick="selectDay2(this,'14',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_9" onclick="selectDay2(this,'15',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_9" onclick="selectDay2(this,'16',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_9" onclick="selectDay2(this,'17',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_9" style="display: none;">0</td> 
+								<td id="bm_9" style="display: none;">10</td>
+								<td id="nsc_9" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_10" class="table_sat" scope="row">2026-09-05(토)<input type="hidden" name="resdt" id="resdt" value="20260905"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_10" onclick="selectDay2(this,'9',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_10" onclick="selectDay2(this,'10',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_10" onclick="selectDay2(this,'11',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_10" onclick="selectDay2(this,'12',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_10" onclick="selectDay2(this,'13',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_10" onclick="selectDay2(this,'14',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_10" onclick="selectDay2(this,'15',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_10" onclick="selectDay2(this,'16',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_10" onclick="selectDay2(this,'17',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_10" style="display: none;">0</td> 
+								<td id="bm_10" style="display: none;">10</td>
+								<td id="nsc_10" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_11" class="table_sun" scope="row">2026-09-06(일)<input type="hidden" name="resdt" id="resdt" value="20260906"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_11" onclick="selectDay2(this,'9',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_11" onclick="selectDay2(this,'10',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_11" onclick="selectDay2(this,'11',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_11" onclick="selectDay2(this,'12',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_11" onclick="selectDay2(this,'13',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_11" onclick="selectDay2(this,'14',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_11" onclick="selectDay2(this,'15',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_11" onclick="selectDay2(this,'16',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_11" onclick="selectDay2(this,'17',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_11" style="display: none;">0</td> 
+								<td id="bm_11" style="display: none;">10</td>
+								<td id="nsc_11" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_12" class="table_tit1" scope="row">2026-09-07(월)<input type="hidden" name="resdt" id="resdt" value="20260907"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_12" onclick="selectDay2(this,'9',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_12" onclick="selectDay2(this,'10',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_12" onclick="selectDay2(this,'11',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_12" onclick="selectDay2(this,'12',12);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_12" onclick="selectDay2(this,'13',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_12" onclick="selectDay2(this,'14',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_12" onclick="selectDay2(this,'15',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_12" onclick="selectDay2(this,'16',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_12" onclick="selectDay2(this,'17',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_12" style="display: none;">0</td> 
+								<td id="bm_12" style="display: none;">10</td>
+								<td id="nsc_12" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_13" class="table_tit1" scope="row">2026-09-08(화)<input type="hidden" name="resdt" id="resdt" value="20260908"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_13" onclick="selectDay2(this,'9',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_13" onclick="selectDay2(this,'10',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_13" onclick="selectDay2(this,'11',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_13" onclick="selectDay2(this,'12',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_13" onclick="selectDay2(this,'13',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_13" onclick="selectDay2(this,'14',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_13" onclick="selectDay2(this,'15',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_13" onclick="selectDay2(this,'16',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_13" onclick="selectDay2(this,'17',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_13" style="display: none;">0</td> 
+								<td id="bm_13" style="display: none;">10</td>
+								<td id="nsc_13" style="display: none;">0</td>
+							</tr>
+							
+						
+						
+					
+				</tbody>
+			</table>
+</div>
+		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 테이블 주석 처리.(INDEX_YBH_20260129) - END -->
+                
+		<div class="btn_right">
+			<a href="javascript:;" id="timecareTableAddBtn" class="btn h50" onclick="f_AddQualRow();">추가</a>
+			<a href="javascript:;" id="timecareTableCancelBtn" class="btn gray h50" onclick="f_DelQualRow();">삭제</a>
+			<a href="javascript:;" id="timecareTableRefreshBtn" class="btn line navy h50" onclick="fnRefresh();">새로고침</a>
+		</div>
+		
+		<ul class="dot_list_blue mt20" id="monthList">
+		<li id="currentMonthLi" name="202608" value="73"><b>8월 예약시간 : 73시간</b></li><li id="futureMonthLi" name="202609" value="44"><b>9월 예약시간 : 44시간</b></li></ul>
+                
+		<div class="board boardlist t_center mt20">
+			<table id="INFOQUALF">
+				<caption>시간제보육사업 이용일, 이용시간 예약하기 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 10%">
+					<col style="width: 20%">
+					<col style="width: 35%;">
+					<col style="width: 35%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">선택</th>
+						<th scope="col">반명</th>		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 반명 컬럼 추가.(INDEX_YBH_20260129) -->
+						<th scope="col">이용일</th>
+						<th scope="col">이용시간</th>
+					</tr>
+				</thead>
+				<tbody>
+				<tr id="tId_0"><td><input type="checkbox" id="rowSchChkNo0" name="rowQualChkNo" class="chkHd"><label for="rowSchChkNo0" class="checkbox"><span></span></label></td><td><input name="resclname0" type="text" id="resclname0" value="해솔아이" class="uin" validexp="반명:yes" style="width: 200px; text-align:center" readonly="readonly" title="반명0"><input name="resclseq0" type="hidden" value="1" id="resclseq0"></td><td><input name="sdate0" type="text" id="sdate0" value="2026-08-28(금)" class="uin" validexp="이용일:yes" style="width: 300px; text-align:center" readonly="readonly" title="이용일0"><input name="resdt0" type="hidden" id="resdt0" value="20260828"></td><td><input name="restime0" type="text" id="restime0" value="09 : 00  ~  10 : 00  (1시간)" validexp="이용시간:yes" class="uin" style="width: 300px; text-align:center" readonly="readonly" title="이용시간0"><input name="resbgntm0" type="hidden" value="09 : 00" id="resbgntm0"><input name="resendtm0" type="hidden" value="10 : 00" id="resendtm0"><input name="rtm0" type="hidden" value="1" id="rtm0"></td></tr></tbody>
+			</table>
+		</div>
+                
+		<div class="btn_right">
+			<a href="javascript:;" class="btn h50" id="timecareConfirm" onclick="fnSave();">예약하기</a>
+			<a href="javascript:;" class="btn lightgray h50" id="tooltip" data-rel="pop_bb" pop-href="#pop-up-tt01">예약대기</a>
+		</div>
+                
+		<dl class="dot_list_blue large mt70">
+			<dt>시간제보육 이용 시 주의사항</dt>
+			<dd>
+				<ul class="dash_list">
+					<li><em class="caution">바우처 지원은 월 최대 60시간까지만 가능합니다.</em></li>
+					<li><em class="caution">예약한 이용시간을 준수</em>해 주시기바랍니다.</li>
+					<li>이용시간이 예약시관과 다를 경우 별점제가 적용됩니다.</li>
+				</ul>
+			</dd>
+			<dt>시간제보육 이용 시 제출서류</dt>
+			<dd>
+				<ul class="dash_list">
+					<li>제출서류 : 이용신청 서 및 운영규정서약서 <a href="/icms/board/web/common/DownloadBoardFile.html?BBSGB=42&amp;BID=264699&amp;ATCHMNFLSEQ=1" class="btn_file_download" title="이용신청 서 및 운영규정서약서 다운로드">다운로드</a>, 가족관계증명서, 신분증 사본</li>
+					<li>제출시기 : 시간제보육 기관 처음 방문 시 제출 (보완이 필요할 경우 1주일 이내 제출)
+						<p class="ml0">* 첫 방문 시에는 초기 적응 및 서류 제출 등을 고려하여 예약시간을 설정하여 주시기 바랍니다.</p>
+					</li>
+				</ul>
+			</dd>
+			<dt>시간제보육 이용 시 개인 준비물</dt>
+			<dd>
+				<ul class="dash_list">
+					<li>기저귀, 여벌옷, 간식 등  (필요 시)
+						<p class="ml0">* 시간제보육기관에서 급간식은 별도로 제공하지 않습니다.</p>
+					</li>
+				</ul>
+			</dd>
+		</dl>
+		
+		<p class="dot_list_blue bold">시간제보육 문의</p>
+                
+		<div class="board boardlist t_center mt20">
+			<table>
+				<caption>시간제보육 문의 기관명, 업무분장, 연락처 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 20%">
+					<col style="width: 60%;">
+					<col style="width: 20%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">기관명</th>
+						<th scope="col">업무분장</th>
+						<th scope="col">연락처</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>시도육아종합지원센터</td>
+						<td>시간제보육 이용안내, 정책 및 지침 등 사업 관련 문의</td>
+						<td>1661-9361</td>
+					</tr>
+					<tr>
+						<td>한국사회보장정보원</td>
+						<td>사용법 등 시스템 관련 문의</td>
+						<td>1566-3232</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</form>
+
+
+
+		
+
+
+<div id="pop-up-tt01" class="popup_wrap" style="display:none;">
+	<div class="popup_inner_wrap maxw1000">
+		<a href="javascript:;" onclick="fnWaitCancel();" class="popup_close" role="button" aria-label="예약대기 등록 팝업 닫기"><span class="hidden">닫기</span></a>
+		<h3>예약대기 등록</h3>
+		<section class="t_left">
+
+			<div class="board responsive t_left">
+				<table>
+					<caption>보호자 기본정보의 성명, 주민등록번호, 관계, 이메일, 휴대전화, 추가 연락처 내용의 테이블</caption>
+					<colgroup class="medium_none">
+						<col style="width: 25%">
+						<col style="width: auto;">
+					</colgroup>
+					<tbody>
+		                <tr>
+							<th scope="row"><label for="">비고</label></th>
+							<td>
+		                        <textarea title="내용 입력" class="textarea textarea_maxlength" id="etc" name="etc"></textarea>
+		                    </td>
+						</tr>
+					</tbody>
+				</table>
+			</div>	
+    		
+    		<div class="btn_right mt100">
+       		 	<a href="javascript:;" id="waitConfirmBtn" role="button" aria-label="예약대기 등록 저장" onclick="fnWaitSave();" class="btn h50">저장</a>
+        		<a href="javascript:;" id="cancelConfirmBtn" role="button" aria-label="예약대기 등록 취소" onclick="fnWaitCancel();" class="btn lightgray h50">취소</a>
+    		</div>
+						            
+		</section>
+	</div>
+</div>
+</div>
             </li>
             <li><a id="tab2" href="javascript:;" data-tab="divOccasionTimePils">통합반 이용정보 신청</a>
-            	<div id="divOccasionTimePils" class="tab_con_inner"></div>
+            	<div id="divOccasionTimePils" class="tab_con_inner" style="display: none;"></div>
             </li>
         </ul>
     </div>
@@ -1212,410 +1570,7 @@ function fnLoddingEnd () {
 <div id="dimmed"></div>
 <div class="popup_wrap" id="divChildInfoReqBtn"></div>
 
-<script>
 
-$(document).ready(function() {
-	fnLocationSet("menu", 3, 3, 4, 13, 1, 1, 0);
-	$(".l_depth_04, .l_depth_last").remove();
-
-	/* N : 독립반 , Y : 통합반*/
-	var unityyn = $("#unityyn").val();
-	
-	if(unityyn == "Y"){
-		$('#divOccasionTimePils').closest("li").addClass('on');
-		$('#divOccasionTimeSlPL').closest("li").removeClass('on');
-	}else{
-		$('#divOccasionTimePils').closest("li").removeClass('on');
-		$('#divOccasionTimeSlPL').closest("li").addClass('on');
-	}
-	
-	var $this;
-	
-	$("[data-rel=pop]").click(function(e) {
-		e.preventDefault();
-		$(".popup_wrap").hide();
-		$("#dimmed").show();
-		
-		$($(this).attr("href")).attr("tabindex", 0).fadeIn().focus();
-		$this = $(this);
-		return false;
-	});
-
-	$(".popup_close").click(function(e) {
-		e.preventDefault();
-		$(this).closest(".popup_wrap").hide();
-		$("#dimmed").hide();
-		$this.focus(); //접근성을 위한 포커스이동
-		return false;
-	});
-
-	$("[data-rel=pop_bs]").click(function(e) {
-		e.preventDefault();
-		$(".pop_bs").hide();
-		$($(this).attr("href")).show();
-		$($(this).attr("href")).attr("tabindex", 0).focus();
-		$this = $(this);
-		return false;
-	});
-
-	$(".pop_close_bs").click(function(e) {
-		e.preventDefault();
-		$(this).closest(".popup_wrap").hide();
-		$this.focus(); //접근성을 위한 포커스이동
-		return false;
-	});
-
-	//텝적용 스크립트
-	$('.tab_wrap_inner > li > a').off('click');
-	$('.tab_wrap_inner > li > a').on('click',function(e) {
-		e.preventDefault();
-		
-		var $thisTabWrap = $(this).closest('.tab_wrap_inner');
-        var tab_id = $(this).attr('data-tab');
-        
-        $thisTabWrap.find('li').removeClass("on");
-        $thisTabWrap.find('li > a').removeAttr("title");
-        
-        $(this).parent().addClass("on");
-        $(this).attr("title", "선택됨");
-        
-        $thisTabWrap.find('.tab_con_inner').hide();
-        $thisTabWrap.find('.btn_more_dot').hide();
-        
-        $thisTabWrap.find("#"+tab_id).show();
-        $(this).closest('li').find('.btn_more_dot').show();
-        
-		//$('input[name^=occasionChk][value='+$('input[name=occasionChk]:checked').data().chilinnb+']').prop('checked', true);
-		let chilinnb = $('input[name=occasionChk]:checked').val();
-		// 세부내역일 경우 선택여부 체크
-		if (typeof chilinnb == "undefined" || chilinnb == "" || chilinnb == null) {
-			let msg = '시간제보육 아동을 선택해주세요.';
-			icmsLayerPopup.alert({
-				contents : msg
-			}, function(){
-				$('a[data-tab="' + tab_id + '"]').attr('tabindex', 0).focus();
-			});
-			return false;
-		}
-
-		let chcaregbyn = $('input[name=occasionChk]:checked').data().chcaregbyn;
-		var $thisTab = $(this);
-		var tab_id = $thisTab.attr('data-tab');
-		//console.log(tab_id);
-
-		if (tab_id == 'divOccasionTimePils') {
-			$('#unityyn').val('Y');
-			var emyn = $('#emyn').val();
-			var exmplbsnspartcptnyn = $('#exmplbsnspartcptnyn').val();
-			if (emyn=="예약불가능") {
-				var errMsg = "해당기관은 교사 미배정 상태입니다.해당기관에서 교사 배정 완료 후 예약이 가능합니다.";
-				icmsLayerPopup.alert({
-					contents : errMsg
-				});
-				return false;
-			}
-			
-			fnChildInfo($thisTab, tab_id, chilinnb, chcaregbyn);
-		} else {
-			$('#unityyn').val('N');
-			fnChildInfo($thisTab, tab_id, chilinnb, chcaregbyn);
-		}
-	});
-
-	// --------------------------
-  	// 이용일 체크박스 클릭시
-	// --------------------------
-	$('.rerv_check').on('change',function() {
-		$("#dimmed").show();
-		$(".popup_wrap").hide();
-		$('#pop-up-s02').attr("tabindex", 0).show().focus();
-		$this = $('#pop-up-s02');
-	});
-
-	// --------------------------
-	// 입소대기 아동등록 화면 호출
-	// --------------------------
-	$("[id=childInfoReqBtn], [id^=aOccasionChild]").click(function() {
-		let dataVal = $(this).data().val;
-		let reqUrl = "";
-		let chilinnb = "";
-		if (dataVal == 'U02') chilinnb = $(this).data().chilinnb;
-
-		reqUrl = "/icms/myroom/ChildInfoOccasionReq.html";
-		$this = $(this);
-		customAjax.ajax({
-	        type: "POST",
-	        url: reqUrl,
-			data : {
-				chilinnb: chilinnb,
-				type: dataVal,
-				menuno: "605"
-			},
-	        success: function(data) {
-	        	$("#divChildInfoReqBtn").empty();
-	        	$("#divChildInfoReqBtn").append(data);
-	    		$("#divChildInfoReqBtn").show();
-	    		$("#dimmed").show();
-	    		$(".popup-close").click(function() {
-	    			$(this).closest(".popup_wrap").hide();
-	    			$("#dimmed").hide();
-	    			$this.focus(); //접근성을 위한 포커스이동
-	    			return false;
-	    		});
-	    		
-	    		$("#divChildInfoReqBtn").attr("tabindex", "0");
-	    		$("#divChildInfoReqBtn").focus();
-	    		
-	    		//팝업 및 이중 팝업 내의 닫기 공용 + preThis : 0 -> 1
-	    		$(".popup_close").click(function() {
-	    			$(this).closest(".popup_wrap").hide();
-	    			$("#dimmed").hide();
-	    			
-	    			$this.attr("tabindex", "0"); //접근성을 위한 포커스 이동
-	    			$this.focus();
-	    			return false;
-	    		});
-	    		
-	    		//$("#divChildInfoReqBtn").attr("tabindex", 0).fadeIn().focus();
-	    		//$this = $(this);
-	        },
-			error: function(res) {
-				console.log('실패!!!!!');
-				console.log(res);
-			}
-	    });	
-	});
-
-	$("[id=btnOccasionNurserySlPLPu]").click(function() {
-		let chilinnb = $('input[name=occasionChk]:checked').val();
-		if (typeof chilinnb == "undefined" || chilinnb == "" || chilinnb == null) {
-			let msg = '시간제보육 아동을 선택해주세요.';
-			icmsLayerPopup.alert({
-				contents : msg
-			}, function(){
-				$('#btnOccasionNurserySlPLPu').attr('tabindex', 0).focus();
-			});
-			
-			return false;
-		}
-		
-		$this = $(this);
-
-		customAjax.ajax({
-	        type: "POST",
-	        url: "/icms/occasion/OccasionNurserySlPLPu.html",
-			data : {
-			},
-	        success: function(data) {
-	        	$("#divChildInfoReqBtn").empty();
-	        	$("#divChildInfoReqBtn").append(data);
-	    		$("#divChildInfoReqBtn").show();
-	    		$("#dimmed").show();
-	    		
-	    		$("#divChildInfoReqBtn").attr("tabindex", 0).focus();
-	    		
-	    		/* $(".popup_close").click(function() {
-	    			$(this).closest(".popup_wrap").hide();
-	    			$("#dimmed").hide();
-	    			$this.focus(); //접근성을 위한 포커스이동
-	    			return false;
-	    		}); */
-	    		
-	    		//팝업 및 이중 팝업 내의 닫기 공용 + preThis : 0 -> 1
-	    		$(".popup_close").click(function() {
-	    			$(this).closest(".popup_wrap").hide();
-	    			$("#dimmed").hide();
-	    			
-	    			$this.attr("tabindex", "0"); //접근성을 위한 포커스 이동
-	    			$this.focus();
-	    			return false;
-	    		});
-	    		
-	    		//$($(this).attr("href")).attr("tabindex", 0).fadeIn().focus();
-	    		//$this = $(this);
-	        },
-			error: function(res) {
-				console.log('실패!!!!!');
-				console.log(res);
-			}
-	    });	
-	});
-	
-	// 아래 중복 이벤트로 인한 주석 처리..(INDEX_SJW_20250531)
-// 	$('input[name=occasionChk]').click(function () {
-		
-// 		//$('[data-tab=divOccasionTimeSlPL]').trigger('click');
-// 		//fnSetTab();
-
-// 		/* N : 독립반 , Y : 통합반*/
-// 		var unityyn = $("#unityyn").val();
-	
-// 		if ($('#unityyn').val() == 'N') {
-// 			$('[data-tab=divOccasionTimeSlPL]').trigger('click');
-// 		} else if ($('#unityyn').val() == 'Y') {
-// 			$('[data-tab=divOccasionTimePils]').trigger('click');
-// 		}
-	
-// 	});
-	
-});
-
-function fnSetTab () {
-	if ($('#unityyn').val() == 'N' || $('#unityynall').val() == 'A') {
-		
-		$('#divOccasionTimeSlPL').addClass('on');
-		$('[data-tab=divOccasionTimeSlPL]').css({'pointer-events': ''});
-		
-		if($('#unityynall').val() != 'A') {
-			$('#divOccasionTimePils').removeClass('on');
-			$('[data-tab=divOccasionTimePils]').css({'pointer-events': 'none'});
-		} else {
-			$('[data-tab=divOccasionTimePils]').css({'pointer-events': ''});
-		}
-		
-		$("#divOccasionTimeMainSlPL").empty();
-		
-	} else if ($('#unityyn').val() == 'Y' || $('#unityynall').val() == 'A') {
-		
-		$('#divOccasionTimePils').addClass('on');
-		
-		if($('#unityynall').val() != 'A') {
-			
-			$('#divOccasionTimeSlPL').removeClass('on');
-			$('[data-tab=divOccasionTimeSlPL]').css({'pointer-events': 'none'});
-			
-		} else {
-			$('[data-tab=divOccasionTimeSlPL]').css({'pointer-events': ''});
-		}
-		$('[data-tab=divOccasionTimePils]').css({'pointer-events': ''});
-    	$("#divOccasionTimeMainSlPL").empty();
-	} 
-}
-
-function fnChildInfo ($thisTab, tab_id, chilinnb, chcaregbyn) {
-	fnLoddingStart();
-	customAjax.ajax({
-        type: "POST",
-        url: "/icms/occasion/SelectOccasionChild.html",
-		data : {
-			chilinnb: chilinnb
-		},
-        success: function(childInfo) {
-        	//console.log(childInfo);
-        	var pfrm = document.pfrm;
-        	pfrm.chname.value = childInfo.chname;
-        	pfrm.chobschk.value = childInfo.chobschk;
-        	pfrm.chilinnb.value = childInfo.chilinnb;
-        	pfrm.cntctelno1.value = childInfo.cntctelno1;
-        	pfrm.cntctelno2.value = childInfo.cntctelno2;
-        	pfrm.cntctelno3.value = childInfo.cntctelno3;
-        	pfrm.birthday.value = $('input[name=occasionChk]:checked').data().birthday;
-        	pfrm.scnt.value = $('input[name=occasionChk]:checked').data().scnt;
-        	pfrm.chjumin.value = childInfo.chjumin.replace(/ /gi,'').replace(/-/,'').substr(0,7);
-        	pfrm.chcaregbyn.value = chcaregbyn;
-        	pfrm.mons.value = "";
-        	
-        	let dataUrl = "";
-    		if (tab_id == 'divOccasionTimeSlPL') {
-    			dataUrl = "/icms/occasion/OccasionTimeMainSlPL.html";
-    		} else {
-    			dataUrl = "/icms/occasion/OccasionTimeMainPiIs.html";
-    		}	        	
-			customAjax.ajax({
-		        type: "POST",
-		        url: dataUrl,
-				data :{
-					crname: $('#crname').val(),
-					stcode: $('#stcode').val(),
-					chilinnb: chilinnb
-				},
-		        success: function(data) {
-		        	
-		        	if (tab_id == 'divOccasionTimeSlPL') {
-		        		$("#divOccasionTimePils").empty();
-		        		$("#divOccasionTimeSlPL").empty();
-		        		
-			        	$("#divOccasionTimeSlPL").append(data);
-			        	$("#divOccasionTimeSlPL").show();
-		    		} else {
-		    			$("#divOccasionTimeSlPL").empty();
-		    			$("#divOccasionTimePils").empty();
-		    			
-			        	$("#divOccasionTimePils").append(data);
-			        	$("#divOccasionTimePils").show();
-		    		}	
-		    		
-		        	setTimeout(function(){
-		        		$(".tab_wrap_inner").css("height", "2000px");
-		        	}, 300);
-		        	
-		        	fnLoddingEnd();
-		        },
-				error: function(res) {
-					console.log('실패!!!!!');
-					console.log(res);
-		    		fnLoddingEnd();
-				}
-		    });	
-        },
-		error: function(res) {
-			console.log('실패!!!!!');
-			console.log(res);
-    		fnLoddingEnd();
-		}
-    });
-}
-
-function listChildSelect(){
-
-	/* 24년 기능개선사업 - 시간제보육 이용동의서 추가 : 이용신청서 작성 여부 확인 후 미작성 시 아동수정 레이어 호출. (INDEX_SJW_20250531) - START */
-	$this = $('input[name=occasionChk]:checked');
-	var usereqstcnt = $this.data('usereqstcnt');
-	if(usereqstcnt < '1'){
-		alert('이용신청서를 먼저 등록해주세요.');
-		
-		customAjax.ajax({
-	        type: "POST",
-	        url: "/icms/myroom/ChildInfoOccasionReq.html",
-			data : {
-				chilinnb: $this.val(),
-				stcode: $('#stcode').val(),
-				unityYn: $('#unityyn').val(),
-				unityynall: $('#unityynall').val(),
-				type: "U02",
-				menuno: "605"
-			},
-	        success: function(data) {
-	        	$("#divChildInfoReqBtn").empty();
-	        	$("#divChildInfoReqBtn").append(data);
-	    		$("#divChildInfoReqBtn").show();
-	    		$("#dimmed").show();
-	    		$(".popup_close").hide();
-	    		
-	    		$("#divChildInfoReqBtn").attr("tabindex", 0).fadeIn().focus();
-	    		$this = $('input[name=occasionChk]:checked');
-	        },
-			error: function(res) {
-				console.log('실패!!!!!');
-				console.log(res);
-			}
-	    });	
-		return false;
-	}
-	/* 24년 기능개선사업 - 시간제보육 이용동의서 추가 : 이용신청서 작성 여부 확인 후 미작성 시 아동수정 레이어 호출. (INDEX_SJW_20250531) - END */
-	else {
-		/* N : 독립반 , Y : 통합반*/
-		var unityyn = $("#unityyn").val();
-		
-		if ($('#unityyn').val() == 'N') {
-			$('[data-tab=divOccasionTimeSlPL]').trigger('click');
-		} else if ($('#unityyn').val() == 'Y') {
-			$('[data-tab=divOccasionTimePils]').trigger('click');
-		}
-	}
-}
-
-</script>
 
 <footer id="footer">
     <div class="footer_wrap">
@@ -1628,24 +1583,24 @@ function listChildSelect(){
                 <li><a href="?menuno=515">모바일 서비스</a></li>
                 <li>
                     <span class="webwach_logo">
-                        <a href="https://www.wa.or.kr/board/list.asp?search=total&amp;SearchString=%BE%C6%C0%CC%BB%E7%B6%FB&amp;BoardID=0006" target="_blank" title="새창열림"><img src="https://www.childcare.go.kr/usr/images/common/wa.png" alt="(사)한국장애인단체총연합회 한국웹접근성인증평가원 웹 접근성 우수사이트 인증마크(WA인증마크)"></a>
+                        <a href="https://www.wa.or.kr/board/list.asp?search=total&amp;SearchString=%BE%C6%C0%CC%BB%E7%B6%FB&amp;BoardID=0006" target="_blank" title="새창열림"><img src="data:," alt="(사)한국장애인단체총연합회 한국웹접근성인증평가원 웹 접근성 우수사이트 인증마크(WA인증마크)"></a>
                     </span>
                 </li>
             </ul>
         </div>
         <div class="address_wrap">
             <div class="address_inner">
-                <p><img src="/cms/gen/images/f_logo01.png" alt="교육부 로고"></p>
+                <p><img src="data:," alt="교육부 로고"></p>
                 <address>정부세종청사 14동<span class="br"></span>
                     세종특별자치시 갈매로 408</address>
             </div>
             <div class="address_inner">
-                <p><img src="/cms/gen/images/f_logo03.png" alt="보건복지부 로고"></p>
+                <p><img src="data:," alt="보건복지부 로고"></p>
                 <address>정부세종청사 10동<span class="br"></span>
                     세종특별자치시 도움4로 13</address>
             </div>
             <div class="address_inner">
-                <p><img src="/cms/gen/images/f_logo02.png" alt="한국사회보장정보원 로고"></p>
+                <p><img src="data:," alt="한국사회보장정보원 로고"></p>
                 <address>
                     한국사회보장정보원(04933) 서울 광진구 능동로 400<br>
                         Copyright ⓒ 한국사회보장정보원. All rights reserved.

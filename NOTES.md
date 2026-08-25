@@ -615,7 +615,220 @@ CI 는 프로즌 exe 로 `--rectest` 를 돌려 `reserved=False` 를 확인한�
 > `test_the_products_own_chrome_options_actually_launch_chrome` 이 제품 옵션
 > 그대로 크롬을 띄워본다.
 
-## 배포 현황 (v1.0.6, 2026-08-25 07:50Z) ← 지금 살아 있는 것
+## v1.0.7 (2026-08-25): 실물 마크업 확보 - 4~9단계를 추론에서 사실로
+
+**이 판의 전부는 근거의 교체다.** 기능을 새로 만들지 않았다. 4~9단계가
+그동안 "구조와 글자로 더듬어 찾기" 였던 것을, 고객이 실제로 받은 응답의
+id 로 바꿨다. 그 과정에서 **살아 있던 결함 다섯 개**가 드러났다.
+
+### 무엇이 들어왔나
+
+2026-08-25T08:53~08:57Z, 고객이 자기 PC(Windows 10 19045)에서 진짜 공동인증서
+세션으로 v1.0.6 의 [진단 기록] 을 돌리고 예약 흐름을 **손으로 확인창까지**
+걸었다. ZIP 두 개(두 번째가 상위집합):
+
+```
+artifacts/private/05788f12-b025-48ba-bb01-7c45121013d8/
+  1787648224328-…-175705.zip   872,236 B  진단기록  페이지 14장 / 요청 373건 / 찾던 응답 2건
+  1787648258593-…-175739.zip   872,254 B  같은 세션, GUI 종료 (meta/run.log 만 다름)
+```
+
+그 안에 우리가 한 번도 못 봤던 `/icms/occasion/OccasionTimeMainSlPL.html`
+응답(35,922 B)이 통째로 들어 있다. **4~9단계를 그리는 화면이 전부 여기 있다.**
+
+픽스처로 굳혀 두었다 (개인정보 치환 후 커밋됨):
+
+```
+ci/fixtures/real/occasion_time_main_slpl.html       이용정보 ajax 응답 (DOM 판정용, 스크립트 제거)
+ci/fixtures/real/occasion_time_main_slpl.raw.html   같은 것, 스크립트 보존 (사이트 JS 문구 확인용)
+ci/fixtures/real/grid_ready.html                    날짜x시간 표가 그려진 화면
+ci/fixtures/real/grid_selected_row_added.html       칸 선택됨 + 선택표 1행
+ci/fixtures/real/modal_open.html                    예약 확인창이 열린 상태
+ci/fixtures/real/modal_open.raw.html                같은 것, 스크립트 보존
+ci/fixtures/real/assets/*.css                       실물 CSS (가시성 판정에 필수, 아래 참고)
+```
+
+다시 만들려면: `python ci/build_real_fixtures.py <ZIP경로>` (기본값은 위 두 번째 ZIP).
+개인정보가 한 글자라도 남으면 스크립트가 0 이 아닌 코드로 끝난다.
+
+### 실측된 진짜 마크업 (이제 이게 기준이다)
+
+```html
+<!-- 4단계 반명. option 은 selectOcTaClList.html 응답으로 채워진다(value=clseq) -->
+<select class="selectbox" name="clname" id="clname" onchange="fnSerChange();" title="반명 선택">
+
+<!-- 5단계 이용시간. value 는 "1".."9" (시간 수) -->
+<select class="selectbox" name="rtm" id="rtm" onchange="fnTimeReset();" title="이용시간 선택">
+
+<!-- 6단계 날짜x시간 표: #crtminfo > table, 헤더 09..17 (0채움), 14행 x 9열 = 126칸 -->
+<th id="day_0" class="table_tit1" scope="row">2026-08-26(수)
+    <input type="hidden" name="resdt" id="resdt" value="20260826"></th>
+<td><a href="javascript:;" class="time-option" id="tm_9_0"
+       onclick="selectDay2(this,'9',0);"><i class="count" title="이용가능">1</i></a></td>
+<!-- 고른 뒤 -->
+<a class="time-option on" id="tm_9_2" title="선택됨"><i class="count on">1</i></a>
+<!-- 이용불가 -->
+<i class="count not" title="이용불가능">X</i>
+<!-- 같은 tr 끝에 화면에 안 보이는 세 칸이 더 있다 -->
+<td id="pp_0" style="display:none">2</td>   <!-- 벌점 -->
+<td id="bm_0" style="display:none">10</td>  <!-- 개월수 -->
+<td id="nsc_0" style="display:none">0</td>
+
+<!-- 7단계 -->
+<a href="javascript:;" id="timecareTableAddBtn" class="btn h50" onclick="f_AddQualRow();">추가</a>
+
+<!-- 8단계 선택표. 내용은 글자가 아니라 input 의 value 에 있다 -->
+<table id="INFOQUALF"> … <tr id="tId_0">
+  <td><input type="checkbox" id="rowSchChkNo0" name="rowQualChkNo" class="chkHd"> …
+  <td><input id="sdate0" value="2026-08-28(금)" readonly>
+      <input type="hidden" id="resdt0" value="20260828"></td>
+  <td><input id="restime0" value="09 : 00  ~  10 : 00  (1시간)" readonly> …
+
+<!-- 9단계 -->
+<a href="javascript:;" class="btn h50" id="timecareConfirm" onClick="fnSave();">예약하기</a>
+<a href="javascript:;" class="btn lightgray h50" id="tooltip" …>예약대기</a>   <!-- 바로 옆! -->
+```
+
+### 확인창 문제는 이제 끝났다 (제일 중요)
+
+예약 흐름은 `icmsLayerPopup.**confirm2**` 를 쓴다 (`layerpopup.js` 실측):
+
+```js
+icmsLayerPopup.confirm2({title:"예약", contents: confirmText,
+                         thisFocus:"#timecareConfirm"}, function(res){ … InsertOcreqst … })
+// confirm2 는 #layer-confirm-popup-title2 / -contents2 를 채우고
+// #layer-confirm-popup2 와 #dimmed_confirm2 를 show() 한다.
+// [확인] 콜백을 묶는 대상은 #layer-confirm-popup-confirm2 다.
+```
+
+따라서 **최종 [확인] 은 `#layer-confirm-popup-confirm` 이 아니라
+`#layer-confirm-popup-confirm2`** 다. 전자를 눌렀다면 사이트가 그 버튼에
+아무 콜백도 묶지 않았으므로 **조용히 아무 일도 일어나지 않았을 것이다.**
+
+그리고 그 페이지에는 공용 팝업 껍데기가 **두 벌** 들어 있다:
+
+| 사본 | 인라인 style | 본문 | 실제 상태 |
+|---|---|---|---|
+| 1번째 | `display: block` | "…예약하시겠습니까?" | **지금 열린 진짜 창** |
+| 2번째 | 없음 | 비어 있음 | `.popup_wrap{display:none}` 으로 숨음 |
+
+`id` 가 중복이므로 **`getElementById` 를 쓰면 안 된다**. `querySelectorAll` +
+가시성으로 고른다. 같은 이유로 `id="layer-confirm-popup-close2"` 는 한 껍데기
+안에서도 두 번 나온다(X 닫기, [취소]).
+
+실측 본문 (고객은 이번 달 60시간을 이미 넘겨서 안내가 앞에 붙는다):
+
+```
+월 이용 시간이 60시간을 초과할 경우 바우처 지원이 불가합니다. ※ 시간당 5,000원으로 이용
+8월 현재 예약 시간 포함하여 60시간을 초과합니다.
+예약하시겠습니까?
+```
+
+즉 `"예약하시겠습니까"` 문구 자체는 **실물로 확인됐다**(사이트 JS 의
+`confirmText` 기본값이고, 60시간 초과 분기에서도 마지막 줄이 그대로다).
+
+### 고친 결함 다섯 개 (전부 실물에서 재현됨)
+
+1. **날짜x시간 표를 126칸이 아니라 168칸으로 읽었다.**
+   예전 `_JS_SCAN_GRID` 는 "첫 칸이 날짜인 줄의 모든 td" 를 칸으로 세고,
+   헤더에 숫자가 없으면 시각을 `8 + 열번호` 로 지어냈다. 숨은
+   `td#pp_0`(벌점 2) / `td#bm_0`(개월 10) / `td#nsc_0` 가 각각
+   **18시=자리 2명 / 19시=자리 10명 / 20시=0** 으로 잡혔다.
+   → 이제 `a[id^=tm_]` 이 있는 **보이는** td 만 세고, 시각은 헤더가 아니라
+   `tm_<시각>_<행>` 의 id 에서 읽는다(헤더는 `09`, id 는 `tm_9_`; 0채움이 다르다).
+   이용일도 화면 글자가 아니라 `input[name=resdt]` 의 `YYYYMMDD` 에서 읽는다.
+
+2. **선택표 행이 통째로 빈 문자열로 읽혔다.**
+   내용이 `input.value` 에 있는데 `innerText` 만 읽었다. 그래서 `date` 가 늘
+   비었고, `tick_slot_row` 는 날짜로 행을 못 찾아 **매번 `rows[-1]` 폴백**으로
+   떨어졌으며, 안전장치에 남는 `row_text` 도 비어 있었다.
+   → `#INFOQUALF` 를 1순위로 잡고, 칸의 글자 + input value 를 합쳐 읽는다.
+
+3. **확인창 본문이 '실패' 로 분류됐다.**
+   실측 본문에 `불가` 와 `초과합니다` 가 둘 다 들어 있고, 옛 `FAIL_WORDS` 에
+   그 두 조각이 있었다. 확인창이 화면에 남아 있는 동안 `read_outcome` 이 돌면
+   **성공한 예약을 '실패' 로 보고**할 수 있었다.
+   → `classify()` 가 질문(`하시겠습니까`)을 먼저 걸러 `R_UNKNOWN` 을 준다.
+   `FAIL_WORDS` 에서 `불가` / `초과합니다` 를 뺐다.
+
+4. **`"예약 가능 시간이 아닙니다"` 를 '아직 안 열렸다' 로 읽고 계속 재발사했다.**
+   실물에서 이 문구는 사이트가 **클라이언트에서** 띄우는 거절이다
+   (`selectDay2` 가 칸 값 "X" 일 때, `f_AddQualRow` 가 예약대기 전용 칸일 때).
+   영영 열리지 않을 칸에 대고 정각의 남은 20초를 전부 태우는 경로였다.
+   → 새 코드 `R_NOT_BOOKABLE`(재시도 안 함)로 분리했고
+   `confirm_burst` 가 즉시 멈춘다. `"예약시간전"` 계열만 재시도로 남았다.
+
+5. **우리 마스킹이 증거를 훼손하고 있었다.**
+   `masking._PWKEY` 가 CSS 선택자 `input[type="password"]` 를 비밀번호로 오인해
+   닫는 `]` 를 `***REDACTED***` 로 바꿨다. 그 자리에서 CSS 문법이 깨져 크롬이
+   121KB 짜리 `sub.css` 를 **10,091번째 글자에서 읽다 멈췄고**, 뒤에 있던
+   `.popup_wrap{display:none}`(65,394번째 글자)이 통째로 죽었다. 그러면
+   숨어 있어야 할 확인창 두 번째 사본까지 "보인다" 로 렌더된다.
+   → `_PWKEY` 의 값 부분에서 `]` 를 뺐다(`)`/`;` 는 그대로 둔다: 그 글자가 든
+   진짜 비밀번호가 덜 지워지면 안 되니까). `ci/build_real_fixtures.py` 의
+   `repair_masked_css()` 가 **이미 받은** 캡처의 그 자리를 되돌린다.
+
+### 캡처에서 발견한 것 중 코드가 아닌 것
+
+- **인증서 비밀번호가 `record/clicks.json` 에 평문으로 남았다.**
+  기록기가 XecureWeb 키패드 입력칸(`input#xwup_certselect_tek_input1`)의
+  `change` 이벤트 값을 그대로 적었다. 워크스페이스 추출본에서는 지웠고,
+  값은 어디에도 옮기지 않았다.
+  **다음 사람 할 일: `recorder.py` 가 클릭/변경 이벤트의 `text` 를 남길 때
+  비밀번호성 입력(`type=password`, `xwup*`, `xkeypad*`)은 값을 아예 안 담도록
+  막아라.** `masking` 은 ZIP 직전 한 지점에서만 도는데, 이 값은 그 규칙
+  (`_PWKEY` 는 키=값 형태를 찾는다)에 걸리는 모양이 아니었다.
+- 고객은 **이번 달 60시간을 이미 초과**했다. 그래서 확인창에 바우처 안내가
+  앞에 붙는다. 우리 판정이 그 문구에 걸려 넘어지면 안 된다(위 3번).
+- 고객의 반은 **하나뿐이다**(`해솔아이`). 사이트의 `fnSetCl` 이
+  `clList.length == 1` 이면 자동 선택하고 `fnSerChange()` 까지 부른다.
+  그래서 클릭 기록에 `#clname` 조작이 없다.
+- 실측된 열린 자리: 08-26 은 09시와 17시만 1명, 나머지 0. 토·일은 전부 X.
+
+### 감사 결과 (같은 51개 기준, 실행해서 낸 숫자)
+
+```
+python ci/selector_audit.py --verbose      # 항목별
+```
+
+| | 2026-08-25 오전 (v1.0.6) | 2026-08-25 저녁 (v1.0.7) |
+|---|---|---|
+| 확인 (실물 캡처) | 22 | **50** |
+| 영상 복원본에만 근거 | 15 | **1** |
+| 미확인 | 12 | **1** |
+| 합계 | 51 | 52 |
+
+52 인 이유: 어제의 51 에 "숨은 벌점/개월 열" 항목 하나가 새로 생겼다
+(그게 결함 1번의 원인이라 따로 못박을 값어치가 있다).
+
+남은 둘:
+- **영상 복원본만(1):** 이용신청서가 없는 계정에서 `listChildSelect()` 가
+  띄우는 네이티브 alert 문구. 고객 계정에는 신청서가 있어서 안 뜬다.
+  자동 accept 는 이미 구현돼 있다.
+- **미확인(1): `예약시간전` / `정원초과` 의 서버 원문.**
+  캡처 373건 어디에도 **없다.** 고객이 확인창에서 멈춰
+  `InsertOcreqst.html` 이 **한 번도 호출되지 않았기 때문이다.**
+  두 문구는 여전히 **고객이 글로 적어준 것뿐**이다. 그래서 단어 목록을
+  좁히지 않고 넓게 열어두었다. 첫 실전 실행의 `confirm_shots.json` 에
+  찍히는 원문으로 좁혀라. 그 전까지 CI 초록불은 "우리 분류기가 우리
+  픽스처와 일치한다" 는 뜻일 뿐이라는 것을 잊지 마라.
+
+`제품 동작 검증 11개` 는 다른 질문이다: "사이트에 그 요소가 있는가" 가 아니라
+"우리 코드가 그것을 실제로 맞히는가". 11/11 통과.
+
+### 픽스처를 다룰 때 반드시 지킬 것
+
+- **`file://` 로 띄우지 마라.** 크롬은 file 문서마다 오리진을 따로 줘서 CSS 의
+  `cssRules` 접근이 막히고, 실제로 스타일이 안 붙은 것처럼 보인다. 그러면
+  `.popup_wrap{display:none}` 이 죽어 확인창 사본 판정이 뒤집힌다.
+  `ci/real_fixture_server.py` 로 http 로 띄운다.
+- 크롬 플래그 `--host-resolver-rules=MAP * ~NOTFOUND` 만 쓰면 **127.0.0.1 까지
+  막힌다.** 반드시 `, EXCLUDE 127.0.0.1` 을 붙인다.
+- CSS 를 손대지 마라(예전에 `url(...)` 을 `data:,` 로 바꿨다가 CSS 가 깨져
+  같은 증상이 났다). 바깥 네트워크는 위 플래그로 막으면 된다.
+- `<link>` 순서를 원본대로 유지한다. 알파벳순으로 붙이면 캐스케이드가 달라진다.
+
+## 배포 현황 (v1.0.6, 2026-08-25 07:50Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.6.zip
   (29,196,243 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.6/`
@@ -749,34 +962,48 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
-1. **진짜 마크업은 절반만 확보했다.** 2026-08-25T05:24Z 고객 진단 ZIP 으로
-   **아동 선택 화면까지는 실제 마크업을 봤다**(위 v1.0.5 절 참고).
-   **날짜×시간 표 / [추가] / 선택표 / [예약하기] / 예약 모달은 여전히 못 봤다.**
-   고객 실행이 09시 대기 상태에서 멈춰 거기까지 안 갔다.
-   → **v1.0.6 의 진단 기록 모드가 바로 이것을 가져오려고 만든 것이다.**
-   고객이 [진단 기록 시작] 으로 한 번 걸어가면 `record/wanted/*.html` 에
-   `OccasionTimeMainSlPL.html` 응답 본문(= 반명/이용시간/날짜표 마크업)이,
-   `page_source/*_modal_open.html` 에 모달이 그대로 담겨 온다.
-   그것이 오면 `ci/fixtures/reserve_page.html` 을 진짜 마크업으로 바꾸고
-   `tests/test_browser_flow.py` 를 거기에 다시 걸어라. 그 전까지
-   `booking.py` 의 뒷단계는 여전히 이름이 아니라 구조/글자로 찾는다.
-2. **"예약시간전" / "정원초과" 의 정확한 원문**을 아직 우리 눈으로 본 적은
-   없다(고객이 말로 알려준 문구다). `booking.TOO_EARLY_WORDS` /
-   `FULL_WORDS` 에 표기 흔들림까지 넣어뒀지만, 첫 실전 실행의
-   `confirm_shots.json` 에 찍힌 원문으로 좁혀라.
+1. ~~진짜 마크업은 절반만 확보했다~~ → **2026-08-25 저녁에 닫혔다.**
+   고객이 진단 기록 모드로 확인창까지 걸어준 캡처로 4~9단계 실물을 전부
+   받았다. 위 v1.0.7 절과 `ci/fixtures/real/` 참고. 감사 숫자는
+   확인 22 → **50** (51~52개 중). 남은 것은 아래 2번 하나다.
+2. **"예약시간전" / "정원초과" 의 서버 원문은 여전히 미확인이다.**
+   2026-08-25 캡처 373건을 전수 검색했으나 **0건**이다. 고객이 확인창에서
+   멈춰 `InsertOcreqst.html` 이 호출된 적이 없기 때문이다. 두 문구는
+   **고객이 글로 적어준 것뿐**이고, `ci/fixtures/reserve_page.html` 이 그
+   문구를 스스로 찍어 우리 분류기가 그걸 읽는 구조라 **그 테스트는 순환
+   논증이다**. CI 초록불을 서버 문구의 증거로 읽지 마라.
+   `booking.TOO_EARLY_WORDS` / `FULL_WORDS` 는 일부러 넓게 열어둔 상태다.
+   첫 실전 실행의 `confirm_shots.json` 에 찍힌 원문으로 좁혀라.
+   (실물로 확인된 사이트 문구들은 `NOT_BOOKABLE_WORDS` 에 모아두었다.
+   그건 서버 결과가 아니라 화면이 먼저 막는 문구다.)
 3. **간편인증도 `loginMode == "CT"` 로 쳐주는가.** 617 의 문구가
    "공동인증서/간편인증서 로그인이 필요합니다" 라 그럴 가능성이 높다.
    고객 실행 진단의 `loginMode` 값 한 줄이면 판정된다.
 4. **서버가 정각보다 얼마나 이른 도착을 거부하는지.** 이제 `예약시간전`
    응답으로 실전 중에 스스로 좁힌다(`clock.note_too_early`). 첫 실행의
    `correctionNotes` 를 보고 `arrival_lead_ms` 기본값을 조정하면 된다.
-5. **[예약하기] 가 정말 서버로 아무것도 안 보내는지** 는 고객 진술과 화면
-   흐름으로만 안다(모달이 클라이언트에서 계산된 60시간 안내를 띄운다).
-   진단의 `network_*.json` 으로 확인하면 확정된다.
-   → v1.0.6 부터 그 파일이 **실제로 만들어진다**(그 전에는 크롬 네트워크
-   로그가 꺼져 있어서 50개 ZIP 중 0건이었다). 진단 기록 모드의
-   `record/network.json` 이면 더 확실하다: 사람이 [예약하기] 를 누른 시점의
-   요청 목록이 그대로 들어 있다.
+5. ~~[예약하기] 가 정말 서버로 아무것도 안 보내는지~~ → **2026-08-25 캡처로 판정됐다.**
+   `record/network.json` 373건의 **마지막 요청**이 [예약하기] 클릭이 부른 것이고,
+   그것은 예약이 아니라 **넷퍼넬(대기열) 진입**이다:
+
+   ```
+   GET https://nf.childcare.go.kr:8443/ts.wseq?opcode=5101&...&aid=mcis_0
+   ```
+
+   `InsertOcreqst.html` 은 **캡처 전체에서 0건**이다. 즉 예약 전송은
+   확인창의 [확인] 에서만 일어난다(사이트 JS 로도 확인: `fnSave` →
+   `NetFunnel_Action({action_id:"mcis_0"}, insertOcreqst)` → `confirm2` →
+   콜백에서 비로소 `POST /icms/occasion/InsertOcreqst.html` →
+   성공하면 `alert2(returnmsg)` 후 `/?menuno=245` 로 이동).
+   **우리 설계(정각 240초 전에 준비를 끝내고 확인창을 붙잡고 있다가 [확인]
+   하나만 정각에 쏜다)가 대기열을 미리 통과해 두는 셈이라 유리하다.**
+
+6. **넷퍼넬 대기열 표를 4분 붙잡고 있어도 유효한가.** 위 5번의 결과로 새로
+   생긴 질문이다. `NetFunnel_Action` 은 [예약하기] 시점에 통과하고
+   `NetFunnel_Complete()` 는 [확인] 콜백에서 불린다. 그 사이(우리는 최대
+   4분)에 표가 만료되는지는 캡처로 알 수 없다. 첫 실전 실행의
+   `network_*.json` 에서 `ts.wseq` 응답 코드를 보고 판정하라.
+   만약 만료된다면 준비 시각(`setup_seconds`, 지금 240)을 줄여야 한다.
 
 ### 고객 계정으로 실제로 해본 것 / 하지 않은 것
 

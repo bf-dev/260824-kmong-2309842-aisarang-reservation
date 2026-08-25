@@ -41,31 +41,86 @@ from dataclasses import dataclass, field
 
 # ---------------------------------------------------------------- 결과 분류
 
-# 사이트가 돌려주는 문구. 고객이 실제로 본 두 문구가 기준이고, 표기 흔들림
-# (띄어쓰기/조사)까지 같이 잡는다.
-TOO_EARLY_WORDS = ("예약시간전", "예약 시간 전", "예약시간이 아닙니다",
-                   "예약가능시간이 아닙니다", "예약 가능 시간이 아닙니다",
-                   "예약시간 전", "아직 예약", "예약시작")
+# 근거의 등급이 다르다는 것을 분명히 해 둔다.
+#
+#   [고객 진술만] "예약시간전" / "정원초과"
+#       고객이 글로 적어준 두 단어다. 2026-08-25 고객 진단 캡처
+#       (요청 373건, 페이지 14장)를 전부 뒤졌지만 **한 건도 없다**.
+#       고객이 확인창에서 멈춰 InsertOcreqst.html 이 호출된 적이 없기
+#       때문이다. 아직 서버 실물로 확인되지 않았으므로 표기 흔들림을
+#       넓게 열어 둔다.
+#
+#   [실물 확인] NOT_BOOKABLE_WORDS 는 OccasionTimeMainSlPL.html 응답의
+#       사이트 자바스크립트에서 그대로 옮긴 문구다.
+TOO_EARLY_WORDS = ("예약시간전", "예약 시간 전", "예약시간 전",
+                   "예약시간이 아닙니다",
+                   "아직 예약", "예약시작", "예약이 시작되지")
+
 FULL_WORDS = ("정원초과", "정원 초과", "정원이 초과", "정원이 마감",
               "마감되었습니다", "잔여 정원", "정원이 없습니다")
+
 OK_WORDS = ("예약이 완료", "신청이 완료", "정상적으로 신청", "정상적으로 예약",
             "예약되었습니다", "신청되었습니다", "완료되었습니다")
-FAIL_WORDS = ("이미 신청", "이미 예약", "중복", "불가", "실패", "초과합니다",
-              "오류가 발생")
+
+# 실측: 사이트가 클릭 시점에 스스로 막는 문구들. '아직 안 열렸다' 가 아니라
+# '이 칸은 안 된다' 이므로 **다시 쏴봐야 소용없다**. 예전에는 이 중
+# "예약 가능 시간이 아닙니다" 가 TOO_EARLY 에 들어 있어서, 영영 열리지 않을
+# 칸에 대고 정각의 남은 시간을 전부 태우는 경로였다.
+#
+#   selectDay2()     칸 값이 "X" -> "예약 가능 시간이 아닙니다."
+#   f_AddQualRow()   예약대기만 되는 칸(값 "0") -> 같은 문구
+#   fnCompare()      -> "이용시간이 중복되었습니다."
+#   SelectDupleTime  -> "해당 아동은 이미 예약되어 있습니다."
+#   selectDay2()     -> "해당월의 벌점이 초과하여 예약하실 수 없습니다."
+#                       "결제요청 후 3일 경과한 경우 예약이 불가능합니다."
+#                       "점심시간(12:00~13:00)만 예약은 불가능합니다."
+#   fnSetCl()        -> "해당 아동으로 신청 할 수 있는 반이 없습니다."
+NOT_BOOKABLE_WORDS = (
+    # 실물 그대로. '가능' 이 들어간 이 형태만 사이트가 쓴다.
+    # "예약시간이 아닙니다"(가능 없음)는 우리가 넓혀둔 추정형이고
+    # '아직 …' 뉘앙스라 TOO_EARLY 쪽에 남겨 둔다. 두 문자열은 서로
+    # 부분일치하지 않으므로 섞이지 않는다.
+    "예약 가능 시간이 아닙니다", "예약가능시간이 아닙니다",
+    "해당월의 벌점이 초과",
+    "결제요청 후 3일",
+    "점심시간", "단독 예약은 불가",
+    "이용시간이 중복",
+    "이미 예약되어 있습니다",
+    "신청 할 수 있는 반이 없습니다",
+    "개월 미만 아동만",
+)
+
+# 확인창은 '결과' 가 아니라 '질문' 이다.
+# 실측 본문: "월 이용 시간이 60시간을 초과할 경우 바우처 지원이 불가합니다.
+#             ※ 시간당 5,000원으로 이용
+#             8월 현재 예약 시간 포함하여 60시간을 초과합니다.
+#             예약하시겠습니까?"
+# 여기에 '불가' 와 '초과합니다' 가 둘 다 들어 있다. 예전 FAIL_WORDS 에 그
+# 두 조각이 있었으므로, 확인창이 아직 화면에 있는 동안 read_outcome 이 돌면
+# **성공한 예약을 '실패' 로 보고**할 수 있었다.
+QUESTION_WORDS = ("하시겠습니까",)
+
+FAIL_WORDS = ("이미 신청", "이미 예약", "중복", "실패", "오류가 발생",
+              "처리중입니다")
 
 # 결과 코드
 R_OK = "ok"
 R_TOO_EARLY = "too_early"
 R_FULL = "full"
 R_FAIL = "fail"
+R_NOT_BOOKABLE = "not_bookable"
 R_UNKNOWN = "unknown"
 
 
 def classify(text: str) -> str:
     """서버/화면 문구를 결과 코드로 바꾼다.
 
-    순서가 중요하다. '정원초과' 안에 '초과' 가 들어 있어서 일반 실패 규칙보다
-    먼저 봐야 하고, '예약시간전' 은 실패가 아니라 '아직 안 열렸다' 이다.
+    순서가 중요하다.
+      0. **질문은 결과가 아니다.** 확인창 본문이 결과로 분류되면 안 된다.
+      1. 완료 문구가 있으면 그것이 최종이다.
+      2. '정원초과' 안에 '초과' 가 있으므로 일반 실패보다 먼저 본다.
+      3. 사이트가 스스로 막는 문구는 재시도 대상이 아니다(R_NOT_BOOKABLE).
+      4. '예약시간전' 만 재시도 대상이다.
     """
     t = (text or "").replace(" ", " ")
     if not t.strip():
@@ -73,12 +128,18 @@ def classify(text: str) -> str:
     for w in OK_WORDS:
         if w in t:
             return R_OK
-    for w in TOO_EARLY_WORDS:
+    for w in QUESTION_WORDS:
         if w in t:
-            return R_TOO_EARLY
+            return R_UNKNOWN
     for w in FULL_WORDS:
         if w in t:
             return R_FULL
+    for w in NOT_BOOKABLE_WORDS:
+        if w in t:
+            return R_NOT_BOOKABLE
+    for w in TOO_EARLY_WORDS:
+        if w in t:
+            return R_TOO_EARLY
     for w in FAIL_WORDS:
         if w in t:
             return R_FAIL
@@ -86,7 +147,11 @@ def classify(text: str) -> str:
 
 
 def result_is_retryable(code: str) -> bool:
-    """다시 쏘는 게 의미 있는 결과인가. '예약시간전' 만 그렇다."""
+    """다시 쏘는 게 의미 있는 결과인가. '예약시간전' 만 그렇다.
+
+    '예약 가능 시간이 아닙니다'(R_NOT_BOOKABLE)는 사이트가 그 칸 자체를
+    거절한 것이라, 다시 쏘면 정각의 남은 시간을 그냥 태운다.
+    """
     return code == R_TOO_EARLY
 
 
@@ -95,11 +160,12 @@ def result_is_retryable(code: str) -> bool:
 @dataclass
 class Cell:
     date: str            # YYYYMMDD
-    hour: int            # 9 ~ 18
-    text: str            # 화면에 적힌 그대로 ("0", "2", "X")
+    hour: int            # 9 ~ 17 (실측 헤더는 09~17)
+    text: str            # 화면에 적힌 그대로 ("0", "1", "X")
     capacity: int | None  # 숫자면 남은 인원, X 면 None
     row: int
     col: int
+    el_id: str = ""      # 실물 <a> 의 id: "tm_<시각>_<행>"
 
     @property
     def blocked(self) -> bool:
@@ -107,6 +173,14 @@ class Cell:
 
     @property
     def available(self) -> bool:
+        """진짜로 예약이 되는 칸인가.
+
+        0 은 '자리 없음' 이 아니라 **예약대기만 가능** 이다. 사이트의
+        selectDay2 를 보면 칸 값이 "0" 일 때 wait_gb 를 Y 로 두고
+        resbgntm/resendtm 을 비운다. 그 상태로 [추가] 를 누르면
+        f_AddQualRow 가 reswaitdt 를 보고 "예약 가능 시간이 아닙니다" 로
+        막는다. 그래서 0 은 우리에게도 누를 수 없는 칸이다. (실측 확인)
+        """
         return self.capacity is not None and self.capacity > 0
 
     def why(self) -> str:
@@ -200,19 +274,105 @@ class Prepared:
 
 # ---------------------------------------------------------------- JS 조각
 #
-# 선택자를 하드코딩하지 않는다. 녹화가 흐려서 id/class 를 읽을 수 없고,
-# 서버가 인증서 세션에만 그려주는 화면이라 우리가 직접 볼 수도 없다.
-# 그래서 "표의 첫 칸이 날짜인 표", "체크박스가 있는 표", "보이는 버튼의 글자"
-# 같은 **구조와 글자**로 찾는다. 매 실행마다 DOM 전체를 올리므로 다음 판에서
-# 좁힐 수 있다.
+# 2026-08-25 이전에는 선택자를 하나도 하드코딩하지 않았다. 녹화가 흐려서
+# id/class 를 읽을 수 없었고, 서버가 인증서 세션에만 그려주는 화면이라
+# 우리가 직접 볼 수도 없었다. 그래서 "표의 첫 칸이 날짜인 표", "체크박스가
+# 있는 표", "보이는 버튼의 글자" 같은 구조와 글자로 찾았다.
+#
+# 2026-08-25, 고객이 자기 PC 에서 진짜 공동인증서 세션으로 진단 기록 모드를
+# 돌리고 예약 흐름을 손으로 끝까지 걸었다. 그 캡처 안에
+# /icms/occasion/OccasionTimeMainSlPL.html 응답과 4~9단계 화면이 통째로 있다.
+# 이제 **실물 id 를 1순위로 쓰고**, 사이트가 바뀌었을 때를 대비해 예전의
+# 구조 추론을 2순위로 남긴다. 둘 다 실패하면 아무것도 누르지 않는다.
+#
+# 실측된 마크업(그대로 옮김):
+#   <th id="day_0" class="table_tit1" scope="row">2026-08-26(수)
+#       <input type="hidden" name="resdt" id="resdt" value="20260826"></th>
+#   <td><a href="javascript:;" class="time-option" id="tm_9_0"
+#          onclick="selectDay2(this,'9',0);"><i class="count" title="이용가능">1</i></a></td>
+#   고른 뒤: class="time-option on" title="선택됨", 안쪽 <i class="count on">
+#   이용불가: <i class="count not" title="이용불가능">X</i>
 
 _JS_SCAN_GRID = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
 function vis(e){
   if (!e) return false;
   var r = e.getBoundingClientRect();
-  return r.width > 0 && r.height > 0;
+  if (r.width <= 0 || r.height <= 0) return false;
+  var s = window.getComputedStyle(e);
+  return s.visibility !== 'hidden' && s.display !== 'none';
 }
+
+// ---- 1순위: 실물 마크업 (#crtminfo 안의 표, th#day_N + a.time-option#tm_H_R)
+function realGrid() {
+  var box = document.getElementById('crtminfo');
+  if (!box) return null;
+  var tb = box.querySelector('table');
+  if (!tb || !vis(tb)) return null;
+  var all = document.querySelectorAll('table');
+  var tableIndex = -1;
+  for (var i = 0; i < all.length; i++) if (all[i] === tb) { tableIndex = i; break; }
+
+  var headers = [];
+  var hc = tb.querySelectorAll('thead th');
+  for (var i = 0; i < hc.length; i++) headers.push(txt(hc[i]));
+
+  var trs = tb.querySelectorAll('tr');
+  var rows = [], cells = [];
+  for (var r = 0; r < trs.length; r++) {
+    var head = trs[r].querySelector('th[id^=day_]');
+    if (!head) continue;
+    // 날짜의 정답은 화면 글자가 아니라 숨은 input 이다. 사이트가 폼에
+    // 실어 보내는 값이 이것이고 형식이 YYYYMMDD 로 고정이다.
+    var hid = head.querySelector('input[name=resdt]');
+    var label = txt(head);
+    var date = '';
+    if (hid && /^\d{8}$/.test(hid.value || '')) {
+      date = hid.value;
+    } else {
+      var m = label.match(/(20\d\d)\D?(\d{2})\D?(\d{2})/);
+      if (!m) continue;
+      date = m[1] + m[2] + m[3];
+    }
+    rows.push({date: date, label: label, row: r});
+
+    // 칸은 '그 줄의 모든 td' 가 아니라 **a[id^=tm_] 이 있는 td 만** 센다.
+    // 같은 tr 안에 화면에 안 보이는 td#pp_N(벌점) / td#bm_N(개월수) /
+    // td#nsc_N 이 붙어 있다. 그 안의 숫자("2","10")를 잔여 인원으로 읽으면
+    // 있지도 않은 18/19/20시가 '자리 있음' 으로 잡힌다. 실측에서 실제로
+    // 126칸이어야 할 표가 168칸으로 읽혔다.
+    var cs = trs[r].querySelectorAll('th,td');
+    for (var c = 0; c < cs.length; c++) {
+      if (cs[c].tagName !== 'TD') continue;
+      var a = cs[c].querySelector('a[id^=tm_]');
+      if (!a) continue;
+      if (!vis(cs[c])) continue;
+      // 시각의 정답도 헤더 글자가 아니라 a 의 id 다: tm_<시각>_<행>.
+      // 헤더는 '09' 로 0을 채우지만 id 는 'tm_9_0' 으로 채우지 않는다.
+      var im = (a.id || '').match(/^tm_(\d{1,2})_(\d+)$/);
+      var hour;
+      if (im) {
+        hour = parseInt(im[1], 10);
+      } else {
+        var hcell = headers[c] !== undefined ? headers[c] : '';
+        var hm2 = hcell.match(/(\d{1,2})/);
+        if (!hm2) continue;
+        hour = parseInt(hm2[1], 10);
+      }
+      var mark = a.querySelector('i.count');
+      cells.push({date: date, hour: hour, text: txt(mark || a),
+                  row: r, col: c, id: a.id || ''});
+    }
+  }
+  if (!rows.length || !cells.length) return null;
+  return {tableIndex: tableIndex, headers: headers, rows: rows, cells: cells,
+          how: 'crtminfo'};
+}
+
+var real = realGrid();
+if (real) return real;
+
+// ---- 2순위: 예전의 구조 추론. 사이트가 통째로 바뀌었을 때만 여기로 온다.
 var tables = document.querySelectorAll('table');
 for (var t = 0; t < tables.length; t++) {
   var tb = tables[t];
@@ -233,21 +393,26 @@ for (var t = 0; t < tables.length; t++) {
     var date = m[1] + m[2] + m[3];
     rows.push({date: date, label: first, row: r});
     for (var c = 1; c < cs.length; c++) {
+      if (!vis(cs[c])) continue;          // 숨은 열은 시간대가 아니다
       var head = headers[c] !== undefined ? headers[c] : '';
       var hm = head.match(/(\d{1,2})/);
-      var hour = hm ? parseInt(hm[1], 10) : (8 + c);
-      cells.push({date: date, hour: hour, text: txt(cs[c]), row: r, col: c});
+      if (!hm) continue;                  // 시각을 8+열번호로 날조하지 않는다
+      cells.push({date: date, hour: parseInt(hm[1], 10),
+                  text: txt(cs[c]), row: r, col: c, id: ''});
     }
   }
-  if (rows.length) {
-    return {tableIndex: t, headers: headers, rows: rows, cells: cells};
+  if (rows.length && cells.length) {
+    return {tableIndex: t, headers: headers, rows: rows, cells: cells,
+            how: 'structural'};
   }
 }
 return null;
 """
 
-# 칸의 '선택됨' 표시는 사이트마다 class 일 수도 style 일 수도 있다.
-# 그래서 이름을 맞히지 않고, 클릭 전후의 지문을 비교해서 바뀐 칸을 센다.
+# 칸의 '선택됨' 표시. 실측: 고른 칸은 a 에 class "on" 과 title="선택됨" 이
+# 붙고 안쪽 <i class="count"> 에도 "on" 이 붙는다. 그 이름을 직접 보되,
+# 사이트가 표시 방법을 바꿨을 때를 대비해 예전처럼 클릭 전후의 지문
+# (class/배경색/checked)도 같이 기록해서 비교한다.
 _JS_CELL_MARKS = r"""
 var t = document.querySelectorAll('table')[arguments[0]];
 if (!t) return null;
@@ -258,18 +423,24 @@ for (var r = 0; r < trs.length; r++) {
   for (var c = 0; c < cs.length; c++) {
     var e = cs[c];
     var st = window.getComputedStyle(e);
-    var inner = e.querySelector('a,button,span,div,input');
+    var inner = e.querySelector('a[id^=tm_]') ||
+                e.querySelector('a,button,span,div,input');
     var ist = inner ? window.getComputedStyle(inner) : null;
     out.push(r + ':' + c + '|' + (e.className || '') + '|' + st.backgroundColor +
              '|' + (inner ? (inner.className || '') : '') +
              '|' + (ist ? ist.backgroundColor : '') +
              '|' + (e.getAttribute('aria-selected') || '') +
-             '|' + (inner && inner.checked ? '1' : '0'));
+             '|' + (inner && inner.checked ? '1' : '0') +
+             '|' + (inner ? (inner.getAttribute('title') || '') : ''));
   }
 }
 return out;
 """
 
+# 누를 대상은 <a class="time-option" id="tm_H_R"> 다. 사이트의 onclick
+# (selectDay2)이 그 a 에 달려 있다. 예전에는 칸 안의 아무 a/button/span 이나
+# 눌렀는데, 실측 마크업에서는 a 안에 <i class="count"> 가 들어 있어서
+# span 류를 먼저 집으면 엉뚱한 것을 누를 수 있다.
 _JS_CLICK_CELL = r"""
 var t = document.querySelectorAll('table')[arguments[0]];
 if (!t) return false;
@@ -278,12 +449,33 @@ if (arguments[1] >= trs.length) return false;
 var cs = trs[arguments[1]].querySelectorAll('th,td');
 if (arguments[2] >= cs.length) return false;
 var cell = cs[arguments[2]];
-// 클릭 가능한 알맹이가 있으면 그것을, 없으면 칸 자체를 누른다.
-var inner = cell.querySelector('a,button,input,label,span');
-var target = inner || cell;
+var wantId = arguments[3] || '';
+var target = null;
+if (wantId) {
+  var byId = cell.querySelector("a[id='" + wantId + "']");
+  if (byId) target = byId;
+}
+if (!target) target = cell.querySelector('a[id^=tm_]');
+if (!target) target = cell.querySelector('a,button,input,label,span');
+if (!target) target = cell;
+// 화면에 안 보이는 칸은 누르지 않는다(숨은 벌점/개월 열 방어).
+var r = target.getBoundingClientRect();
+if (r.width <= 0 || r.height <= 0) return false;
 try { target.scrollIntoView({block: 'center'}); } catch (e) {}
 target.click();
 return true;
+"""
+
+# 그 칸이 실제로 '선택됨' 이 되었는지, 사이트의 진짜 표시로 확인한다.
+_JS_CELL_IS_ON = r"""
+var id = arguments[0];
+if (!id) return null;
+var a = document.getElementById(id);
+if (!a) return null;
+var cls = ' ' + (a.className || '') + ' ';
+return {on: cls.indexOf(' on ') >= 0,
+        title: a.getAttribute('title') || '',
+        innerOn: !!a.querySelector('i.count.on')};
 """
 
 # 선택표(선택/반명/이용일/이용시간). 주의: **아동 선택 표에도 라디오가 있고,
@@ -299,26 +491,41 @@ return true;
 #   · 아동 표는 **배제**한다: 캡션/머리글에 아동명·생년월일·개월수가 있거나,
 #     행에 "N개월" 만 있고 이용시간 구간이 없으면 선택표가 아니다.
 #   · 선택표의 특징은 **체크박스 + 이용시간 구간**("09 00 - 18 00 (9시간)") 이다.
+#
+# 2026-08-25 실측으로 하나가 더 드러났다. 선택표 칸의 내용은 **글자가 아니라
+# input 의 value** 다:
+#   <td><input id="sdate0" value="2026-08-28(금)" readonly>
+#       <input type="hidden" id="resdt0" value="20260828"></td>
+#   <td><input id="restime0" value="09 : 00  ~  10 : 00  (1시간)" readonly> ...
+# innerText/textContent 는 input 의 값을 포함하지 않으므로 예전 코드에서는
+# 이 행이 통째로 빈 문자열("   ")로 읽혔다. 그 결과 date 가 늘 비어서
+# tick_slot_row 가 날짜로 행을 찾지 못하고 매번 rows[-1] 폴백으로 떨어졌고,
+# 안전장치에 남는 row_text 도 비어 있었다. 이제 value 를 같이 읽는다.
 _JS_SCAN_SLOT_ROWS = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
+// 칸의 글자 + 그 안 input 들의 value 를 합쳐서 읽는다.
+function cellText(e){
+  var parts = [];
+  var t = txt(e);
+  if (t) parts.push(t);
+  var ins = e.querySelectorAll('input');
+  for (var i = 0; i < ins.length; i++) {
+    var ty = (ins[i].type || '').toLowerCase();
+    if (ty === 'checkbox' || ty === 'radio' || ty === 'button') continue;
+    var v = (ins[i].value || '').replace(/\s+/g, ' ').trim();
+    if (v && parts.indexOf(v) < 0) parts.push(v);
+  }
+  return parts.join(' ');
+}
 var RE_DATE = /(20\d\d)\D?(\d{2})\D?(\d{2})/;
 var RE_MONTHS = /\d+\s*개\s*월/;
 var RE_SPAN = /\d{1,2}\s*[:시]?\s*\d{2}\s*[-~]\s*\d{1,2}\s*[:시]?\s*\d{2}|\d+\s*시간/;
 var CHILDISH = /아동\s*명|생년월일|개월수|아동\s*선택/;
 var SLOTTISH = /이용일|이용\s*시간|반명/;
 var tables = document.querySelectorAll('table');
-var best = null;
-var skipped = [];
-for (var t = 0; t < tables.length; t++) {
-  var tb = tables[t];
-  var trs = tb.querySelectorAll('tr');
-  var head = '';
-  try {
-    var cap = tb.querySelector('caption');
-    var thead = tb.querySelector('thead');
-    head = (cap ? txt(cap) : '') + ' ' + (thead ? txt(thead) : '');
-  } catch (e) { head = ''; }
 
+function readRows(tb) {
+  var trs = tb.querySelectorAll('tr');
   var rows = [], dated = 0, boxes = 0, spans = 0, months = 0;
   for (var r = 0; r < trs.length; r++) {
     var box = trs[r].querySelector("input[type=checkbox]");
@@ -328,15 +535,54 @@ for (var t = 0; t < tables.length; t++) {
     if (kind === 'checkbox') boxes++;
     var cs = trs[r].querySelectorAll('th,td');
     var texts = [];
-    for (var c = 0; c < cs.length; c++) texts.push(txt(cs[c]));
+    for (var c = 0; c < cs.length; c++) texts.push(cellText(cs[c]));
     var joined = texts.join(' ');
-    var m = joined.match(RE_DATE);
-    if (m) dated++;
+    // 이용일의 정답은 숨은 input[id^=resdt] 의 YYYYMMDD 다.
+    var hid = trs[r].querySelector("input[id^=resdt]");
+    var date = '';
+    if (hid && /^\d{8}$/.test(hid.value || '')) {
+      date = hid.value;
+      dated++;
+    } else {
+      var m = joined.match(RE_DATE);
+      if (m) { date = m[1] + m[2] + m[3]; dated++; }
+    }
     if (RE_SPAN.test(joined)) spans++;
     if (RE_MONTHS.test(joined)) months++;
     rows.push({row: r, checked: !!box.checked, kind: kind, texts: texts,
-               text: joined, date: m ? (m[1] + m[2] + m[3]) : ''});
+               text: joined, date: date, boxId: box.id || ''});
   }
+  return {rows: rows, dated: dated, boxes: boxes, spans: spans, months: months};
+}
+
+// ---- 1순위: 실물 선택표 #INFOQUALF
+var infoq = document.getElementById('INFOQUALF');
+if (infoq) {
+  var got = readRows(infoq);
+  if (got.rows.length) {
+    var all0 = document.querySelectorAll('table');
+    var ti = -1;
+    for (var i = 0; i < all0.length; i++) if (all0[i] === infoq) { ti = i; break; }
+    return {tableIndex: ti, rows: got.rows, score: 1000, how: 'INFOQUALF',
+            spans: got.spans, boxes: got.boxes, skipped: []};
+  }
+}
+
+// ---- 2순위: 예전의 점수식 (사이트가 바뀌었을 때)
+var best = null;
+var skipped = [];
+for (var t = 0; t < tables.length; t++) {
+  var tb = tables[t];
+  var head = '';
+  try {
+    var cap = tb.querySelector('caption');
+    var thead = tb.querySelector('thead');
+    head = (cap ? txt(cap) : '') + ' ' + (thead ? txt(thead) : '');
+  } catch (e) { head = ''; }
+
+  var g = readRows(tb);
+  var rows = g.rows, dated = g.dated, boxes = g.boxes;
+  var spans = g.spans, months = g.months;
   if (!rows.length) continue;
 
   // 아동 표는 후보에서 아예 뺀다. 여기 행을 체크하면 엉뚱한 것이 예약된다.
@@ -351,9 +597,9 @@ for (var t = 0; t < tables.length; t++) {
     best = {score: score, tableIndex: t, rows: rows, spans: spans, boxes: boxes};
   }
 }
-if (!best) return {tableIndex: -1, rows: [], skipped: skipped};
+if (!best) return {tableIndex: -1, rows: [], skipped: skipped, how: 'none'};
 return {tableIndex: best.tableIndex, rows: best.rows, score: best.score,
-        spans: best.spans, boxes: best.boxes, skipped: skipped};
+        spans: best.spans, boxes: best.boxes, skipped: skipped, how: 'scored'};
 """
 
 _JS_TICK_ROW = r"""
@@ -400,16 +646,74 @@ for (var i = 0; i < nodes.length; i++) {
 return null;
 """
 
-# "예약" 모달. 제목/본문/버튼을 글자로 찾는다. 영상에서 확인한 본문은
-# 월 60시간 초과 안내 + "예약하시겠습니까?" 이고 버튼은 확인 / 취소 두 개다.
+# "예약" 확인창.
+#
+# 2026-08-25 실측으로 이 부분이 완전히 정리됐다. 예약 흐름은
+# icmsLayerPopup.**confirm2** 를 쓴다 (layerpopup.js):
+#
+#   icmsLayerPopup.confirm2({title:"예약", contents: confirmText,
+#                            thisFocus:"#timecareConfirm"}, function(res){ ... })
+#   confirm2 는 #layer-confirm-popup-title2 / -contents2 를 채우고
+#   #layer-confirm-popup2 와 #dimmed_confirm2 를 show() 한다.
+#   [확인] 에 콜백을 묶는 대상은 **#layer-confirm-popup-confirm2** 다.
+#
+# 그래서 확인 버튼은 `#layer-confirm-popup-confirm` 이 아니라
+# **`-confirm2`** 다. 전자를 눌렀다면 사이트가 그 버튼에 아무 콜백도 묶지
+# 않았으므로 조용히 아무 일도 일어나지 않았을 것이다.
+#
+# 그리고 이 페이지에는 공용 팝업 껍데기가 **두 벌** 들어 있다.
+#   1번째: style="display: block"  <- 지금 떠 있는 진짜 창, 본문이 채워져 있다
+#   2번째: 인라인 style 없음        <- .popup_wrap{display:none} 으로 숨어 있고 본문이 비어 있다
+# id 가 중복이므로 getElementById 는 못 쓴다(첫 번째만 준다는 보장이 없고,
+# 어느 쪽이 열린 것인지도 알 수 없다). **querySelectorAll + 가시성** 으로
+# 고른다. 같은 이유로 id="layer-confirm-popup-close2" 는 한 껍데기 안에서도
+# 두 번(X 닫기, [취소]) 나온다.
+#
+# 본문 문구도 이제 실물이다: "…예약하시겠습니까?" (월 60시간 초과 시에는
+# 그 안내가 앞에 붙고 마지막 줄이 예약하시겠습니까? 다).
 _JS_MODAL = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
 function vis(e){
+  if (!e) return false;
   var r = e.getBoundingClientRect();
   if (r.width <= 0 || r.height <= 0) return false;
   var s = window.getComputedStyle(e);
   return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
 }
+function okButtonIn(e) {
+  // 실물 id 우선. 없으면 글자로.
+  var byId = e.querySelectorAll("[id='layer-confirm-popup-confirm2']");
+  for (var i = 0; i < byId.length; i++) if (vis(byId[i])) return byId[i];
+  var btns = e.querySelectorAll(
+    "button,a,input[type=button],input[type=submit],span[onclick]");
+  for (var b = 0; b < btns.length; b++) {
+    if (!vis(btns[b])) continue;
+    var lb = txt(btns[b]) || (btns[b].value || '');
+    if (lb.indexOf('취소') >= 0 || lb.indexOf('닫기') >= 0) continue;
+    if (lb.indexOf('확인') >= 0 || lb.toLowerCase() === 'ok') return btns[b];
+  }
+  return null;
+}
+
+// ---- 1순위: 사이트의 진짜 확인창. 보이는 #layer-confirm-popup2 를 고른다.
+var shells = document.querySelectorAll("[id='layer-confirm-popup2']");
+for (var i = 0; i < shells.length; i++) {
+  var e = shells[i];
+  if (!vis(e)) continue;
+  var bodyEl = null;
+  var ps = e.querySelectorAll("[id='layer-confirm-popup-contents2']");
+  for (var k = 0; k < ps.length; k++) { if (txt(ps[k])) { bodyEl = ps[k]; break; } }
+  var body = bodyEl ? txt(bodyEl) : txt(e);
+  if (!body) continue;
+  var ok = okButtonIn(e);
+  if (!ok) continue;
+  window.__aisarang_modal = e;
+  window.__aisarang_ok_hint = ok;
+  return {text: body, how: 'layer-confirm-popup2',
+          shells: shells.length, okId: ok.id || ''};
+}
+
+// ---- 2순위: 사이트가 바뀌었을 때. 예전처럼 글자로 찾는다.
 var best = null;
 var cands = document.querySelectorAll(
   "div,section,dialog,[role=dialog],[role=alertdialog],.layer,.popup,.modal");
@@ -423,20 +727,14 @@ for (var i = 0; i < cands.length; i++) {
              body.indexOf('하시겠습니까') >= 0 ||
              body.indexOf('신청하시겠습니까') >= 0;
   if (!asks) continue;
-  var hasOk = false;
-  var btns = e.querySelectorAll("button,a,input[type=button],input[type=submit],span[onclick]");
-  for (var b = 0; b < btns.length; b++) {
-    if (!vis(btns[b])) continue;
-    var lb = txt(btns[b]) || (btns[b].value || '');
-    if (lb.indexOf('확인') >= 0 || lb.toLowerCase() === 'ok') { hasOk = true; break; }
-  }
-  if (!hasOk) continue;
+  if (!okButtonIn(e)) continue;
   // 가장 안쪽(=가장 짧은) 후보가 진짜 모달이다.
   if (best === null || body.length < best.len) best = {el: e, len: body.length, text: body};
 }
 if (!best) return null;
 window.__aisarang_modal = best.el;
-return {text: best.text};
+window.__aisarang_ok_hint = null;
+return {text: best.text, how: 'text', shells: shells.length, okId: ''};
 """
 
 # 발사 순간에 하는 일을 최소화한다. 미리 [확인] 버튼을 window 에 물려두고,
@@ -452,12 +750,19 @@ function vis(e){
 var m = window.__aisarang_modal;
 if (!m || !vis(m)) return false;
 var btn = null;
-var btns = m.querySelectorAll("button,a,input[type=button],input[type=submit],span[onclick]");
-for (var i = 0; i < btns.length; i++) {
-  if (!vis(btns[i])) continue;
-  var lb = txt(btns[i]);
-  if (lb.indexOf('취소') >= 0 || lb.indexOf('닫기') >= 0) continue;
-  if (lb.indexOf('확인') >= 0 || lb.toLowerCase() === 'ok') { btn = btns[i]; break; }
+// 1순위: 실물 확인 버튼. 반드시 **떠 있는 껍데기 안의** 것이어야 한다.
+// 같은 id 가 페이지에 두 개 있고, 숨은 쪽에는 사이트가 콜백을 묶지 않았다.
+var byId = m.querySelectorAll("[id='layer-confirm-popup-confirm2']");
+for (var i = 0; i < byId.length; i++) { if (vis(byId[i])) { btn = byId[i]; break; } }
+// 2순위: 글자로. 취소/닫기는 건너뛴다.
+if (!btn) {
+  var btns = m.querySelectorAll("button,a,input[type=button],input[type=submit],span[onclick]");
+  for (var i = 0; i < btns.length; i++) {
+    if (!vis(btns[i])) continue;
+    var lb = txt(btns[i]);
+    if (lb.indexOf('취소') >= 0 || lb.indexOf('닫기') >= 0) continue;
+    if (lb.indexOf('확인') >= 0 || lb.toLowerCase() === 'ok') { btn = btns[i]; break; }
+  }
 }
 if (!btn) return false;
 window.__aisarang_ok = btn;
@@ -900,15 +1205,17 @@ def select_class(driver, class_name: str = "", log=lambda *_: None) -> str:
       t = (t || '').trim();
       return !t || t === '선택' || t === '전체' || t.indexOf('선택하') === 0;
     }
-    // 1) 라벨이 '반명' 인 select 를 먼저
-    var target = null;
-    for (var i = 0; i < sels.length; i++) {
+    // 0) 실물: <select class="selectbox" name="clname" id="clname"
+    //           onchange="fnSerChange();" title="반명 선택">
+    //    option 은 selectOcTaClList.html 응답으로 채워진다(value=clseq).
+    var target = document.getElementById('clname');
+    // 1) 없으면 라벨이 '반명' 인 select
+    for (var i = 0; !target && i < sels.length; i++) {
       var row = sels[i].closest('tr,div,li');
       var line = row ? (row.innerText || '') : '';
       for (var w = 0; w < labelWords.length; w++) {
         if (line.indexOf(labelWords[w]) >= 0) { target = sels[i]; break; }
       }
-      if (target) break;
     }
     var pool = target ? [target] : sels;
     for (var i = 0; i < pool.length; i++) {
@@ -933,8 +1240,12 @@ def select_hours(driver, hours: int, log=lambda *_: None) -> int:
     got = _js(driver, r"""
     var want = String(arguments[0]);
     var sels = document.querySelectorAll('select');
-    var target = null;
-    for (var i = 0; i < sels.length; i++) {
+    // 0) 실물: <select class="selectbox" name="rtm" id="rtm"
+    //           onchange="fnTimeReset();" title="이용시간 선택">
+    //    option value 는 "1".."9" (시간 수). 실측 확인.
+    var target = document.getElementById('rtm');
+    // 1) 없으면 같은 줄에 '이용시간' 이 적힌 select
+    for (var i = 0; !target && i < sels.length; i++) {
       var row = sels[i].closest('tr,div,li');
       var line = row ? (row.innerText || '') : '';
       if (line.indexOf('이용시간') >= 0) { target = sels[i]; break; }
@@ -990,7 +1301,8 @@ def read_grid(driver, diag=None) -> Grid:
                             text=str(c.get("text", "")),
                             capacity=_parse_cell_text(str(c.get("text", ""))),
                             row=int(c.get("row", -1)),
-                            col=int(c.get("col", -1))))
+                            col=int(c.get("col", -1)),
+                            el_id=str(c.get("id", "") or "")))
     if diag is not None:
         try:
             diag.add_json("grid.json", {
@@ -1045,11 +1357,24 @@ def click_cell(driver, grid: Grid, cell: Cell, log=lambda *_: None) -> bool:
     """
     before = _js(driver, _JS_CELL_MARKS, grid.table_index, default=None) or []
     ok = _js(driver, _JS_CLICK_CELL, grid.table_index, cell.row, cell.col,
-             default=False)
+             cell.el_id, default=False)
     if not ok:
         log("날짜 칸을 누르지 못했습니다.")
         return False
     time.sleep(0.35)
+    # 1순위: 사이트의 진짜 선택 표시로 확인한다.
+    # 실측: 고른 칸은 class 에 "on" 이 붙고 title 이 "선택됨" 이 된다.
+    if cell.el_id:
+        mark = _js(driver, _JS_CELL_IS_ON, cell.el_id, default=None)
+        if isinstance(mark, dict):
+            if mark.get("on") or mark.get("title") == "선택됨":
+                log(f"{cell.date} {cell.hour:02d}시 칸을 선택했습니다 "
+                    f"(표시: class=on, title={mark.get('title', '')}).")
+                return True
+            log(f"{cell.date} {cell.hour:02d}시 칸을 눌렀지만 선택 표시가 "
+                f"붙지 않았습니다. 선택되지 않은 것으로 봅니다.")
+            return False
+    # 2순위: 표시 방법이 바뀌었을 때. 클릭 전후 지문 비교.
     after = _js(driver, _JS_CELL_MARKS, grid.table_index, default=None) or []
     key = f"{cell.row}:{cell.col}|"
     b = {s.split("|", 1)[0]: s for s in before}
@@ -1070,9 +1395,38 @@ def click_cell(driver, grid: Grid, cell: Cell, log=lambda *_: None) -> bool:
     return False
 
 
+# 실물 id 로 먼저 누른다. 없으면 예전처럼 글자로 찾는다.
+#   <a id="timecareTableAddBtn" class="btn h50" onclick="f_AddQualRow();">추가</a>
+#   <a id="timecareConfirm" class="btn h50" onClick="fnSave();">예약하기</a>
+# 글자만 쓰면 위험한 이웃이 있다. 같은 btn_right 안에 [삭제]·[새로고침] 이
+# 있고, [예약하기] 바로 옆이 [예약대기](id=tooltip) 다.
+_JS_CLICK_BY_ID = r"""
+function vis(e){
+  if (!e) return false;
+  var r = e.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  var s = window.getComputedStyle(e);
+  return s.visibility !== 'hidden' && s.display !== 'none';
+}
+var nodes = document.querySelectorAll("[id='" + arguments[0] + "']");
+for (var i = 0; i < nodes.length; i++) {
+  if (!vis(nodes[i])) continue;
+  try { nodes[i].scrollIntoView({block: 'center'}); } catch (e) {}
+  nodes[i].click();
+  return ((nodes[i].innerText || nodes[i].textContent || '').replace(/\s+/g,' ')).trim()
+         || arguments[0];
+}
+return null;
+"""
+
+
 def press_add(driver, log=lambda *_: None) -> bool:
-    hit = _js(driver, _JS_CLICK_TEXT_BUTTON, "추가", None)
-    log("[추가] 를 눌렀습니다." if hit else "[추가] 버튼을 찾지 못했습니다.")
+    hit = _js(driver, _JS_CLICK_BY_ID, "timecareTableAddBtn", default=None)
+    how = "#timecareTableAddBtn"
+    if not hit:
+        hit = _js(driver, _JS_CLICK_TEXT_BUTTON, "추가", None)
+        how = "글자"
+    log(f"[추가] 를 눌렀습니다 ({how})." if hit else "[추가] 버튼을 찾지 못했습니다.")
     time.sleep(0.6)
     return bool(hit)
 
@@ -1143,10 +1497,16 @@ def slot_row_is_ticked(driver, row_index: int = -1) -> bool:
 # ---------------------------------------------------------------- 8~9단계 모달
 
 def press_reserve(driver, log=lambda *_: None) -> bool:
-    hit = _js(driver, _JS_CLICK_TEXT_BUTTON, "예약하기", None)
+    hit = _js(driver, _JS_CLICK_BY_ID, "timecareConfirm", default=None)
+    how = "#timecareConfirm"
+    if not hit:
+        hit = _js(driver, _JS_CLICK_TEXT_BUTTON, "예약하기", None)
+        how = "글자"
     if not hit:
         hit = _js(driver, _JS_CLICK_TEXT_BUTTON, "신청하기", None)
-    log(f"[{hit}] 를 눌렀습니다." if hit else "[예약하기] 버튼을 찾지 못했습니다.")
+        how = "글자"
+    log(f"[{hit}] 를 눌렀습니다 ({how})."
+        if hit else "[예약하기] 버튼을 찾지 못했습니다.")
     return bool(hit)
 
 
@@ -1501,6 +1861,14 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
                                "confirmAttempts": attempt})
         if shot.code == R_FULL:
             return StepResult(False, shot.text or "정원이 초과되었습니다.", "full", p,
+                              {"shots": [s.as_dict() for s in shots],
+                               "confirmArrivalOffsetMs": round(shot.arrival_offset_ms, 1),
+                               "confirmAttempts": attempt})
+        if shot.code == R_NOT_BOOKABLE:
+            # 사이트가 그 칸 자체를 거절했다("예약 가능 시간이 아닙니다" 등).
+            # 다시 쏘면 정각의 남은 시간을 태울 뿐이라 여기서 멈춘다.
+            return StepResult(False, shot.text or "예약할 수 없는 시간대입니다.",
+                              "not_bookable", p,
                               {"shots": [s.as_dict() for s in shots],
                                "confirmArrivalOffsetMs": round(shot.arrival_offset_ms, 1),
                                "confirmAttempts": attempt})

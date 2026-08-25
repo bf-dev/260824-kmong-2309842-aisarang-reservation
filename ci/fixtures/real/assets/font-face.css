@@ -1,0 +1,112 @@
+@charset "UTF-8";
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream1-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream1-webfont.woff) format('woff');
+    font-weight: 100;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream2-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream2-webfont.woff) format('woff');
+    font-weight: 200;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream3-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream3-webfont.woff) format('woff');
+    font-weight: 300;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream4-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream4-webfont.woff) format('woff');
+    font-weight: 400;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream5-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream5-webfont.woff) format('woff');
+    font-weight: 500;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream6-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream6-webfont.woff) format('woff');
+    font-weight: 600;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream7-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream7-webfont.woff) format('woff');
+    font-weight: 700;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream8-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream8-webfont.woff) format('woff');
+    font-weight: 800;
+    font-style: normal
+}
+
+@font-face {
+    font-family: 's-core-dream';
+    src: url(../font/ScoreDream/scdream9-webfont.woff2) format('woff2'),url(../font/ScoreDream/scdream9-webfont.woff) format('woff');
+    font-weight: 900;
+    font-style: normal
+}
+
+
+@font-face{
+    font-family:'Pretendard';
+    font-weight:900;
+    font-display:swap;
+    src:local('Pretendard Black'),url(../font/pretendard-subset/Pretendard-Black.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:800;
+    font-display:swap;
+    src:local('Pretendard ExtraBold'),url(../font/pretendard-subset/Pretendard-ExtraBold.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:700;
+    font-display:swap;
+    src:local('Pretendard Bold'),url(../font/pretendard-subset/Pretendard-Bold.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:600;
+    font-display:swap;
+    src:local('Pretendard SemiBold'),url(../font/pretendard-subset/Pretendard-SemiBold.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:500;
+    font-display:swap;
+    src:local('Pretendard Medium'),url(../font/pretendard-subset/Pretendard-Medium.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:400;
+    font-display:swap;
+    src:local('Pretendard Regular'),url(../font/pretendard-subset/Pretendard-Regular.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:300;
+    font-display:swap;
+    src:local('Pretendard Light'),url(../font/pretendard-subset/Pretendard-Light.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:200;
+    font-display:swap;
+    src:local('Pretendard ExtraLight'),url(../font/pretendard-subset/Pretendard-ExtraLight.subset.woff2) format("woff2")
+}
+@font-face{font-family:'Pretendard';
+    font-weight:100;
+    font-display:swap;
+    src:local('Pretendard Thin'),url(../font/pretendard-subset/Pretendard-Thin.subset.woff2) format("woff2")
+}

@@ -31,8 +31,18 @@ _SENSITIVE_KEYS = (
     r"aResult|aSignedMsg|aVidMsg|issacweb_data|token|authorization"
 )
 # 흔한 비밀번호/토큰 키=값 형태 (JSON, 쿼리스트링, 폼 인코딩)
+#
+# 값 부분에서 `]` `)` `;` 를 뺀 이유가 있다. 이 규칙은 CSS 선택자
+# `input[type="password"]` 도 물어버렸다. `password` 다음의 `"` 를 구분자로
+# 보고 그 뒤 `]` 를 값으로 잡아 `***REDACTED***` 로 바꾼 것이다.
+# 그러면 CSS 문법이 그 자리에서 깨지고, 크롬은 sub.css 를 10091번째 글자에서
+# 읽다 멈춘다. 그 뒤에 있던 `.popup_wrap { display:none }` 이 통째로 죽어서
+# 숨어 있어야 할 확인창 사본이 화면에 '보이는' 것으로 렌더된다.
+# 즉 마스킹이 증거를 훼손하고 있었다. (2026-08-25 고객 캡처에서 실측)
+# `]` 하나만 뺀다. `)` 나 `;` 까지 빼면 그 글자가 든 진짜 비밀번호가 덜 지워진다.
 _PWKEY = re.compile(
-    r"((?:" + _SENSITIVE_KEYS + r")\s*[=:\"']{1,3}\s*)([^&\"'<>\s,}]{1,4096})",
+    r"((?:" + _SENSITIVE_KEYS + r")\s*[=:\"']{1,3}\s*)"
+    r"(?!\])([^&\"'<>\s,}\]]{1,4096})",
     re.IGNORECASE,
 )
 # HTML 폼 속성 형태: <input name="aResult" value="...">

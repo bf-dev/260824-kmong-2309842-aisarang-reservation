@@ -23,6 +23,17 @@ jobs:
       - name: unit tests
         run: python -m pytest tests/ -q
 
+      # 실물 캡처 회귀 테스트를 이름을 드러내서 한 번 더 돌린다. 이 파일들은
+      # 고객이 자기 공동인증서 세션에서 받은 진짜 응답에 대고 선택자를
+      # 돌린다(진짜 크롬). 여기가 빨간불이면 4~9단계가 깨진 것이다.
+      - name: real captured markup regression (real Chromium)
+        run: python -m pytest tests/test_real_capture.py tests/test_real_markup.py -v
+
+      # 셀렉터 의존성 전수 감사. 미확인이 늘거나 제품 동작 검증이 하나라도
+      # 깨지면 0 이 아닌 코드로 끝나 빌드를 세운다.
+      - name: selector dependency audit
+        run: python ci/selector_audit.py --verbose
+
       # v1.0.5 부터 --onedir 이다. --onefile 은 실행할 때마다 자기 자신을
       # %TEMP% 에 풀어놓고, 윈도우 디펜더가 그 동작을 오탐해 고객 PC 에서
       # 파일을 막아버렸다("지정한 장치, 경로 또는 파일에 액세스할 수 없습니다").
@@ -84,15 +95,15 @@ jobs:
           "downloaded v1.0.4: $((Get-Item diag\v104.exe).Length) bytes sha256=$h"
           powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path diag\v104.exe -Label "v1.0.4-onefile"
 
-      - name: Defender scan of the v1.0.6 onedir build
+      - name: Defender scan of the v1.0.7 onedir build
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.6-onedir" -MustBeClean
+        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.7-onedir" -MustBeClean
 
       - name: Defender scan of the delivered zip
         shell: pwsh
         run: |
           $zip = Get-ChildItem out\*.zip | Select-Object -First 1
-          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.6-zip" -MustBeClean
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.7-zip" -MustBeClean
 
       # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
       # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.

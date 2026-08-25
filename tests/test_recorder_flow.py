@@ -171,11 +171,12 @@ def test_the_never_seen_ajax_responses_are_recorded(session):
 def test_meaningful_screen_changes_are_snapshotted(session):
     """사람이 [추가] → [예약하기] 로 걸어가면 그 화면들이 남아야 한다."""
     rec, diag, drv, _base = session
+    # 실물 id 다. 예전에는 우리가 지어낸 #btnAdd / #btnReserve 를 눌렀다.
     assert _wait(lambda: drv.execute_script(
-        "return !!document.getElementById('btnAdd');"), 20)
-    drv.find_element("css selector", "#btnAdd").click()
+        "return !!document.getElementById('timecareTableAddBtn');"), 20)
+    drv.find_element("css selector", "#timecareTableAddBtn").click()
     assert _wait(lambda: rec.pages >= 2, 15)
-    drv.find_element("css selector", "#btnReserve").click()
+    drv.find_element("css selector", "#timecareConfirm").click()
     assert _wait(lambda: any("modal_open" in n for n in diag.names()), 15), diag.names()
     # 확인창까지 왔지만 예약은 만들어지지 않았다. 이것이 이 모드의 존재 이유다.
     assert drv.execute_script("return window.__reserved;") is False

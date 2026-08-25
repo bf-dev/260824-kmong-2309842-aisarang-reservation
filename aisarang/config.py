@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 
 # 서버 시각을 다시 맞추는 주기(초). 고객에게 "5분" 이라고 약속한 값이다.
 # 프로그램이 도는 동안 계속(오픈 전 대기 / 준비 240초 / 확인창 홀드) 이 주기로

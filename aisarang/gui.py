@@ -840,15 +840,27 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
             app.root.after(0, lambda: app.cb_hours.set("9"))
             # 4·5단계 판정기도 같이 돌려 화면에 남긴다. 정각에 쓰이는 바로 그 함수다.
             from . import booking
+            # 실측 확인창 본문. 여기에 '불가' 와 '초과합니다' 가 같이 들어
+            # 있어서, 예전 판정기는 성공한 예약을 '실패' 로 읽을 수 있었다.
+            real_modal = ("월 이용 시간이 60시간을 초과할 경우 바우처 지원이 "
+                          "불가합니다. 8월 현재 예약 시간 포함하여 60시간을 "
+                          "초과합니다. 예약하시겠습니까?")
             checks = {
                 "예약시간전": booking.classify("예약시간전입니다."),
                 "정원초과": booking.classify("정원초과 되었습니다."),
                 "완료": booking.classify("예약이 완료되었습니다."),
+                "확인창본문": booking.classify(real_modal),
+                "칸거절": booking.classify("예약 가능 시간이 아닙니다."),
             }
             app.log(f"응답 판정기: {checks}")
             grader_ok = (checks["예약시간전"] == booking.R_TOO_EARLY
                          and checks["정원초과"] == booking.R_FULL
-                         and checks["완료"] == booking.R_OK)
+                         and checks["완료"] == booking.R_OK
+                         # 확인창 문구는 결과가 아니다(실패로 읽으면 안 된다)
+                         and checks["확인창본문"] != booking.R_FAIL
+                         # 사이트가 막는 문구는 재시도 대상이 아니다
+                         and checks["칸거절"] == booking.R_NOT_BOOKABLE
+                         and not booking.result_is_retryable(booking.R_NOT_BOOKABLE))
             app.log("확인창 흐름: 준비(검색→센터→아동→반/이용시간→칸→추가→체크→예약하기) "
                     "후 [확인] 만 정각 발사")
             resyncs = out.get("clock_resyncs", 0)
