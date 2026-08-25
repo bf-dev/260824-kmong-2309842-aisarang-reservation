@@ -49,6 +49,16 @@ def test_everything_added_is_masked():
     assert "plaintextpw" not in req
 
 
+def test_a_snapshot_written_repeatedly_stays_one_entry():
+    """시각 재측정은 5분마다 clock_resync.json 을 갱신한다. 쌓이면 ZIP 이 지저분해진다."""
+    d = Diagnostics()
+    for n in (1, 2, 3):
+        d.add_json("clock_resync.json", {"resyncs": n})
+    z = zipfile.ZipFile(io.BytesIO(d.build_zip()))
+    assert z.namelist().count("clock_resync.json") == 1
+    assert '"resyncs": 3' in z.read("clock_resync.json").decode()
+
+
 def test_truncate_keeps_head_and_tail():
     text = "A" * 500 + "MIDDLE" + "B" * 500
     out = _truncate_middle(text, 200)

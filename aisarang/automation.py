@@ -26,8 +26,10 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import time
+from collections import deque
 
 from . import config
 
@@ -52,6 +54,19 @@ def build_driver(headless: bool = False, log=lambda *_: None):
         opts.add_argument("--headless=new")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
+    # 네트워크 기록을 켠다. 이걸 안 켜면 driver.get_log("performance") 가 그냥
+    # 예외를 던지고, capture() 의 network_*.json 이 **한 번도 만들어지지 않는다**
+    # (고객 진단 ZIP 50개를 뒤져 확인했다: network_*.json 0건).
+    # 그래서 [예약하기] 가 정말 서버로 아무것도 안 보내는지조차 확인할 수 없었다.
+    # traceCategories 는 절대 넣지 않는다. 빈 문자열을 주면 chromedriver 가
+    # "cannot parse traceCategories / cannot be empty" 로 **크롬을 아예 안 띄운다**
+    # (실측: InvalidArgumentException, 크롬 149 / chromedriver 149).
+    # 09시에 크롬이 안 뜨는 것보다 나쁜 실패는 없다.
+    opts.set_capability("goog:loggingPrefs", {"performance": "ALL", "browser": "ALL"})
+    opts.add_experimental_option("perfLoggingPrefs", {
+        "enableNetwork": True,
+        "enablePage": True,
+    })
 
     try:
         driver = webdriver.Chrome(options=opts)
@@ -115,8 +130,67 @@ def neutralize_devtool_blocker(driver, log=lambda *_: None) -> bool:
 
 # ---------------------------------------------------------------- 진단 수집
 
+_NET_RING = deque(maxlen=3000)
+
+
+def drain_network(driver, raise_on_error: bool = False) -> list:
+    """chromedriver 의 performance 로그를 비워서 CDP 메시지 목록으로 돌려준다.
+
+    두 가지 일을 한다.
+      1. 우리가 볼 수 있게 파싱해서 돌려준다.
+      2. **드라이버 쪽 버퍼를 비운다.** 09시까지 몇 시간을 대기하는 프로그램이라
+         안 비우면 계속 쌓인다.
+    돌려준 것과 별개로 마지막 3000건은 링버퍼에 남겨, capture() 가 언제 불려도
+    직전 구간의 네트워크를 같이 담을 수 있게 한다.
+
+    raise_on_error 는 진단 기록 모드가 쓴다. 삼켜버리면 브라우저가 이미 죽었는데도
+    "잘 돌았다" 로 보여서, 죽은 세션에 계속 재시도하게 된다(실측으로 걸렸다).
+    예약 경로(capture)에서는 기본값 그대로 조용히 넘어간다.
+    """
+    out = []
+    try:
+        entries = driver.get_log("performance")
+    except Exception:
+        if raise_on_error:
+            raise
+        return out
+    for entry in entries or []:
+        try:
+            msg = json.loads(entry.get("message", "{}")).get("message", {})
+        except Exception:
+            continue
+        if not msg:
+            continue
+        out.append(msg)
+        _NET_RING.append(msg)
+    return out
+
+
+def _network_digest(limit: int = 300) -> list:
+    """링버퍼에서 요청/응답만 간추린다(본문 없음, 헤더 없음)."""
+    rows = []
+    for msg in list(_NET_RING)[-2000:]:
+        method = msg.get("method", "")
+        p = msg.get("params", {}) or {}
+        if method == "Network.requestWillBeSent":
+            r = p.get("request", {}) or {}
+            rows.append({"id": p.get("requestId"), "kind": "request",
+                         "method": r.get("method"), "url": r.get("url"),
+                         "type": p.get("type"),
+                         "hasPostData": bool(r.get("postData"))})
+        elif method == "Network.responseReceived":
+            r = p.get("response", {}) or {}
+            rows.append({"id": p.get("requestId"), "kind": "response",
+                         "status": r.get("status"), "url": r.get("url"),
+                         "mime": r.get("mimeType")})
+        elif method == "Network.loadingFailed":
+            rows.append({"id": p.get("requestId"), "kind": "failed",
+                         "error": p.get("errorText")})
+    return rows[-limit:]
+
+
 def capture(driver, diag, label: str) -> None:
-    """현재 페이지의 HTML / 쿠키 / 스토리지를 진단 ZIP 에 담는다."""
+    """현재 페이지의 HTML / 쿠키 / 스토리지 / 네트워크를 진단 ZIP 에 담는다."""
     if diag is None:
         return
     try:
@@ -136,9 +210,12 @@ def capture(driver, diag, label: str) -> None:
             diag.add_json(f"{kind}_{label}.json", data)
         except Exception:
             pass
+    # 네트워크. v1.0.5 까지는 여기서 get_log("performance") 를 그냥 불렀는데,
+    # 옵션에 goog:loggingPrefs 가 없어서 언제나 예외였다. 그래서 진단 ZIP 50개에
+    # network_*.json 이 단 한 건도 없었다. 이제 옵션을 켜고 링버퍼로 받는다.
     try:
-        logs = driver.get_log("performance")
-        diag.add_json(f"network_{label}.json", logs[-200:])
+        drain_network(driver)
+        diag.add_json(f"network_{label}.json", _network_digest())
     except Exception:
         pass
 
@@ -174,22 +251,76 @@ def login_grade(driver) -> str:
     return "cert" if is_logged_in(driver) else "none"
 
 
-def touch_session(driver, log=lambda *_: None) -> bool:
-    """세션 유지용 가벼운 요청.
+_JS_TOUCH_SESSION = r"""
+var cb = arguments[arguments.length - 1];
+var t0 = Date.now();
+function done(o){ o.t0 = t0; o.t1 = Date.now(); try { cb(o); } catch (e) {} }
+try {
+  fetch('/?menuno=1&_ka=' + t0, {method: 'HEAD', cache: 'no-store',
+                                 credentials: 'same-origin'})
+    .then(function (r) { done({ok: true, status: r.status,
+                               date: r.headers.get('Date')}); })
+    .catch(function (e) { done({ok: false, error: String(e)}); });
+} catch (e) { done({ok: false, error: String(e)}); }
+"""
+
+
+def touch_session(driver, log=lambda *_: None) -> dict:
+    """세션 유지용 가벼운 요청. **응답의 Date 헤더까지 받아온다.**
 
     실측: 로그인 직후 egovExpireSessionTime - egovLatestServerTime = 3,600,000ms.
     즉 세션은 마지막 활동 기준 60분이면 끊긴다. 전날 밤에 인증서 로그인을 해두는
     운영은 불가능하고, 09시 직전까지 세션을 살려둬야 한다.
+
+    v1.0.6: 예전에는 XHR 을 쏘고 응답을 그냥 버렸다. 어차피 서버에 갔다 오는
+    요청이므로 그 응답의 Date 헤더를 읽으면 공짜로 시계 점검이 하나 생긴다.
+    같은 출처(same-origin) 라 헤더가 그대로 읽힌다. 이 값은 판정에만 쓰고
+    오프셋을 직접 움직이지 않는다(clock.note_drift_sample 참고).
+
+    돌려주는 것: {ok, dateEpoch, t0, t1} (t0/t1 은 로컬 epoch 초).
     """
+    prev = None
     try:
-        driver.execute_script(
-            "try{var x=new XMLHttpRequest();"
-            "x.open('HEAD','/?menuno=1&_ka='+Date.now(),true);x.send();}catch(e){}"
-        )
-        return True
+        prev = driver.timeouts.script
+    except Exception:
+        prev = None
+    try:
+        driver.set_script_timeout(12)
+    except Exception:
+        pass
+    try:
+        raw = driver.execute_async_script(_JS_TOUCH_SESSION) or {}
     except Exception as exc:  # noqa: BLE001
+        # 여기서 실패해도 세션 유지 자체는 포기하지 않는다(옛 경로로 한 발).
         log(f"세션 유지 요청 실패(무시): {type(exc).__name__}")
-        return False
+        try:
+            driver.execute_script(
+                "try{var x=new XMLHttpRequest();"
+                "x.open('HEAD','/?menuno=1&_ka='+Date.now(),true);x.send();}catch(e){}")
+            return {"ok": True, "dateEpoch": None}
+        except Exception:
+            return {"ok": False, "dateEpoch": None}
+    finally:
+        try:
+            if prev is not None:
+                driver.set_script_timeout(prev)
+        except Exception:
+            pass
+
+    out = {"ok": bool(raw.get("ok")), "dateEpoch": None,
+           "status": raw.get("status"), "error": raw.get("error")}
+    try:
+        t0 = float(raw.get("t0") or 0) / 1000.0
+        t1 = float(raw.get("t1") or 0) / 1000.0
+        if t0 > 0 and t1 >= t0:
+            out["t0"], out["t1"] = t0, t1
+        from .clock import _parse_date_header
+        stamp = _parse_date_header(raw.get("date") or "")
+        if stamp is not None:
+            out["dateEpoch"] = stamp
+    except Exception:
+        pass
+    return out
 
 
 def open_cert_login(driver, log=lambda *_: None) -> None:

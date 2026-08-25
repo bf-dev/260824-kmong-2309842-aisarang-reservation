@@ -40,6 +40,7 @@ class Runner:
         self.stop_event = threading.Event()
         self.driver = None
         self.clock = clockmod.ClockSync()
+        self.keeper: clockmod.ClockKeeper | None = None
         self._thread: threading.Thread | None = None
 
     # -- 로그 ---------------------------------------------------------
@@ -92,6 +93,12 @@ class Runner:
             # 인증서 비밀번호는 메모리에서 즉시 버린다.
             cert_password = ""
             try:
+                if self.keeper is not None:
+                    self.keeper.stop()
+                    self.keeper = None
+            except Exception:
+                pass
+            try:
                 if self.driver is not None and not settings.get("keep_browser_open", True):
                     self.driver.quit()
                     self.driver = None
@@ -130,6 +137,16 @@ class Runner:
         self.status(self.clock.describe())
 
         open_epoch = clockmod.next_open_epoch(self.clock)
+
+        # 여기서부터 끝까지, 5분마다 같은 방식으로 다시 잰다. 한 번 재고 마는 게
+        # 아니다(고객은 전날 오후에 켜두기도 한다). 정각 90초 전에는 스스로 멈춘다.
+        self.keeper = clockmod.ClockKeeper(
+            self.clock, interval=config.RESYNC_SECONDS, log=self.log,
+            diag=self.diag, stop_event=self.stop_event,
+            quiet_server_epoch=open_epoch)
+        self.keeper.start()
+        self.log(f"서버 시각은 {config.RESYNC_SECONDS // 60}분마다 다시 맞춥니다 "
+                 f"(정각 {config.RESYNC_QUIET_SECONDS}초 전부터는 멈춥니다).")
         target_date = (settings.get("target_date") or "").strip()
         if not target_date:
             target_date = clockmod.target_date_for(
@@ -179,6 +196,12 @@ class Runner:
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
 
+        # 준비를 시작하는 이 자리에서 한 번 새로 잰다. 정각에 쏘는 한 발은
+        # 어젯밤에 잰 값이 아니라 방금 잰 값으로 조준해야 한다.
+        if self.keeper is not None:
+            self.keeper.sync_now("준비 시작 직전")
+        self.log(f"조준 기준: {self.clock.describe()}")
+
         # --- 1~8단계: 준비. 실패하면 남은 시간 안에서 다시 시도한다. ---
         prep = self._prepare_with_retries(center, target_date, preferred, hours,
                                           settings, open_epoch)
@@ -205,9 +228,10 @@ class Runner:
                 center, target_date, slots, meta)
 
         # --- 대기: 모달을 붙잡고 있는다. 닫히거나 체크가 풀리면 다시 세운다. ---
-        fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
-        self._hold_modal(p, fire_local, center, target_date, preferred, hours,
-                         settings, open_epoch)
+        # 발사 시각은 홀드 중에도 다시 계산한다. 그 사이에 시각을 다시 쟀으면
+        # 새 값으로 조준해야 하기 때문이다.
+        self._hold_modal(p, open_epoch - lead, center, target_date, preferred,
+                         hours, settings, open_epoch)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
 
@@ -294,7 +318,10 @@ class Runner:
                     return opened
                 last = opened
             self.log(f"준비 실패({last.reason}): {last.message}")
-            if last.reason in ("cert_required",):
+            # 다시 해도 결과가 바뀌지 않는 것들은 즉시 멈춘다.
+            # child_mismatch: 고객이 적은 아동명이 목록에 없다. 다시 돌려봐야
+            # 같은 결과이고, 그렇다고 다른 아동으로 예약하면 절대 안 된다.
+            if last.reason in ("cert_required", "child_mismatch"):
                 return last
             remain = stop_at - self.clock.server_now()
             if remain <= 5:
@@ -309,22 +336,27 @@ class Runner:
     # -- 모달을 붙잡고 대기 --------------------------------------------
     HOLD_CHECK_SECONDS = 5.0
 
-    def _hold_modal(self, p, fire_local, center, target_date, preferred, hours,
+    def _hold_modal(self, p, arrival_epoch, center, target_date, preferred, hours,
                     settings, open_epoch) -> None:
         """확인창을 열어둔 채 발사 시각까지 기다린다.
 
         홀드 중에 창이 닫히거나(고객이 실수로 눌렀거나 사이트가 닫았거나)
         세션이 끊기면 조용히 실패하는 게 최악이다. 주기적으로 확인하고,
         시간이 남아 있으면 확인 경로를 다시 세운다.
+
+        arrival_epoch 는 [확인] 요청이 서버에 도착해야 하는 시각(서버 기준)이다.
+        로컬 발사 시각은 매번 다시 계산한다. 홀드 중에 시각을 다시 쟀다면
+        그만큼 발사 시각도 따라 움직여야 한다.
         """
         while not self.stop_event.is_set():
+            fire_local = self.clock.local_fire_for_arrival(arrival_epoch)
             remain = fire_local - time.time()
             if remain <= 0.5:
                 return
             self.stop_event.wait(min(remain - 0.4, self.HOLD_CHECK_SECONDS))
             if self.stop_event.is_set():
                 return
-            if fire_local - time.time() <= 0.5:
+            if self.clock.local_fire_for_arrival(arrival_epoch) - time.time() <= 0.5:
                 return
             try:
                 if booking.modal_still_held(self.driver, p):
@@ -350,10 +382,17 @@ class Runner:
                 self.log("준비를 다시 하지 못했습니다. 남은 시간 동안 계속 시도합니다.")
 
     # -- 대기 중 세션 유지 --------------------------------------------
-    SESSION_TOUCH_SECONDS = 600      # 세션 수명 60분 실측 → 10분마다 건드린다
+    # 세션 수명 60분 실측. 5분 주기는 넉넉하고, 서버 시각 재측정과 같은 주기라
+    # 고객 로그에 두 줄이 나란히 찍힌다.
+    SESSION_TOUCH_SECONDS = config.SESSION_TOUCH_SECONDS
 
     def _wait_keeping_session(self, until_server_epoch: float) -> None:
-        """정각 대기 중에도 로그인 세션이 살아 있게 주기적으로 요청을 보낸다."""
+        """정각 대기 중에도 로그인 세션이 살아 있게 주기적으로 요청을 보낸다.
+
+        그 응답의 Date 헤더로 시계 점검도 같이 한다. 어차피 나가는 요청이라
+        공짜다. 다만 이 한 발로 오프셋을 움직이지는 않는다(노이즈가 크다).
+        어긋난 것이 보이면 제대로 된 12발 재측정을 앞당겨 부른다.
+        """
         while not self.stop_event.is_set():
             remain = until_server_epoch - self.clock.server_now()
             if remain <= 0:
@@ -364,8 +403,37 @@ class Runner:
             if self.stop_event.is_set():
                 return
             if until_server_epoch - self.clock.server_now() > 5:
-                if automation.touch_session(self.driver, self.log):
+                touched = automation.touch_session(self.driver, self.log)
+                if touched.get("ok"):
                     self.log("세션 유지 신호를 보냈습니다.")
+                self._drift_check(touched)
+                # 네트워크 로그 버퍼를 비운다(몇 시간 대기하면 계속 쌓인다).
+                try:
+                    automation.drain_network(self.driver)
+                except Exception:
+                    pass
+
+    def _drift_check(self, touched: dict) -> None:
+        """세션 유지 응답의 Date 헤더로 '어긋났는지' 만 본다."""
+        try:
+            stamp = touched.get("dateEpoch")
+            t0, t1 = touched.get("t0"), touched.get("t1")
+            if not stamp or t0 is None or t1 is None:
+                return
+            note = self.clock.note_drift_sample(stamp, t0, t1)
+            if not note.get("usable"):
+                return
+            if note["consistent"]:
+                self.log(f"세션 유지 응답으로 시각 점검: 어긋남 없음 "
+                         f"(왕복 {note['rttMs']:.0f}ms, 현재 보정 "
+                         f"{note['offsetMs']:+.0f}ms)")
+                return
+            self.log(f"세션 유지 응답으로 시각 점검: 어긋남 {note['deviationMs']:+.0f}ms "
+                     f"→ 곧바로 서버 시각을 다시 잽니다.")
+            if self.keeper is not None:
+                self.keeper.request_now("시계 어긋남 감지")
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"시각 점검 실패(무시): {type(exc).__name__}")
 
     def _finish(self, ok: bool, message: str, center: dict, target_date: str,
                 slots: list, detail: dict | None = None) -> dict:
@@ -378,6 +446,10 @@ class Runner:
             "serverOffsetMs": round(self.clock.offset * 1000, 1),
             "oneWayMs": round(self.clock.one_way * 1000, 1),
             "clockCorrectionMs": round(self.clock.correction * 1000, 1),
+            "clockResyncs": self.clock.resyncs,
+            "clockResyncIntervalSec": config.RESYNC_SECONDS,
+            "clockAgeSec": (round(self.clock.age_seconds(), 1)
+                            if self.clock.last_sync_local else None),
             "result": "success" if ok else "fail",
         }
         if detail:
@@ -412,10 +484,24 @@ class Runner:
         out = {}
         sess = site.make_session()
         c = clockmod.sync(session=sess, samples=6, log=self.log, diag=self.diag)
+        self.clock = c
         out["clock"] = c.describe()
         out["clock_ok"] = c.synced
         if c.errors:
             out["clock_error"] = c.errors[0]
+
+        # 재측정이 말뿐이 아니라는 것을 여기서 실제로 보인다. 제품이 09시까지
+        # 5분마다 부르는 바로 그 경로를 두 번 부른다.
+        keeper = clockmod.ClockKeeper(c, interval=config.RESYNC_SECONDS,
+                                      samples=6, log=self.log, diag=self.diag,
+                                      session_factory=lambda: sess)
+        self.keeper = keeper
+        self.log(f"서버 시각 재측정 주기: {config.RESYNC_SECONDS // 60}분 "
+                 f"(정각 {config.RESYNC_QUIET_SECONDS}초 전부터는 멈춥니다)")
+        for i in (1, 2):
+            keeper.sync_now(f"점검용 재측정 {i}/2", force=True)
+        out["clock_resyncs"] = c.resyncs
+        out["clock_after_resync"] = c.describe()
         try:
             sido = site.list_sido(sess, self.diag)
             out["sido"] = len(sido)

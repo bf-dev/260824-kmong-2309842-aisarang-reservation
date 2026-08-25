@@ -15,6 +15,12 @@ RFC 7231 `Date:` 헤더를 붙인다. 이 헤더는 초 단위라 그대로 쓰�
 
 t_mid 는 요청 직전/직후 로컬시각의 중점이다(왕복 지연이 대칭이라고 가정).
 비대칭 지연은 그대로 오차로 남으므로, 마지막에 arrival_lead_ms 로 여유를 준다.
+
+**한 번 재고 끝내지 않는다 (v1.0.6).** 고객은 전날 오후에 프로그램을 켜두고
+다음 날 09시를 기다리기도 한다(실제 로그: 14:35 에 시작해서 09:00 발사).
+그 사이에 PC 시계는 서버 시계와 조금씩 벌어지고, 처음 한 번 잰 오프셋은
+그만큼 낡는다. 그래서 ClockKeeper 가 프로그램이 도는 내내
+config.RESYNC_SECONDS(=5분)마다 처음과 똑같은 방식으로 다시 잰다.
 """
 from __future__ import annotations
 
@@ -41,6 +47,12 @@ class ClockSync:
     # 서버가 "예약시간전" 이라고 답했을 때 붙는 보정치(초). 아래 note_too_early 참고.
     correction: float = 0.0
     correction_notes: list = field(default_factory=list)
+    # 재측정 이력. 몇 번 다시 쟀고 마지막이 언제였는지 로그/진단에 남는다.
+    resyncs: int = 0
+    last_sync_local: float = 0.0
+    history: list = field(default_factory=list)
+    drift_notes: list = field(default_factory=list)
+    _lock: object = field(default_factory=threading.Lock, repr=False, compare=False)
 
     @property
     def uncertainty(self) -> float:
@@ -106,6 +118,93 @@ class ClockSync:
              "correctionMs": round(self.correction * 1000, 1)})
         return added
 
+    # -- 재측정 ------------------------------------------------------
+    def adopt(self, fresh: "ClockSync") -> dict:
+        """새로 잰 결과를 받아들인다. 실패한 측정은 절대 받지 않는다.
+
+        받아들이는 것은 '방금 잰 값' 뿐이다. 구간(lo/hi)을 예전 것과 또 교집합
+        하지 않는다. PC 시계와 서버 시계는 시간이 지나면 실제로 벌어지기 때문에,
+        몇 시간 전 구간과 교집합하면 이미 틀린 구간에 새 측정을 가둬버린다.
+        (한 번의 측정 안에서 하는 교집합은 그대로 유지된다. 그게 정확도의 핵심이다.)
+
+        '예약시간전' 응답으로 얻은 보정치(correction)는 서버 동작에 대한 학습이라
+        측정과 무관하다. 그래서 그대로 들고 간다.
+
+        돌려주는 값: 이번 재측정으로 오프셋이 얼마나 움직였는지(초 단위 delta 포함).
+        """
+        if not fresh.synced:
+            return {"adopted": False, "deltaMs": 0.0}
+        with self._lock:
+            before = self.offset if self.synced else fresh.offset
+            self.offset = fresh.offset
+            self.lo, self.hi = fresh.lo, fresh.hi
+            self.samples = fresh.samples
+            self.rtt_best = fresh.rtt_best
+            self.detail = fresh.detail
+            self.errors = fresh.errors
+            self.synced = True
+            self.resyncs += 1
+            self.last_sync_local = time.time()
+            row = {"at": round(self.last_sync_local, 3),
+                   "n": self.resyncs,
+                   "offsetMs": round(self.offset * 1000, 1),
+                   "deltaMs": round((self.offset - before) * 1000, 1),
+                   "uncertaintyMs": (round(self.uncertainty * 1000, 1)
+                                     if self.uncertainty != float("inf") else None),
+                   "rttBestMs": (round(self.rtt_best * 1000, 1)
+                                 if self.rtt_best != float("inf") else None),
+                   "samples": self.samples}
+            self.history.append(row)
+            if len(self.history) > 400:
+                del self.history[:100]
+        return {"adopted": True, "deltaMs": row["deltaMs"], "row": row}
+
+    def age_seconds(self) -> float:
+        """마지막 측정이 몇 초 전이었는지."""
+        if not self.last_sync_local:
+            return float("inf")
+        return max(0.0, time.time() - self.last_sync_local)
+
+    def note_drift_sample(self, server_epoch: float, t0: float, t1: float) -> dict:
+        """샘플 한 개(세션 유지 응답의 Date 헤더)로 어긋남만 확인한다.
+
+        **이 한 발로 오프셋을 움직이지 않는다.** Date 헤더는 초 단위라 한 발의
+        구간은 최소 1초 폭이고, 왕복이 튀면 더 넓어진다. 그걸 그대로 반영하면
+        잘 좁혀둔 값이 노이즈에 끌려다닌다. 그래서 판정만 한다:
+
+          · 지금 오프셋이 이 샘플의 구간 안에 있으면 → 이상 없음
+          · 벗어나 있으면 → 시계가 실제로 벌어진 것이므로 '즉시 다시 재라' 고 알린다
+
+        권위는 언제나 12발짜리 구간 교집합(sync)이다.
+        """
+        rtt = max(0.0, t1 - t0)
+        if rtt > 5.0 or rtt <= 0.0 or not self.synced:
+            return {"usable": False, "reason": "rtt_out_of_range",
+                    "rttMs": round(rtt * 1000, 1)}
+        t_mid = t0 + rtt / 2.0
+        half = rtt / 2.0
+        lo = (server_epoch - t_mid) - half
+        hi = (server_epoch + 1.0 - t_mid) + half
+        margin = 0.05                       # 초 경계 판정의 여유
+        offset = self.offset
+        if offset < lo - margin:
+            deviation = offset - (lo - margin)
+        elif offset > hi + margin:
+            deviation = offset - (hi + margin)
+        else:
+            deviation = 0.0
+        note = {"usable": True,
+                "consistent": deviation == 0.0,
+                "deviationMs": round(deviation * 1000, 1),
+                "offsetMs": round(offset * 1000, 1),
+                "rttMs": round(rtt * 1000, 1),
+                "windowMs": [round(lo * 1000, 1), round(hi * 1000, 1)]}
+        with self._lock:
+            self.drift_notes.append(note)
+            if len(self.drift_notes) > 200:
+                del self.drift_notes[:50]
+        return note
+
     def describe(self) -> str:
         if not self.synced:
             return "서버 시각 동기화 실패 (PC 시계 사용)"
@@ -128,8 +227,14 @@ def _parse_date_header(value: str) -> float | None:
 
 
 def sync(session=None, samples: int = 12, url: str | None = None,
-         log=lambda *_: None, diag=None) -> ClockSync:
-    """Date 헤더를 여러 번 받아 offset 구간을 좁힌다."""
+         log=lambda *_: None, diag=None, deadline: float | None = None,
+         quiet: bool = False) -> ClockSync:
+    """Date 헤더를 여러 번 받아 offset 구간을 좁힌다.
+
+    deadline 을 주면 그 로컬 시각을 넘겨서까지 샘플을 더 받지 않는다. 재측정이
+    정각 근처까지 늘어지는 일을 막기 위한 것이다(회선이 느리면 12발에 15초까지
+    걸린다). 그때까지 받은 샘플만으로 판정한다.
+    """
     import requests
 
     sess = session or requests.Session()
@@ -138,6 +243,8 @@ def sync(session=None, samples: int = 12, url: str | None = None,
 
     errors: list[str] = []
     for i in range(samples):
+        if deadline is not None and time.time() >= deadline:
+            break
         try:
             t0 = time.time()
             r = sess.head(target, timeout=8, allow_redirects=False,
@@ -180,9 +287,11 @@ def sync(session=None, samples: int = 12, url: str | None = None,
     if out.samples:
         out.offset = (out.lo + out.hi) / 2.0
         out.synced = True
+        out.last_sync_local = time.time()
 
     out.errors = errors
-    log(out.describe())
+    if not quiet:
+        log(out.describe())
     if errors and not out.synced:
         log(f"서버 시각 요청 실패 사유: {errors[0]}")
     if diag is not None:
@@ -197,6 +306,177 @@ def sync(session=None, samples: int = 12, url: str | None = None,
         except Exception:
             pass
     return out
+
+
+class ClockKeeper(threading.Thread):
+    """프로그램이 도는 내내 서버 시각을 다시 재는 스레드.
+
+    왜 필요한가. 고객은 전날 오후에 켜두고 다음 날 09시를 기다린다(실제 로그:
+    14:35 시작 → 09:00 발사, 18시간). 처음 한 번 잰 오프셋을 18시간 들고 가면
+    그 사이 PC 시계가 서버 시계와 벌어진 만큼 그대로 틀린다.
+
+    규칙 (순서가 곧 우선순위다):
+      1. 발사를 절대 방해하지 않는다. 정각 config.RESYNC_QUIET_SECONDS(90초)
+         전부터는 아무것도 재지 않는다. 그 뒤로는 다시 켜지지 않는다.
+         재측정은 브라우저를 전혀 건드리지 않는 별도 스레드의 requests 호출이라
+         [확인] 클릭 경로와 겹치지도 않는다.
+      2. 실패해도 아무 일도 일어나지 않는다. 마지막으로 성공한 값을 그대로 쓰고
+         로그만 남긴다. 재측정 실패로 실행이 중단되는 일은 없다.
+      3. 권위는 언제나 12발 구간 교집합이다(sync). 세션 유지 응답으로 얻는
+         한 발짜리 샘플은 '어긋났는지' 판정만 하고, 어긋났으면 여기에 즉시
+         다시 재라고 알린다(request_now).
+    """
+
+    def __init__(self, clock: ClockSync, interval: float = config.RESYNC_SECONDS,
+                 samples: int = 12, log=lambda *_: None, diag=None,
+                 stop_event=None, session_factory=None,
+                 quiet_seconds: float = config.RESYNC_QUIET_SECONDS,
+                 quiet_server_epoch: float | None = None):
+        super().__init__(daemon=True, name="clock-keeper")
+        self.clock = clock
+        self.interval = max(float(interval), 5.0)
+        self.samples = int(samples)
+        self.log = log
+        self.diag = diag
+        self.stop_event = stop_event or threading.Event()
+        self.session_factory = session_factory
+        self.quiet_seconds = float(quiet_seconds)
+        self.quiet_server_epoch = quiet_server_epoch   # 보통 정각(open_epoch)
+        self.failures = 0
+        self._wake = threading.Event()
+        self._pending_reason = ""
+        self._announced_quiet = False
+        self._session = None
+
+    # -- 밖에서 부르는 것 --------------------------------------------
+    def request_now(self, reason: str = "") -> None:
+        """다음 주기를 기다리지 않고 곧바로 다시 재게 한다."""
+        self._pending_reason = reason
+        self._wake.set()
+
+    def in_quiet_window(self) -> bool:
+        if self.quiet_server_epoch is None:
+            return False
+        return self.clock.server_now() >= self.quiet_server_epoch - self.quiet_seconds
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        self._wake.set()
+
+    def sync_now(self, reason: str = "", force: bool = False) -> bool:
+        """지금 이 자리에서(같은 스레드에서) 한 번 다시 잰다.
+
+        준비(240초 창)를 시작하기 직전처럼 '지금 이 값이 최신이어야 하는' 자리에서
+        부른다. 정각 직전이면 force 가 아닌 한 재지 않는다.
+        """
+        if self.in_quiet_window() and not force:
+            return False
+        return self._measure(reason, force=force)
+
+    # -- 내부 ---------------------------------------------------------
+    def _make_session(self):
+        if self._session is not None:
+            return self._session
+        try:
+            if self.session_factory is not None:
+                self._session = self.session_factory()
+            else:
+                from . import site
+                self._session = site.make_session()
+        except Exception:                      # noqa: BLE001
+            import requests
+            self._session = requests.Session()
+        return self._session
+
+    def _budget_deadline(self, force: bool = False) -> float:
+        """이번 측정을 언제까지 끝내야 하는지(로컬 시각)."""
+        hard = time.time() + max(self.interval * 0.5, 20.0)
+        if self.quiet_server_epoch is None or force:
+            return hard
+        quiet_local = self.clock.local_time_for(
+            self.quiet_server_epoch - self.quiet_seconds)
+        return min(hard, quiet_local)
+
+    def _measure(self, reason: str = "", force: bool = False) -> bool:
+        deadline = self._budget_deadline(force)
+        if deadline - time.time() < 2.0:
+            # 정각이 코앞이다. 지금 재느니 마지막 값을 그대로 쓰는 게 낫다.
+            return False
+        before = self.clock.offset if self.clock.synced else None
+        try:
+            fresh = sync(session=self._make_session(), samples=self.samples,
+                         log=lambda *_: None, quiet=True, deadline=deadline)
+        except Exception as exc:              # noqa: BLE001
+            fresh = None
+            self.log(f"서버 시각 재측정 실패(무시하고 계속합니다): {type(exc).__name__}")
+        if fresh is None or not fresh.synced:
+            self.failures += 1
+            self._session = None              # 다음 번엔 새 연결로
+            self.log("서버 시각 재측정 실패(무시하고 계속합니다). "
+                     "직전에 맞춘 값을 그대로 씁니다: "
+                     + self._short(self.clock))
+            return False
+        out = self.clock.adopt(fresh)
+        n = self.clock.resyncs
+        tail = f" · {reason}" if reason else ""
+        if before is None:
+            self.log(f"서버 시각 재측정({self._every()}, {n}회차): "
+                     + self._short(self.clock) + tail)
+        else:
+            self.log(
+                f"서버 시각 재측정({self._every()}, {n}회차): "
+                f"보정 {before * 1000:+.0f}ms → {self.clock.offset * 1000:+.0f}ms "
+                f"(변화 {out['deltaMs']:+.0f}ms, 오차 ±{self.clock.uncertainty * 500:.0f}ms, "
+                f"샘플 {self.clock.samples}개, 최소왕복 {self.clock.rtt_best * 1000:.0f}ms)"
+                + tail)
+        self._dump()
+        return True
+
+    def _every(self) -> str:
+        if self.interval % 60 == 0:
+            return f"{int(self.interval // 60)}분마다"
+        return f"{self.interval:.0f}초마다"
+
+    @staticmethod
+    def _short(c: ClockSync) -> str:
+        if not c.synced:
+            return "아직 한 번도 맞추지 못했습니다"
+        return (f"보정 {c.offset * 1000:+.0f}ms "
+                f"(오차 ±{c.uncertainty * 500:.0f}ms, 최소왕복 {c.rtt_best * 1000:.0f}ms)")
+
+    def _dump(self) -> None:
+        if self.diag is None:
+            return
+        try:
+            self.diag.add_json("clock_resync.json", {
+                "intervalSeconds": self.interval,
+                "quietSeconds": self.quiet_seconds,
+                "resyncs": self.clock.resyncs,
+                "failures": self.failures,
+                "offsetMs": round(self.clock.offset * 1000, 1),
+                "history": self.clock.history[-60:],
+                "driftChecks": self.clock.drift_notes[-60:],
+            })
+        except Exception:
+            pass
+
+    def run(self) -> None:
+        while not self.stop_event.is_set():
+            self._wake.wait(self.interval)
+            if self.stop_event.is_set():
+                return
+            forced = self._wake.is_set()
+            reason = self._pending_reason if forced else ""
+            self._wake.clear()
+            self._pending_reason = ""
+            if self.in_quiet_window():
+                if not self._announced_quiet:
+                    self._announced_quiet = True
+                    self.log(f"정각 {self.quiet_seconds:.0f}초 전입니다. 발사에 방해되지 "
+                             f"않도록 서버 시각 재측정을 여기서 멈춥니다 "
+                             f"(마지막 값: {self._short(self.clock)}).")
+                continue
+            self._measure(reason)
 
 
 def next_open_epoch(clock: ClockSync, hour: int = config.OPEN_HOUR,

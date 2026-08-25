@@ -74,6 +74,13 @@ class Diagnostics:
             safe = mask(text)
             data = _truncate_middle(safe, MAX_ENTRY_BYTES).encode("utf-8", "replace")
             with self._lock:
+                # 같은 이름이면 덮어쓴다. 주기적으로 갱신되는 스냅샷
+                # (clock_resync.json 처럼)이 ZIP 에 중복 항목으로 쌓이면
+                # 압축이 깨진 것처럼 보이고 마지막 값도 찾기 어렵다.
+                for i, (existing, _) in enumerate(self._entries):
+                    if existing == name:
+                        self._entries[i] = (name, data)
+                        return
                 if len(self._entries) >= MAX_ENTRIES:
                     return
                 self._entries.append((name, data))

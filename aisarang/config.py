@@ -14,7 +14,17 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
+
+# 서버 시각을 다시 맞추는 주기(초). 고객에게 "5분" 이라고 약속한 값이다.
+# 프로그램이 도는 동안 계속(오픈 전 대기 / 준비 240초 / 확인창 홀드) 이 주기로
+# 다시 측정한다. 근거와 예외(정각 직전 정지)는 clock.ClockKeeper 머리말 참고.
+RESYNC_SECONDS = 300
+# 정각 몇 초 전부터 재측정을 멈출지. 발사 순간에는 어떤 것도 끼어들지 않는다.
+RESYNC_QUIET_SECONDS = 90
+# 대기 중 세션 유지 신호 주기. 재측정과 같은 5분으로 맞춘다(고객 로그에서
+# 두 줄이 나란히 보이도록). 세션 수명은 60분 실측이라 5분은 충분히 잦다.
+SESSION_TOUCH_SECONDS = RESYNC_SECONDS
 
 # 배포 형식. v1.0.5 부터 폴더(ZIP) 배포다. 한 덩어리 exe(--onefile)는 실행할
 # 때마다 자기 자신을 %TEMP% 에 풀어놓는데, 윈도우 디펜더가 그 동작을 오탐해
