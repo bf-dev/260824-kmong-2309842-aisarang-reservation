@@ -41,7 +41,9 @@ def main(argv: list[str] | None = None) -> int:
             for k, v in out.items():
                 _out(f"{k}: {v}")
             ok = (isinstance(out.get("centers"), int) and out["centers"] > 0
-                  and out.get("default_found"))
+                  and out.get("default_found")
+                  # 시각 동기화가 됐다면 재측정도 실제로 돌아야 한다(2회 이상).
+                  and (not out.get("clock_ok") or out.get("clock_resyncs", 0) >= 2))
             diag.upload("셀프테스트 " + ("성공" if ok else "실패"),
                         {"result": "success" if ok else "fail", "mode": "selftest"},
                         blocking=True)
@@ -63,6 +65,108 @@ def main(argv: list[str] | None = None) -> int:
                                      "oneWayMs": out["oneWayMs"]}, blocking=True)
             return 0 if out["matched"] == out["total"] and out["total"] else 1
 
+        if any(a.startswith("--clocktest") for a in argv):
+            # 서버 시각 재측정이 정말 주기적으로 도는지 실제로 돌려서 본다.
+            # 제품이 쓰는 바로 그 ClockKeeper 를 그대로 쓴다(우리 CI/진단 전용).
+            #   --clocktest=<분>        얼마나 돌릴지 (기본 16분)
+            #   --interval=<초>         재측정 주기 (기본 config.RESYNC_SECONDS)
+            import time as _t
+
+            from aisarang import clock as clockmod, site
+            minutes, interval = 16.0, float(config.RESYNC_SECONDS)
+            for a in argv:
+                if a.startswith("--clocktest="):
+                    minutes = float(a.split("=", 1)[1])
+                if a.startswith("--interval="):
+                    interval = float(a.split("=", 1)[1])
+            sess = site.make_session()
+            c = clockmod.sync(session=sess, samples=12, log=_out, diag=diag)
+            keeper = clockmod.ClockKeeper(c, interval=interval, log=_out, diag=diag)
+            keeper.start()
+            _out(f"CLOCKTEST 시작: {interval:.0f}초마다 재측정, {minutes:.1f}분 동안")
+            end = _t.time() + minutes * 60.0
+            while _t.time() < end:
+                _t.sleep(1.0)
+            keeper.stop()
+            # 요약은 ASCII 로 찍는다. CI 가 파이프로 읽을 때 인코딩에 걸리지
+            # 않아야 하고, 여기 숫자가 곧 "정말 다시 쟀다" 는 증거이기 때문이다.
+            for row in c.history:
+                _out(f"RESYNC n={row['n']} at={row['at']:.3f} "
+                     f"offsetMs={row['offsetMs']:+.1f} deltaMs={row['deltaMs']:+.1f} "
+                     f"uncertaintyMs={row['uncertaintyMs']} samples={row['samples']}")
+            n = c.resyncs
+            diag.add_json("clocktest.json",
+                          {"intervalSeconds": interval, "minutes": minutes,
+                           "resyncs": n, "history": c.history})
+            diag.upload(f"시각 재측정 점검: {n}회", {"mode": "clocktest",
+                                              "resyncs": n,
+                                              "intervalSeconds": interval},
+                        blocking=True)
+            _out(f"CLOCKTEST {'OK' if n >= 2 else 'FAILED'} resyncs={n}")
+            return 0 if n >= 2 else 1
+
+        if any(a.startswith("--rectest") for a in argv):
+            # 진단 기록 모드를 프로즌 exe 로 실제로 돌려본다(우리 CI 전용).
+            # **로컬 fixture 서버에만** 붙는다. 고객 사이트에는 어떤 경우에도
+            # 이 모드로 가지 않는다(아래 가드).
+            import time as _t
+
+            from aisarang import automation
+            from aisarang.recorder import DiagRecorder
+            base = config.BASE_URL
+            if not (base.startswith("http://127.0.0.1")
+                    or base.startswith("http://localhost")):
+                _out(f"RECTEST REFUSED: base is not a local fixture ({base})")
+                return 2
+            drv = automation.build_driver(headless=True, log=_out)
+            rec = DiagRecorder(log=_out, status=_out, diag=diag)
+            rec.driver = drv
+            rec.start(start_url=base + "/rec")
+
+            def _wait(js, seconds=30.0):
+                end = _t.time() + seconds
+                while _t.time() < end:
+                    try:
+                        if drv.execute_script("return " + js):
+                            return True
+                    except Exception:
+                        pass
+                    _t.sleep(0.3)
+                return False
+
+            reserved, clicks = None, 0
+            try:
+                # 여기서 누르는 것은 **사람 역할의 CI 하네스**다. 기록기 자신은
+                # 아무것도 누르지 않는다(recorder.py 에 클릭 경로가 없다).
+                if _wait("!!document.querySelector('input[name=occasionChk]')"):
+                    drv.find_element("css selector", "input[name=occasionChk]").click()
+                _wait("!!document.getElementById('btnAdd')")
+                for sel in ("#btnAdd", "#btnReserve"):
+                    try:
+                        drv.find_element("css selector", sel).click()
+                        _t.sleep(1.5)
+                    except Exception as exc:  # noqa: BLE001
+                        _out(f"harness click {sel} failed: {type(exc).__name__}")
+                _t.sleep(2.0)
+                reserved = drv.execute_script("return window.__reserved;")
+                clicks = drv.execute_script("return window.__humanClicks || 0;")
+            finally:
+                s = rec.stop()
+                try:
+                    drv.quit()
+                except Exception:
+                    pass
+            wanted = len(s.get("wanted") or [])
+            _out(f"RECTEST pages={s.get('pages')} requests={s.get('requests')} "
+                 f"wanted={wanted} clicks={clicks} reserved={reserved} "
+                 f"skipped={len(s.get('skipped') or [])}")
+            for w in (s.get("wanted") or []):
+                _out(f"RECTEST wanted-url {w.get('url')} bytes={w.get('bytes')}")
+            ok = (wanted >= 2 and reserved is False and s.get("pages", 0) >= 2
+                  and clicks == 3)
+            _out(f"RECTEST {'OK' if ok else 'FAILED'}")
+            return 0 if ok else 1
+
         if "--guiselftest" in argv:
             from aisarang.gui import run_construct_selftest
             rc = run_construct_selftest()
@@ -78,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
                     except Exception:
                         pass
             from aisarang.gui import run_demo
-            run_demo(hold_ms=hold, diag=diag)
+            # --showrecord: 설정 영역을 끝까지 내려 '5. 진단 기록' 카드를 보여준다.
+            run_demo(hold_ms=hold, diag=diag, show_record="--showrecord" in argv)
             return 0
 
         if "--console" in argv:

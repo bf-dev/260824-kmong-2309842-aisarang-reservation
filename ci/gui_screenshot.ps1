@@ -10,6 +10,14 @@
 #
 # A --onefile exe's bootloader parent never owns the window, the child it spawns
 # does, so $proc.MainWindowHandle stays 0 forever. Poll by process NAME instead.
+#
+# -DemoArgs / -Out let CI take a second capture of the same window scrolled down
+# to the diagnostic-recorder card, so the new button is proven by pixels.
+param(
+  [string] $DemoArgs = "--guidemo,--hold=150000",
+  [string] $Out = "gui.png",
+  [int] $SettleSeconds = 45
+)
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
 
@@ -40,7 +48,9 @@ Get-Process -Name $base -ErrorAction SilentlyContinue | Stop-Process -Force
 
 # --guidemo runs the real clock sync and the real center lookup, then shows the
 # result on screen and holds the window open.
-$p = Start-Process $exe.FullName -ArgumentList "--guidemo","--hold=150000" -PassThru
+$argList = $DemoArgs.Split(",")
+Write-Host "demo args: $($argList -join ' ')"
+$p = Start-Process $exe.FullName -ArgumentList $argList -PassThru
 
 $hwnd = [IntPtr]::Zero
 for ($i = 0; $i -lt 120; $i++) {
@@ -52,7 +62,7 @@ for ($i = 0; $i -lt 120; $i++) {
 if ($hwnd -eq [IntPtr]::Zero) { throw "app never opened a window within 120s" }
 
 # let the real lookup finish so the result banner is on screen
-Start-Sleep -Seconds 45
+Start-Sleep -Seconds $SettleSeconds
 
 [Win32Cap]::ShowWindow($hwnd, 5) | Out-Null
 [Win32Cap]::SetForegroundWindow($hwnd) | Out-Null
@@ -71,7 +81,7 @@ $ok = [Win32Cap]::PrintWindow($hwnd, $hdc, 2)
 $g.ReleaseHdc($hdc)
 if (-not $ok) { throw "PrintWindow failed" }
 
-$out = Join-Path $dir "gui.png"
+$out = Join-Path $dir $Out
 $bmp.Save($out)
 
 # reject a blank capture

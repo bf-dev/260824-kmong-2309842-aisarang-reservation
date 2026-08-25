@@ -84,15 +84,15 @@ jobs:
           "downloaded v1.0.4: $((Get-Item diag\v104.exe).Length) bytes sha256=$h"
           powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path diag\v104.exe -Label "v1.0.4-onefile"
 
-      - name: Defender scan of the v1.0.5 onedir build
+      - name: Defender scan of the v1.0.6 onedir build
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.5-onedir" -MustBeClean
+        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.6-onedir" -MustBeClean
 
       - name: Defender scan of the delivered zip
         shell: pwsh
         run: |
           $zip = Get-ChildItem out\*.zip | Select-Object -First 1
-          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.5-zip" -MustBeClean
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.6-zip" -MustBeClean
 
       # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
       # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.
@@ -153,6 +153,57 @@ jobs:
             Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           }
 
+      # v1.0.6 의 핵심 약속: 서버 시각을 한 번 재고 마는 게 아니라 프로그램이
+      # 도는 내내 다시 잰다(제품 주기 5분). 그 말이 사실인지 프로즌 exe 로
+      # 실제로 돌려서 본다. CI 시간을 아끼려고 주기만 20초로 줄여 부르지만,
+      # 도는 코드는 09시까지 실제로 도는 바로 그 ClockKeeper 다.
+      - name: periodic clock re-sync actually runs (frozen exe)
+        shell: pwsh
+        run: |
+          $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18644" -PassThru
+          Start-Sleep -Seconds 4
+          try {
+            $env:AISARANG_BASE_URL = "http://127.0.0.1:18644"
+            $log = "clocktest.log"
+            $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe `
+                 -ArgumentList "--clocktest=1.2","--interval=20" `
+                 -RedirectStandardOutput $log -PassThru -Wait
+            Get-Content $log
+            "clocktest exit code: $($p.ExitCode)"
+            if ($p.ExitCode -ne 0) { throw "periodic clock re-sync did not run" }
+            $n = ([regex]::Matches((Get-Content $log -Raw), "RESYNC n=")).Count
+            "re-measurement log lines: $n"
+            if ($n -lt 3) { throw "expected at least 3 re-measurements, got $n" }
+          } finally {
+            Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      # v1.0.6 의 다른 약속: 진단 기록 모드는 **아무것도 누르지 않는다**.
+      # 프로즌 exe 로 진짜 크롬을 띄워, 사람이 누르는 것만 기록되는지,
+      # 우리가 못 봤던 ajax 응답 본문이 실제로 남는지, 그리고 예약 계기가
+      # 끝까지 꺼져 있는지(window.__reserved === false) 확인한다.
+      - name: diagnostic recorder records but never clicks (frozen exe)
+        shell: pwsh
+        run: |
+          $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18645" -PassThru
+          Start-Sleep -Seconds 4
+          try {
+            $env:AISARANG_BASE_URL = "http://127.0.0.1:18645"
+            $log = "rectest.log"
+            $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe `
+                 -ArgumentList "--rectest" `
+                 -RedirectStandardOutput $log -PassThru -Wait
+            Get-Content $log
+            "rectest exit code: $($p.ExitCode)"
+            if ($p.ExitCode -ne 0) { throw "diagnostic recorder run failed" }
+            $raw = Get-Content $log -Raw
+            if ($raw -notmatch "reserved=False") { throw "the recorder reached the reserve callback" }
+            if ($raw -notmatch "SelectOccasionChild.html") { throw "child ajax body not recorded" }
+            if ($raw -notmatch "OccasionTimeMainSlPL.html") { throw "useinfo ajax body not recorded" }
+          } finally {
+            Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
+          }
+
       - name: GUI screenshot (real window, real result on screen)
         shell: pwsh
         run: |
@@ -165,6 +216,11 @@ jobs:
           }
           try {
             powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1
+            # 두 번째 컷: 설정 영역을 끝까지 내려 새로 붙은 [진단 기록 시작] /
+            # [기록 중지] 버튼이 실제로 창에 있다는 것을 픽셀로 남긴다.
+            powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1 `
+              -DemoArgs "--guidemo,--showrecord,--hold=90000" `
+              -Out "gui-record.png" -SettleSeconds 20
           } finally {
             if ($srv) { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
           }

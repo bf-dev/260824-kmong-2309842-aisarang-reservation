@@ -197,6 +197,7 @@ class App:
         self.sido: list[dict] = []
         self.gugun: list[dict] = []
         self.runner: Runner | None = None
+        self.recorder = None
         self._updater = None
 
         root.title(f"{config.APP_NAME}  v{config.APP_VERSION}")
@@ -235,6 +236,7 @@ class App:
         vsb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=vsb.set)
         canvas.pack(side="left", fill="both", expand=True)
+        self._canvas = canvas          # 스크린샷용: 아래쪽 카드를 보여줄 때 쓴다
         outer = tk.Frame(canvas, bg=BG)
         win = canvas.create_window((0, 0), window=outer, anchor="nw")
 
@@ -383,7 +385,7 @@ class App:
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9)).grid(
             row=7, column=2, columnspan=3, sticky="w", padx=(10, 0), pady=(14, 0))
 
-        # 4. 타이밍 안내 — 이 프로그램이 실제로 무엇을 정각에 하는지.
+        # 4. 타이밍 안내. 이 프로그램이 실제로 무엇을 정각에 하는지.
         c = card(outer, "4. 9시 정각에 하는 일", self.compact)
         tk.Label(c, text="검색 → 센터 → 아동 → 반/이용시간 → 날짜 칸 → 추가 → 체크 → [예약하기] 까지는\n"
                          "9시가 되기 전에 미리 끝내고, 예약 확인창을 열어둔 채 기다립니다.\n"
@@ -396,6 +398,34 @@ class App:
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
                  justify="left").grid(row=1, column=0, columnspan=4, sticky="w",
                                       pady=(8, 0))
+        tk.Label(c, text=f"기준 시계는 PC 시계가 아니라 아이사랑 서버 시계입니다. 프로그램이 켜져 있는 "
+                         f"동안 {config.RESYNC_SECONDS // 60}분마다 다시 맞추고,\n"
+                         f"다시 맞출 때마다 아래 기록에 한 줄씩 남습니다. 정각 "
+                         f"{config.RESYNC_QUIET_SECONDS}초 전부터는 발사에 방해되지 않도록 멈춥니다.",
+                 bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
+                 justify="left").grid(row=2, column=0, columnspan=4, sticky="w",
+                                      pady=(8, 0))
+
+        # 5. 진단 기록. 사람이 손으로 걸어가는 동안 우리는 받아적기만 한다.
+        c = card(outer, "5. 진단 기록 (예약이 잘 안 될 때만)", self.compact)
+        self.btn_rec = tk.Button(c, text="진단 기록 시작", command=self.on_record_start,
+                                 bg="#1f8a70", fg="white", relief="flat", bd=0,
+                                 font=("맑은 고딕", 11, "bold"), padx=20,
+                                 pady=6 if self.compact else 9, cursor="hand2",
+                                 activebackground="#186a56", activeforeground="white")
+        self.btn_rec.grid(row=0, column=0, sticky="w")
+        self.btn_rec_stop = tk.Button(c, text="기록 중지", command=self.on_record_stop,
+                                      bg="#e8ebf0", fg=MUTED, relief="flat", bd=0,
+                                      font=("맑은 고딕", 11), padx=18,
+                                      pady=6 if self.compact else 9,
+                                      cursor="hand2", state="disabled")
+        self.btn_rec_stop.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        tk.Label(c, text="크롬을 열어 드립니다. 공동인증서로 로그인하시고, 예약 확인창이 뜨는 곳까지\n"
+                         "평소처럼 손으로 진행해 주세요. 프로그램은 아무것도 누르지 않고 화면과 통신만\n"
+                         "받아적습니다. 다 되시면 [기록 중지] 를 눌러주세요. 예약은 만들어지지 않습니다.",
+                 bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
+                 justify="left").grid(row=1, column=0, columnspan=4, sticky="w",
+                                      pady=(10, 0))
 
     def _build_bottom(self, shell):
         """항상 보여야 하는 것들. 바닥부터 역순으로 붙인다."""
@@ -689,6 +719,62 @@ class App:
             self.runner.stop()
             self.set_status("중지를 요청했습니다...")
 
+    # ------------------------------------------------------ 진단 기록
+    @safe_handler
+    def on_record_start(self):
+        """크롬을 열고 받아적기 시작. 이 모드는 아무것도 누르지 않는다."""
+        if self.recorder is not None and self.recorder.is_running():
+            return
+        if self.runner and self.runner.is_running():
+            messagebox.showinfo("안내", "예약이 실행 중입니다. 먼저 [중지] 를 눌러주세요.")
+            return
+        from .recorder import DiagRecorder
+        self.btn_rec.config(state="disabled", bg="#a8c9bf")
+        self.btn_rec_stop.config(state="normal", bg="#ffd9d6", fg=BAD)
+        self.set_result("진단 기록 중입니다. 크롬 창에서 손으로 진행해 주세요.", "busy")
+        if self.recorder is None:
+            self.recorder = DiagRecorder(log=self.log, status=self.set_status,
+                                         diag=self.diag)
+
+        def _work():
+            ok = False
+            try:
+                ok = self.recorder.start()
+            except Exception as exc:  # noqa: BLE001
+                self.log(f"진단 기록 시작 실패: {type(exc).__name__}: {exc}")
+            if not ok:
+                self.root.after(0, self._record_buttons_idle)
+                self.set_result("진단 기록을 시작하지 못했습니다.", "bad")
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    @safe_handler
+    def on_record_stop(self):
+        if self.recorder is None:
+            return
+        self.btn_rec_stop.config(state="disabled", bg="#e8ebf0", fg=MUTED)
+        self.set_status("진단 기록을 마무리하는 중입니다...")
+
+        def _work():
+            try:
+                s = self.recorder.stop()
+                self.set_result(
+                    f"진단 기록 완료 · 화면 {s.get('pages')}장, 통신 {s.get('requests')}건, "
+                    f"찾던 응답 {len(s.get('wanted') or [])}건을 보냈습니다.", "ok")
+            except Exception as exc:  # noqa: BLE001
+                self.log(f"진단 기록 마무리 중 오류(무시): {type(exc).__name__}: {exc}")
+                self.set_result("진단 기록을 마쳤습니다(일부 항목은 빠졌을 수 있습니다).", "ok")
+            self.root.after(0, self._record_buttons_idle)
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _record_buttons_idle(self):
+        try:
+            self.btn_rec.config(state="normal", bg="#1f8a70")
+            self.btn_rec_stop.config(state="disabled", bg="#e8ebf0", fg=MUTED)
+        except Exception:
+            pass
+
     def _on_done(self, result: dict):
         def _do():
             self.btn_start.config(state="normal", bg=ACCENT)
@@ -719,10 +805,25 @@ def run_gui(diag: Diagnostics | None = None):
     return app
 
 
-def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None):
-    """CI 스크린샷용. 진짜 조회를 돌려 결과를 화면에 띄운 뒤 그대로 붙잡고 있는다."""
+def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
+             show_record: bool = False):
+    """CI 스크린샷용. 진짜 조회를 돌려 결과를 화면에 띄운 뒤 그대로 붙잡고 있는다.
+
+    show_record=True 면 설정 영역을 끝까지 내려 '5. 진단 기록' 카드가 화면에
+    보이게 한다. 새 버튼이 실제로 창에 있다는 것을 스크린샷으로 증명하기 위한
+    것이다(설정 영역은 스크롤되므로 기본 화면에서는 접혀 있다).
+    """
     root = tk.Tk()
     app = App(root, diag=diag)
+    if show_record:
+        def _scroll():
+            try:
+                app._canvas.update_idletasks()
+                app._canvas.yview_moveto(1.0)
+            except Exception:
+                pass
+        root.after(2500, _scroll)
+        root.after(9000, _scroll)
 
     def _work():
         try:
@@ -750,13 +851,15 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None):
                          and checks["완료"] == booking.R_OK)
             app.log("확인창 흐름: 준비(검색→센터→아동→반/이용시간→칸→추가→체크→예약하기) "
                     "후 [확인] 만 정각 발사")
+            resyncs = out.get("clock_resyncs", 0)
             ok = (out.get("default_found") and isinstance(out.get("centers"), int)
-                  and grader_ok)
+                  and grader_ok and resyncs >= 2)
             if ok:
                 app.set_result(
                     f"점검 완료 · 서초구 센터 {out['centers']}곳 조회, "
                     f"기본 센터(신반포) 확인, 예약시간전/정원초과 판정 정상, "
-                    f"{offset_line}", "ok")
+                    f"서버 시각 {config.RESYNC_SECONDS // 60}분 주기 재측정 {resyncs}회 확인, "
+                    f"{out.get('clock_after_resync', offset_line)}", "ok")
             else:
                 app.set_result(f"점검 결과: {out}", "bad")
         except Exception as exc:  # noqa: BLE001
