@@ -18,6 +18,7 @@ v1.0.5 의 실제 버그 두 개가 여기서 그대로 재현된다.
 import os
 import pathlib
 import sys
+import time
 
 import pytest
 
@@ -40,16 +41,46 @@ def _driver():
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--window-size=1280,1200")
+    # 이 픽스처에는 절대 URL 로 걸린 사이트 CSS 가 하나 남아 있다. 러너에서
+    # 그걸 진짜로 받으러 나가면 로드가 늘어진다. 바깥은 통째로 막는다.
+    opts.add_argument("--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1")
     try:
         return webdriver.Chrome(options=opts)
     except Exception as exc:  # noqa: BLE001
         pytest.skip(f"크롬을 띄우지 못함: {type(exc).__name__}")
 
 
+def _wait_until_loaded(d, timeout: float = 30.0) -> dict:
+    """문서가 진짜 떠 있는 것을 확인하고 넘긴다.
+
+    2026-08-25 CI(windows-latest)에서 이 모듈의 **첫 테스트만** 한 번 빨간불이
+    났다. read_slot_rows 가 `{how:'none', tableIndex:-1, rows:[], skipped:[]}`
+    를 돌려줬는데, 이건 '표를 하나도 못 봤다' 는 뜻이라 문서가 아직 없었다는
+    말이다(픽스처에는 table 이 2개 있다). 제품 쪽은 그 상황에서 아무것도 체크
+    하지 않으므로 안전하지만, 테스트 입장에서는 '화면을 못 읽었다' 와
+    '선택표가 없다' 가 같은 모양으로 보인다. 그 둘을 여기서 가른다.
+    """
+    end = time.time() + timeout
+    seen = None
+    while time.time() < end:
+        try:
+            seen = d.execute_script(
+                "return {ready: document.readyState,"
+                " tables: document.querySelectorAll('table').length,"
+                " chk: !!document.querySelector('input[name=occasionChk]')};")
+        except Exception as exc:  # noqa: BLE001
+            seen = {"error": type(exc).__name__}
+        if isinstance(seen, dict) and seen.get("tables") and seen.get("chk"):
+            return seen
+        time.sleep(0.25)
+    raise AssertionError(f"실물 마크업 픽스처가 뜨지 않았습니다: {seen}")
+
+
 @pytest.fixture(scope="module")
 def drv():
     d = _driver()
     d.get(pathlib.Path(REAL).as_uri())
+    _wait_until_loaded(d)
     yield d
     try:
         d.quit()
