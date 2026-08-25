@@ -8,7 +8,7 @@
   1. 시간제보육신청 검색 화면
        구분 라디오(독립반/통합반) → 지역(시/도 + 시/군/구 2단 선택) → 조회
   2. 결과 목록에서 센터의 [시간제보육 예약] 버튼
-  3. "시간제보육 아동 선택" — 아동 라디오 하나를 고르고 진행
+  3. "시간제보육 아동 선택": 아동 라디오 하나를 고르고 진행
   4. 센터 상세: 이용기관명 / 예약 가능일(2주 범위) / 반명(select) /
      이용시간(select, 1~9시간)
   5. 날짜×시간 표: 행 = 2026-09-02(수) ~ 2026-09-08(화), 열 = 09,10,...,18
@@ -286,17 +286,40 @@ target.click();
 return true;
 """
 
-# 선택표(선택/반명/이용일/이용시간). 주의: **아동 선택 표에도 라디오가 있다**
-# (영상 r04). 그래서 "체크박스가 있는 첫 표" 로 잡으면 아동 표를 집는다.
-# 점수를 매겨 "체크박스 + 이용일(날짜)" 를 가진 표를 우선한다.
+# 선택표(선택/반명/이용일/이용시간). 주의: **아동 선택 표에도 라디오가 있고,
+# 그 행에는 생년월일이 들어 있다** (실제 마크업: "박승우 2025.10.22 10개월").
+#
+# v1.0.5 의 점수식은 `dated * 10 + boxes * 3` 이었다. 아동 표의 생년월일이
+# 날짜 정규식을 그대로 통과하기 때문에, 진짜 선택표가 아직 안 그려진 화면에서는
+# **아동 표가 이긴다**(고객 진단 캡처로 재현했다). 그러면 tick_slot_row 가
+# 아동 라디오를 켜놓고 "선택표 행을 체크했습니다" 라고 남기고,
+# slot_row_is_ticked 도 참을 돌려주어 open_modal 의 안전장치까지 통과한다.
+#
+# 그래서 판정을 날짜 하나에 걸지 않는다.
+#   · 아동 표는 **배제**한다: 캡션/머리글에 아동명·생년월일·개월수가 있거나,
+#     행에 "N개월" 만 있고 이용시간 구간이 없으면 선택표가 아니다.
+#   · 선택표의 특징은 **체크박스 + 이용시간 구간**("09 00 - 18 00 (9시간)") 이다.
 _JS_SCAN_SLOT_ROWS = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
+var RE_DATE = /(20\d\d)\D?(\d{2})\D?(\d{2})/;
+var RE_MONTHS = /\d+\s*개\s*월/;
+var RE_SPAN = /\d{1,2}\s*[:시]?\s*\d{2}\s*[-~]\s*\d{1,2}\s*[:시]?\s*\d{2}|\d+\s*시간/;
+var CHILDISH = /아동\s*명|생년월일|개월수|아동\s*선택/;
+var SLOTTISH = /이용일|이용\s*시간|반명/;
 var tables = document.querySelectorAll('table');
 var best = null;
+var skipped = [];
 for (var t = 0; t < tables.length; t++) {
   var tb = tables[t];
   var trs = tb.querySelectorAll('tr');
-  var rows = [], dated = 0, boxes = 0;
+  var head = '';
+  try {
+    var cap = tb.querySelector('caption');
+    var thead = tb.querySelector('thead');
+    head = (cap ? txt(cap) : '') + ' ' + (thead ? txt(thead) : '');
+  } catch (e) { head = ''; }
+
+  var rows = [], dated = 0, boxes = 0, spans = 0, months = 0;
   for (var r = 0; r < trs.length; r++) {
     var box = trs[r].querySelector("input[type=checkbox]");
     var kind = 'checkbox';
@@ -307,20 +330,30 @@ for (var t = 0; t < tables.length; t++) {
     var texts = [];
     for (var c = 0; c < cs.length; c++) texts.push(txt(cs[c]));
     var joined = texts.join(' ');
-    var m = joined.match(/(20\d\d)\D?(\d{2})\D?(\d{2})/);
+    var m = joined.match(RE_DATE);
     if (m) dated++;
+    if (RE_SPAN.test(joined)) spans++;
+    if (RE_MONTHS.test(joined)) months++;
     rows.push({row: r, checked: !!box.checked, kind: kind, texts: texts,
                text: joined, date: m ? (m[1] + m[2] + m[3]) : ''});
   }
   if (!rows.length) continue;
-  // 이용일이 있는 표 > 체크박스인 표 > 그냥 라디오 표
-  var score = dated * 10 + boxes * 3;
+
+  // 아동 표는 후보에서 아예 뺀다. 여기 행을 체크하면 엉뚱한 것이 예약된다.
+  if (CHILDISH.test(head) || (months > 0 && spans === 0)) {
+    skipped.push({tableIndex: t, why: 'child_table'});
+    continue;
+  }
+  // 이용시간 구간이 있는 표 > 체크박스 표 > 이용일만 있는 표
+  var score = spans * 10 + boxes * 6 + dated * 3 + (SLOTTISH.test(head) ? 5 : 0);
+  if (score <= 0) { skipped.push({tableIndex: t, why: 'no_signal'}); continue; }
   if (best === null || score > best.score) {
-    best = {score: score, tableIndex: t, rows: rows};
+    best = {score: score, tableIndex: t, rows: rows, spans: spans, boxes: boxes};
   }
 }
-if (!best) return null;
-return {tableIndex: best.tableIndex, rows: best.rows};
+if (!best) return {tableIndex: -1, rows: [], skipped: skipped};
+return {tableIndex: best.tableIndex, rows: best.rows, score: best.score,
+        spans: best.spans, boxes: best.boxes, skipped: skipped};
 """
 
 _JS_TICK_ROW = r"""
@@ -462,8 +495,13 @@ function vis(e){
   return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
 }
 var out = [];
+// 실제 사이트의 알림/확인창 컨테이너는 class="popup_wrap ..." 이다.
+// `.popup` 은 popup_wrap 에 **맞지 않는다**(클래스 이름 전체가 popup_wrap 이다).
+// 그래서 이 경로가 통째로 죽어 있었고 read_outcome 이 page_source 훑기 하나에만
+// 의존했다. 이름을 맞히는 대신 부분일치로 잡는다(popup_wrap, pop_bs, layer_popup ...).
 var cands = document.querySelectorAll(
-  "[role=dialog],[role=alertdialog],.layer,.layer_popup,.popup,.modal,.alert,.msg,.message");
+  "[role=dialog],[role=alertdialog],[class*=popup],[class*=pop_],[class*=layer]," +
+  ".popup_wrap,.layer,.modal,.alert,.msg,.message");
 for (var i = 0; i < cands.length; i++) {
   var e = cands[i];
   if (!vis(e)) continue;
@@ -608,38 +646,105 @@ def open_center(driver, center: dict, log=lambda *_: None) -> bool:
 #   1. 라디오가 이미 켜져 있으면 click 이 안 나가고, 그러면 이용정보 화면이
 #      아예 안 열린다. 항상 누른다.
 #   2. 화면이 ajax 로 늦게 채워진다. 채워질 때까지 기다리고 나서 다음 단계로 간다.
+#   3. **엉뚱한 라디오를 누르면 안 된다.** name=occasionChk 를 못 찾았을 때
+#      예전 코드는 document 전체의 "tr input[type=radio]" 를 그대로 썼다.
+#      이 화면에는 라디오가 여러 군데 있다(검색 화면의 구분 라디오, 표 안의
+#      선택 라디오). 그래서 슬롯 표를 찾을 때와 같은 방식으로 표에 점수를
+#      매긴다. 아동 표는 **생년월일이 있고 개월수 열이 있는 표**다.
+#   4. **이름을 지정했는데 그 아동이 목록에 없으면 아무것도 누르지 않는다.**
+#      예전 코드는 조용히 첫 번째 아동을 눌렀다. 아이가 둘 이상 등록돼 있으면
+#      그대로 다른 아이가 예약된다. 되돌릴 수 없는 실패라 여기서 멈춘다.
 _JS_PICK_CHILD = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
-var want = (arguments[0] || '').trim();
-var radios = document.querySelectorAll("input[type=radio][name=occasionChk]");
-if (!radios.length) {
-  var all = document.querySelectorAll("tr input[type=radio]");
-  radios = all;
+function norm(s){ return (s || '').replace(/\s+/g, '').toLowerCase(); }
+var RE_BIRTH = /(19|20)\d\d\s*[-.\/]\s*\d{1,2}\s*[-.\/]\s*\d{1,2}/;
+var RE_MONTHS = /\d+\s*개\s*월/;
+var want = norm(arguments[0]);
+
+function rowsOf(list) {
+  var out = [];
+  for (var i = 0; i < list.length; i++) {
+    var box = list[i];
+    var row = box.closest('tr');
+    out.push({box: box, line: row ? txt(row) : ''});
+  }
+  return out;
 }
-var fallback = null;
-for (var i = 0; i < radios.length; i++) {
-  var box = radios[i];
-  var row = box.closest('tr');
-  var line = row ? txt(row) : '';
-  if (fallback === null) fallback = {box: box, line: line};
-  if (want && line.indexOf(want) >= 0) { fallback = {box: box, line: line}; break; }
+
+// 1순위: 사이트가 실제로 쓰는 이름(고객 진단 ZIP 의 진짜 마크업).
+var rows = rowsOf(document.querySelectorAll("input[type=radio][name=occasionChk]"));
+var how = 'occasionChk';
+
+// 2순위: 이름이 바뀌었을 때. 표마다 점수를 매겨 '아동 표' 만 쓴다.
+if (!rows.length) {
+  var tables = document.querySelectorAll('table');
+  var best = null;
+  for (var t = 0; t < tables.length; t++) {
+    var trs = tables[t].querySelectorAll('tr');
+    var found = [], dated = 0, months = 0;
+    for (var r = 0; r < trs.length; r++) {
+      var box = trs[r].querySelector("input[type=radio]");
+      if (!box) continue;
+      var line = txt(trs[r]);
+      if (RE_BIRTH.test(line)) dated++;
+      if (RE_MONTHS.test(line)) months++;
+      found.push({box: box, line: line});
+    }
+    if (!found.length) continue;
+    var head = txt(tables[t]);
+    var headScore = (/개\s*월/.test(head) ? 3 : 0)
+                  + (/아동\s*명|생년월일/.test(head) ? 3 : 0);
+    var score = dated * 10 + months * 3 + headScore;
+    if (score <= 0) continue;          // 아동 표처럼 안 생겼으면 쓰지 않는다
+    if (best === null || score > best.score) {
+      best = {score: score, rows: found, tableIndex: t};
+    }
+  }
+  if (!best) return {found: false, reason: 'no_child_table'};
+  rows = best.rows;
+  how = 'scored_table#' + best.tableIndex + '(score ' + best.score + ')';
 }
-if (!fallback) return null;
-try { fallback.box.scrollIntoView({block: 'center'}); } catch (err) {}
+
+var lines = [];
+for (var i = 0; i < rows.length; i++) lines.push(rows[i].line);
+
+var hit = null;
+if (want) {
+  for (var i = 0; i < rows.length; i++) {
+    if (norm(rows[i].line).indexOf(want) >= 0) { hit = rows[i]; break; }
+  }
+  if (!hit) {
+    // 아무것도 누르지 않고 그대로 돌아간다. 다른 아이를 예약하느니 멈춘다.
+    return {found: true, matched: false, clicked: false, how: how,
+            count: rows.length, candidates: lines};
+  }
+}
+var pick = hit || rows[0];
+try { pick.box.scrollIntoView({block: 'center'}); } catch (err) {}
 // 이미 켜져 있어도 누른다. 사이트의 onclick(listChildSelect)이 이용정보 화면을
 // 여는 유일한 트리거이기 때문이다.
-fallback.box.click();
-return fallback.line;
+pick.box.click();
+return {found: true, matched: !!hit, clicked: true, how: how,
+        count: rows.length, candidates: lines, line: pick.line};
 """
 
 # 지금 켜져 있는 아동 행의 글자. alert 때문에 클릭 스크립트가 끊겼을 때 쓴다.
+# 여기서도 문서 전체의 아무 라디오나 집지 않는다. 생년월일이 있는 행만 아동으로 본다.
 _JS_READ_CHECKED_CHILD = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
-var box = document.querySelector("input[type=radio][name=occasionChk]:checked")
-       || document.querySelector("tr input[type=radio]:checked");
-if (!box) return null;
-var row = box.closest('tr');
-return row ? txt(row) : null;
+var RE_BIRTH = /(19|20)\d\d\s*[-.\/]\s*\d{1,2}\s*[-.\/]\s*\d{1,2}/;
+var box = document.querySelector("input[type=radio][name=occasionChk]:checked");
+if (box) {
+  var row = box.closest('tr');
+  return row ? txt(row) : null;
+}
+var all = document.querySelectorAll("tr input[type=radio]:checked");
+for (var i = 0; i < all.length; i++) {
+  var row = all[i].closest('tr');
+  var line = row ? txt(row) : '';
+  if (RE_BIRTH.test(line)) return line;
+}
+return null;
 """
 
 # 이용정보 탭. 라디오 onclick 이 무슨 이유로든 안 돌았을 때를 위한 두 번째 경로다.
@@ -686,29 +791,82 @@ def _take_alert(driver) -> str:
         return ""
 
 
-def select_child(driver, child_name: str = "", log=lambda *_: None) -> str:
+@dataclass
+class ChildPick:
+    """아동 선택 결과. ok=False 면 준비를 그대로 멈춘다."""
+    ok: bool = True
+    line: str = ""
+    reason: str = "child_selected"
+    message: str = ""
+    requested: str = ""
+    candidates: list = field(default_factory=list)
+    how: str = ""
+
+    def __str__(self) -> str:      # 로그/기존 호출부 호환
+        return self.line
+
+
+def select_child(driver, child_name: str = "", log=lambda *_: None) -> ChildPick:
     """"시간제보육 아동 선택" 의 라디오를 고르고, 이용정보 화면이 뜰 때까지 기다린다.
 
-    이름을 지정하면 그 행을, 아니면 첫 행을 고른다.
+    이름을 지정하면 **그 아동만** 고른다. 목록에 없으면 아무것도 누르지 않고
+    실패로 돌려준다. 아이가 둘 이상 등록된 계정에서 조용히 첫 번째를 예약해
+    버리는 것이 이 프로그램이 낼 수 있는 최악의 결과이기 때문이다.
+    이름을 비워두면 예전처럼 첫 행을 고른다.
     """
-    picked = _js(driver, _JS_PICK_CHILD, child_name, default=None)
+    want = (child_name or "").strip()
+    got = _js(driver, _JS_PICK_CHILD, want, default=None) or {}
+    if not isinstance(got, dict):                 # 옛 반환형 방어
+        got = {"found": bool(got), "matched": True, "clicked": True,
+               "line": str(got or "")}
 
     # 클릭 안에서 사이트가 alert() 을 띄우면 스크립트 호출 자체가 그 자리에서
     # 끊긴다(라디오는 이미 눌린 뒤다). 알림을 닫고 고른 행을 다시 읽는다.
     alert_text = _take_alert(driver)
-    if picked is None and alert_text:
-        picked = _js(driver, _JS_READ_CHECKED_CHILD, default=None)
+    if not got and alert_text:
+        line = _js(driver, _JS_READ_CHECKED_CHILD, default=None)
+        if line:
+            got = {"found": True, "matched": True, "clicked": True, "line": line}
 
+    candidates = list(got.get("candidates") or [])
+
+    if not got.get("found"):
+        log("아동 선택 화면이 아닙니다(건너뜁니다).")
+        return ChildPick(ok=True, line="", reason="no_child_table",
+                         requested=want, candidates=candidates)
+
+    if want and not got.get("matched"):
+        # 여기서 멈춘다. 다른 아이로 예약하는 일은 절대 없어야 한다.
+        log(f"■ 지정한 아동 '{want}' 을(를) 아동 목록에서 찾지 못했습니다. "
+            f"다른 아동으로 예약하지 않고 여기서 멈춥니다.")
+        if candidates:
+            log("  화면에 있는 아동 목록: " + " / ".join(candidates))
+        log("  프로그램 화면의 '아동명' 을 위 목록에 있는 이름과 똑같이 고쳐 주세요. "
+            "(비워두면 첫 번째 아동으로 진행합니다)")
+        return ChildPick(
+            ok=False, line="", reason="child_mismatch", requested=want,
+            candidates=candidates, how=str(got.get("how") or ""),
+            message=(f"지정한 아동 '{want}' 이(가) 목록에 없습니다. "
+                     f"화면의 '아동명' 을 확인해 주세요. "
+                     f"(등록된 아동 {got.get('count', len(candidates))}명)"))
+
+    picked = str(got.get("line") or "")
     if not picked:
         log("아동 선택 화면이 아닙니다(건너뜁니다).")
-        return ""
+        return ChildPick(ok=True, line="", reason="no_child_table",
+                         requested=want, candidates=candidates)
 
+    out = ChildPick(ok=True, line=picked, reason="child_selected", requested=want,
+                    candidates=candidates, how=str(got.get("how") or ""))
     log(f"아동 선택: {picked}")
+    if not want and int(got.get("count") or 1) > 1:
+        log(f"■ 등록된 아동이 {got.get('count')}명입니다. 아동명을 비워두어 "
+            f"첫 번째 아동으로 진행합니다. 다른 아이라면 화면의 '아동명' 을 적어 주세요.")
     if alert_text:
         log(f"사이트 알림: {alert_text}")
         if "이용신청서" in alert_text:
             log("아이사랑에서 이 아동의 이용신청서를 먼저 등록해야 예약 화면이 열립니다.")
-            return str(picked)
+            return out
 
     # 라디오 onclick 이 이용정보 탭을 눌러 ajax 로 화면을 채운다. 그 결과를 기다린다.
     deadline = time.time() + 15.0
@@ -716,18 +874,18 @@ def select_child(driver, child_name: str = "", log=lambda *_: None) -> str:
     while time.time() < deadline:
         if _js(driver, _JS_USEINFO_READY, default=False):
             log("이용정보 화면을 불러왔습니다.")
-            return str(picked)
+            return out
         if not opened_tab and time.time() > deadline - 12.0:
             opened_tab = bool(_js(driver, _JS_OPEN_USEINFO_TAB, default=False))
             if opened_tab:
                 log("이용정보 탭을 직접 눌렀습니다.")
-        got = _take_alert(driver)
-        if got:
-            log(f"사이트 알림: {got}")
+        got_alert = _take_alert(driver)
+        if got_alert:
+            log(f"사이트 알림: {got_alert}")
         time.sleep(0.4)
 
     log("이용정보 화면이 아직 안 보입니다. 그대로 다음 단계로 가서 다시 확인합니다.")
-    return str(picked)
+    return out
 
 
 # ---------------------------------------------------------------- 4단계 반/시간
@@ -919,6 +1077,23 @@ def press_add(driver, log=lambda *_: None) -> bool:
     return bool(hit)
 
 
+_RE_SLOT_SPAN = re.compile(r"\d{1,2}\s*[:시]?\s*\d{2}\s*[-~]\s*\d{1,2}\s*[:시]?\s*\d{2}"
+                           r"|\d+\s*시간")
+_RE_CHILD_ROW = re.compile(r"\d+\s*개\s*월")
+
+
+def _looks_like_slot_row(row: dict) -> bool:
+    """그 행이 선택표(이용일/이용시간) 행처럼 생겼는가.
+
+    아동 행("박승우 2025.10.22 10개월")과 선택표 행
+    ("매송아이 2026-09-08(화) 09 00 - 18 00 (9시간)")을 글자로 가른다.
+    """
+    text = str(row.get("text") or "")
+    if _RE_CHILD_ROW.search(text) and not _RE_SLOT_SPAN.search(text):
+        return False
+    return bool(_RE_SLOT_SPAN.search(text))
+
+
 def read_slot_rows(driver) -> dict:
     return _js(driver, _JS_SCAN_SLOT_ROWS, default=None) or {}
 
@@ -937,7 +1112,14 @@ def tick_slot_row(driver, date: str, log=lambda *_: None) -> tuple:
             break
     if target is None:
         # 이용일이 안 읽히면 마지막에 추가된 행을 쓴다(방금 [추가] 한 그 행).
-        target = rows[-1]
+        # 단, **그 행이 선택표 행처럼 생겼을 때만** 쓴다. 예전에는 무조건
+        # rows[-1] 을 켰고, 화면에 선택표가 아직 없으면 그게 아동 라디오였다.
+        last = rows[-1]
+        if last.get("kind") != "checkbox" and not _looks_like_slot_row(last):
+            log("선택표 행을 찾지 못했습니다(마지막 행이 선택표 행이 아닙니다): "
+                + str(last.get("text", ""))[:80])
+            return False, -1, ""
+        target = last
         log(f"선택표에서 {date} 를 못 찾아 마지막 행을 씁니다: {target.get('text', '')}")
     ok = _js(driver, _JS_TICK_ROW, data.get("tableIndex", 0), target.get("row", 0),
              default=False)
@@ -1121,8 +1303,16 @@ def prepare(driver, center: dict, target_date: str, preferred_hours: list,
         return StepResult(False, msg, "cert_required", p, {"loginGrade": grade})
 
     # 3단계: 아동 선택
-    p.child_name = select_child(driver, child_name, log) or child_name
+    pick = select_child(driver, child_name, log)
     automation.capture(driver, diag, "after_child_select")
+    if not pick.ok:
+        # 지정한 아동이 목록에 없다. 다른 아이로 예약하느니 예약하지 않는다.
+        # 이름은 개인정보라 업로드하는 detail 에는 개수만 남긴다.
+        return StepResult(False, pick.message, pick.reason, p,
+                          {"requestedChild": bool(child_name),
+                           "childCandidateCount": len(pick.candidates),
+                           "childScan": pick.how})
+    p.child_name = pick.line or child_name
 
     # 4단계: 반명 + 이용시간
     p.class_name = select_class(driver, class_name, log) or class_name

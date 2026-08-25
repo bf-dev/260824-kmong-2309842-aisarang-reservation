@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시간제보육 아동 선택 - 아동 2명 (실제 마크업 재현)</title>
+<!--
+  child_select.html 과 같은 구조인데 두 가지가 다르다.
+
+   1. 아동이 **2명** 등록돼 있다. v1.0.5 까지는 고객이 적은 아동명이 목록에
+      없어도 조용히 첫 번째 아동을 눌러 그대로 예약했다. 되돌릴 수 없는
+      실패라 v1.0.6 에서 막았고, 그것을 여기서 검증한다.
+   2. 위쪽에 **아동 표가 아닌 라디오 표**(검색 구분)를 하나 더 뒀다.
+      name=occasionChk 를 못 찾았을 때 예전 코드는 document 전체의
+      "tr input[type=radio]" 를 그대로 집어 이 표의 첫 라디오를 눌렀다.
+      아동 표는 '생년월일 + 개월수' 로 구분된다.
+
+  개인정보는 전부 가짜 값이다.
+-->
+<style>
+ body { font-family: sans-serif; }
+ table { border-collapse: collapse; margin-bottom: 20px; }
+ td, th { border: 1px solid #ccc; padding: 6px 10px; }
+ .tab_con_inner { border: 1px solid #ddd; min-height: 40px; padding: 8px; }
+</style>
+</head>
+<body>
+<section class="contents_wrap" id="contents">
+
+  <!-- 아동 표가 아닌 라디오 표. 절대 여기서 고르면 안 된다. -->
+  <h4>검색 구분</h4>
+  <table id="decoy">
+    <tbody>
+      <tr><td><input type="radio" name="unityGb" value="N" checked></td><td>독립반</td></tr>
+      <tr><td><input type="radio" name="unityGb" value="Y"></td><td>통합반</td></tr>
+    </tbody>
+  </table>
+
+  <h4 class="title">시간제보육 아동 선택</h4>
+  <form name="pfrm" id="pfrm" method="post">
+    <input type="hidden" name="unityyn" id="unityyn" value="N">
+    <input type="hidden" name="stcode" id="stcode" value="11650000416">
+    <table id="children">
+      <caption>시간제보육 아동 선택, 아동명, 생년월일, 개월수 내용의 테이블</caption>
+      <thead>
+        <tr><th scope="col">선택</th><th scope="col">아동명</th>
+            <th scope="col">생년월일</th><th scope="col">개월수</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input onclick="listChildSelect();" type="radio" title="아동가선택"
+                     id="occasionChk000000000000000001" name="occasionChk"
+                     value="000000000000000001" data-usereqstcnt="1" checked></td>
+          <td><a data-chilinnb="000000000000000001">아동가</a></td>
+          <td>2025.10.22</td>
+          <td>10개월</td>
+        </tr>
+        <tr>
+          <td><input onclick="listChildSelect();" type="radio" title="아동나선택"
+                     id="occasionChk000000000000000002" name="occasionChk"
+                     value="000000000000000002" data-usereqstcnt="1"></td>
+          <td><a data-chilinnb="000000000000000002">아동나</a></td>
+          <td>2024.03.05</td>
+          <td>29개월</td>
+        </tr>
+      </tbody>
+    </table>
+  </form>
+
+  <div class="relative mt100">
+    <ul class="tab_wrap_inner tab_s">
+      <li class="on"><a id="tab1" href="javascript:;" data-tab="divOccasionTimeSlPL">이용정보 신청</a>
+        <div id="divOccasionTimeSlPL" class="tab_con_inner"></div>
+      </li>
+      <li><a id="tab2" href="javascript:;" data-tab="divOccasionTimePils">통합반 이용정보 신청</a>
+        <div id="divOccasionTimePils" class="tab_con_inner"></div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<script>
+var loads = 0;
+var lastChild = '';
+function loadUseInfo(paneId) {
+  loads += 1;
+  var pane = document.getElementById(paneId);
+  window.setTimeout(function () {
+    pane.innerHTML =
+      '<div><span>반명</span> <select id="ban">' +
+      '<option value="">선택</option><option>매송아이</option></select></div>' +
+      '<div><span>이용시간</span> <select id="usehour">' +
+      '<option value="">선택</option><option>9</option></select></div>' +
+      '<table><tr><th>날짜/시간</th><th>09</th></tr>' +
+      '<tr><th>2026-09-08(화)</th><td class="cell">2</td></tr></table>';
+  }, 400);
+}
+
+var tabs = document.querySelectorAll('.tab_wrap_inner > li > a');
+for (var i = 0; i < tabs.length; i++) {
+  tabs[i].addEventListener('click', function (e) {
+    e.preventDefault();
+    loadUseInfo(this.getAttribute('data-tab'));
+  });
+}
+
+function listChildSelect() {
+  var checked = document.querySelector('input[name=occasionChk]:checked');
+  if (!checked) { return false; }
+  lastChild = checked.value;
+  if (Number(checked.getAttribute('data-usereqstcnt')) < 1) {
+    alert('이용신청서를 먼저 등록해주세요.');
+    return false;
+  }
+  document.querySelector('[data-tab=divOccasionTimeSlPL]').click();
+}
+</script>
+</body>
+</html>

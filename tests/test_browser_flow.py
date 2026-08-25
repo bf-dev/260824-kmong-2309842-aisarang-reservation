@@ -221,8 +221,8 @@ def test_child_radio_is_clicked_even_when_already_checked(drv):
         "return document.querySelector('input[name=occasionChk]').checked;") is True
     assert drv.execute_script("return window.loads;") == 0
 
-    line = booking.select_child(drv, "")
-    assert "아동가" in line
+    pick = booking.select_child(drv, "")
+    assert pick.ok and "아동가" in pick.line
     assert drv.execute_script("return window.loads;") >= 1, "이용정보 화면을 열지 않았다"
     # select_child 가 돌아온 시점에는 이미 그려져 있어야 한다(기다렸어야 한다).
     assert booking.select_class(drv) == "매송아이"
@@ -236,8 +236,66 @@ def test_child_selection_reports_the_site_alert_and_never_hangs(drv):
         "document.querySelector('input[name=occasionChk]')"
         ".setAttribute('data-usereqstcnt','0');")
     lines = []
-    line = booking.select_child(drv, "", log=lines.append)
-    assert "아동가" in line
+    pick = booking.select_child(drv, "", log=lines.append)
+    assert pick.ok and "아동가" in pick.line
     assert any("이용신청서" in s for s in lines), lines
     # alert 이 닫혔으므로 이후 조작이 정상적으로 된다.
     assert drv.execute_script("return 1 + 1;") == 2
+
+
+# ------------------------------------------- 아동이 둘 이상일 때 (v1.0.6)
+MULTI_FIXTURE = os.path.join(ROOT, "ci", "fixtures", "child_select_multi.html")
+
+
+def _open_multi(d):
+    import pathlib
+    d.get(pathlib.Path(MULTI_FIXTURE).as_uri())
+
+
+def test_the_requested_child_is_the_one_that_gets_picked(drv):
+    _open_multi(drv)
+    pick = booking.select_child(drv, "아동나")
+    assert pick.ok and "아동나" in pick.line
+    assert drv.execute_script("return window.lastChild;") == "000000000000000002"
+    assert booking.select_class(drv) == "매송아이"
+
+
+def test_a_child_name_that_matches_nothing_never_books_another_child(drv):
+    """v1.0.5 는 여기서 조용히 첫 번째 아동을 눌렀다. 그게 최악의 실패다."""
+    _open_multi(drv)
+    lines = []
+    pick = booking.select_child(drv, "없는아이", log=lines.append)
+    assert pick.ok is False
+    assert pick.reason == "child_mismatch"
+    assert "없는아이" in pick.message
+    # 아무것도 누르지 않았다: 사이트 콜백이 한 번도 안 돌았고 선택도 그대로다.
+    assert drv.execute_script("return window.lastChild;") == ""
+    assert drv.execute_script("return window.loads;") == 0
+    assert drv.execute_script(
+        "return document.querySelector('input[name=occasionChk]:checked').value;"
+    ) == "000000000000000001"
+    # 고객이 고칠 수 있게 화면 목록을 그대로 보여준다.
+    assert any("찾지 못했습니다" in s for s in lines), lines
+    assert any("아동가" in s and "아동나" in s for s in lines), lines
+
+
+def test_the_fallback_scan_ignores_radios_that_are_not_children(drv):
+    """name=occasionChk 가 바뀌어도 검색 구분 라디오를 누르면 안 된다."""
+    _open_multi(drv)
+    drv.execute_script(
+        "document.querySelectorAll('#children input[type=radio]')"
+        ".forEach(function (b) { b.name = 'somethingElse'; });")
+    pick = booking.select_child(drv, "아동나")
+    assert pick.ok and "아동나" in pick.line
+    assert pick.how.startswith("scored_table"), pick.how
+    # 미끼 표(독립반/통합반)는 건드리지 않았다.
+    assert drv.execute_script(
+        "return document.querySelector('#decoy input[value=Y]').checked;") is False
+
+
+def test_a_second_child_is_flagged_when_no_name_was_given(drv):
+    _open_multi(drv)
+    lines = []
+    pick = booking.select_child(drv, "", log=lines.append)
+    assert pick.ok and "아동가" in pick.line
+    assert any("2명" in s for s in lines), lines

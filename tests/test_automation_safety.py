@@ -67,7 +67,8 @@ def _patch(monkeypatch, grid=None, cert_required=False, cell_click=True,
     monkeypatch.setattr(booking, "choose_region", lambda *a, **k: True)
     monkeypatch.setattr(booking, "press_search", lambda *a, **k: True)
     monkeypatch.setattr(booking, "open_center", lambda *a, **k: True)
-    monkeypatch.setattr(booking, "select_child", lambda *a, **k: "아동가")
+    monkeypatch.setattr(booking, "select_child",
+                        lambda *a, **k: booking.ChildPick(ok=True, line="아동가"))
     monkeypatch.setattr(booking, "select_class", lambda *a, **k: "매송아이")
     monkeypatch.setattr(booking, "select_hours", lambda d, h, log=None: int(h))
     monkeypatch.setattr(booking, "read_grid",
@@ -137,6 +138,31 @@ def test_prepare_stops_at_add_button(monkeypatch):
     assert not res.ok
     assert res.reason == "no_add"
     assert pressed == []
+
+
+def test_prepare_stops_when_the_requested_child_is_not_in_the_list(monkeypatch):
+    """지정한 아동이 없으면 다른 아동으로 예약하지 않고 준비 자체를 멈춘다.
+
+    v1.0.5 까지는 조용히 첫 번째 아동으로 진행했다. 아이가 둘 이상 등록된
+    계정에서 그건 '엉뚱한 예약이 만들어짐' 이고, 취소는 센터 전화로만 된다.
+    """
+    pressed = _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]))
+    monkeypatch.setattr(
+        booking, "select_child",
+        lambda *a, **k: booking.ChildPick(
+            ok=False, reason="child_mismatch", requested="없는아이",
+            candidates=["아동가 2025.10.22 10개월", "아동나 2024.03.05 29개월"],
+            message="지정한 아동 '없는아이' 이(가) 목록에 없습니다."))
+    clicked = []
+    monkeypatch.setattr(booking, "click_cell", lambda *a, **k: clicked.append(1))
+    d = FakeDriver()
+    res = booking.prepare(d, CENTER, "20260908", [9], 9, child_name="없는아이")
+    assert not res.ok
+    assert res.reason == "child_mismatch"
+    assert clicked == [] and pressed == []
+    # 업로드되는 detail 에 아동 이름이 실려나가지 않는다(개수만).
+    assert res.detail["childCandidateCount"] == 2
+    assert not any("아동가" in str(v) for v in res.detail.values())
 
 
 def test_cert_gate_is_reported_not_bypassed(monkeypatch):
