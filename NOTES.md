@@ -414,21 +414,36 @@ unityYn  N (독립반)
 > `value=` 만 지우고 정작 서명값을 그대로 남긴다. `_PW_ATTR` / `_PW_ATTR_REV`
 > 로 따로 처리한다. `tests/test_masking.py::test_signed_blob_masked` 가 잡아냈다.
 
-## 배포 현황 (v1.0.3, 2026-08-24)
+## 배포 현황 (v1.0.4, 2026-08-25)
 
-- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.3.exe
-  (29,123,682 bytes, `PE32+ executable (GUI) x86-64`, mode 644)
-  **서빙 바이트 sha256 = 빌드 바이트 sha256 = `b09c19d67eec0887e7df0fbebda6dd8aa7c49e5321efce044caba58ed88eeb28`**
+- exe: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.4.exe
+  (29,149,406 bytes, `PE32+ executable (GUI) x86-64`, mode 644)
+  **서빙 바이트 sha256 = 빌드 바이트 sha256 = `da8f84b2276746a13713cc6276dbc4ed53c18534683bfbf9774e6feba71b77d1`**
   (Caddy 경유로 실제 내려받아 대조했다. 게이트웨이 루프백으로 확인하면 안 된다.)
-  1.0.0 / 1.0.2 도 같은 경로에 그대로 남아 있다. **이미 서빙된 파일명은 절대 덮어쓰지 않는다.**
-- 업데이트 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json → 1.0.3
-- CI: GitHub Actions run **32720166581**, 전 단계 green
-  (unit tests 61 → build → PE 확인 → **라이브 selftest** → fixture selftest →
-   GUI construct → GUI 스크린샷)
-- 스크린샷: `out/gui.png` (실제 Windows 창을 캡처, v1.0.3 표기와 실측 결과 표시:
-  "서초구 센터 10곳 조회, 기본 센터(신반포) 확인, 보정 -349ms, 최소왕복 900ms, 편도 추정 450ms")
-- Artifacts: `artifacts-check 2309842` 에 프로즌 exe 가 올린 v1.0.3 행 2건
-  (2026-08-24T11:08, Windows 2025Server, `aisarang-reservation-diag`)
+  1.0.0 / 1.0.2 / 1.0.3 도 같은 경로에 그대로 남아 있다.
+  **이미 서빙된 파일명은 절대 덮어쓰지 않는다.**
+- 업데이트 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json → 1.0.4
+- CI: GitHub Actions run **32791579911**, 전 단계 green
+  (unit tests **88** → build → PE 확인 → **라이브 selftest** → fixture selftest →
+   GUI construct → GUI 스크린샷). 88개에 **진짜 크롬으로 4·5단계를 끝까지 도는
+  6개**가 포함돼 있고, windows-latest 에서도 skip 없이 다 돌았다.
+- 스크린샷: `docs/gui-1.0.4.png` (실제 Windows 창. v1.0.4 표기 +
+  "서초구 센터 10곳 조회, 기본 센터(신반포) 확인, 예약시간전/정원초과 판정 정상,
+  보정 -338ms, 최소왕복 912ms, 편도 추정 456ms")
+- Artifacts: `artifacts-check 2309842` 에 프로즌 v1.0.4 exe 가 올린 행 2건
+  (2026-08-24T23:58, 23:59, Windows 2025Server, `aisarang-reservation-diag`)
+  + `aisarang-reservation-devnote` v1.0.4 1건 (`matched: true`)
+
+### v1.0.4 에서 바뀐 것 요약
+
+| | v1.0.3 | v1.0.4 |
+|---|---|---|
+| 4·5단계 근거 | 없음(도달 못 함) | **고객 인증서 세션 화면녹화** |
+| 정각에 쏘는 것 | 예약 화면 전체 시도 | **모달의 [확인] 한 번** |
+| 준비 시점 | 정각 60초 전 예열 | **정각 240초 전에 8단계까지 완료 + 모달 홀드** |
+| 실패 응답 | 뭉뚱그린 fail | **예약시간전(재시도) / 정원초과(중단)** 로 분리 |
+| 시계 보정 | 실행 전 1회 | + **실전 중 '예약시간전' 응답으로 재보정** |
+| 자리 없음 | 셀렉터 실패로 보임 | **X / 0 을 그대로 읽어 보고** |
 
 ### 측정된 근거
 
@@ -437,13 +452,24 @@ unityYn  N (독립반)
 
 | 대상 | 최소 왕복 | 동기화 오차 |
 |---|---|---|
-| 라이브 childcare.go.kr (러너→한국) | 870~900ms | ±481 ~ ±882ms |
+| 라이브 childcare.go.kr (러너→한국) | 870~912ms | ±481 ~ ±882ms |
 | 로컬 fixture 서버 | 0~1ms | **±67 ~ ±171ms** |
 
 고객 PC(국내 회선 → 국내 정부 서버)는 아래쪽 구간에 해당한다.
 
 발사 정밀도 실측: 목표 대비 **0.15 ~ 0.52ms**.
 도착 정확도 실측: **3회 연속 4/4 (합계 12/12)** — 위 "도착" 절 표 참고.
+
+4·5단계 흐름 실측(재현 화면 + 진짜 크롬, 2026-08-25):
+```
+class: 매송아이 / hours: 9
+grid rows: 20260902 … 20260908
+20260908: 09=2 10=2 … 17=2      20260905: 09=X … 17=X
+pick: 09시 칸 (남은 자리 2명)   click: True   add: True
+tick: (True, 1, ' 매송아이 2026-09-08(화) 09 00 - 18 00 (9시간)')
+modal: True / "…예약하시겠습니까? 확인 취소" / ready: True
+burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
+```
 
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
