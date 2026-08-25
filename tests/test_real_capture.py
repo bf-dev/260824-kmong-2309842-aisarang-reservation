@@ -346,6 +346,52 @@ def test_the_real_confirm_text_is_not_read_as_a_failure(site):
     assert not booking.result_is_retryable(code)
 
 
+def test_the_server_answer_is_read_from_the_alert2_shell(site):
+    """[확인] 이후 서버 답은 **alert2 껍데기**로 온다. 그걸 실물에서 읽는다.
+
+    캡처된 OccasionTimeMainSlPL.html 의 fnSave 콜백이 근거다.
+
+        customAjax.ajax({ type:"POST", url:"/icms/occasion/InsertOcreqst.html",
+          data: $('#pfrm').serializeArray(),
+          success: function(data){ ... icmsLayerPopup.alert2({ contents : data.returnmsg }) ... }
+
+    그리고 layerpopup.js 의 open("type-alert2") 가 하는 일은 딱 두 가지다.
+
+        $("#layer-alert-popup-contents2").html(param.contents.nl2br());
+        $("#layer-alert-popup2").show();
+
+    아래에서 그 두 줄만 그대로 재현한다(픽스처에는 사이트 JS 가 없다).
+    확인창과 마찬가지로 이 껍데기도 페이지에 **두 벌**이고 jQuery `#id` 는
+    앞의 한 벌만 건드리므로, 우리 쪽은 id 를 믿지 말고 보이는 것을 읽어야 한다.
+
+    문구는 서버 원문이 아니라 자리표시자다. 진짜 원문(예약시간전/정원초과)은
+    아직 캡처에 없다. 여기서 못 박는 것은 '결과가 도착하는 자리' 다.
+    """
+    d = site("modal_open.html")
+    shells = d.execute_script(
+        "return document.querySelectorAll(\"[id='layer-alert-popup2']\").length;")
+    assert shells == 2, shells
+
+    msg = "예약이 완료되었습니다."
+    d.execute_script(
+        "var m = arguments[0];"
+        # 확인창은 confirm2 콜백에서 닫힌다.
+        "var c = document.querySelectorAll(\"[id='layer-confirm-popup2']\");"
+        "for (var i=0;i<c.length;i++) c[i].style.display='none';"
+        # layerpopup.js open('type-alert2') 와 같은 두 줄.
+        "document.querySelectorAll(\"[id='layer-alert-popup-contents2']\")[0]"
+        "  .innerHTML = m;"
+        "document.querySelectorAll(\"[id='layer-alert-popup2']\")[0]"
+        "  .style.display='block';", msg)
+
+    notices = [str(t) for t in (d.execute_script(booking._JS_READ_NOTICE) or [])]
+    assert any(msg in t for t in notices), notices
+    hit = [t for t in notices if msg in t]
+    assert booking.classify(hit[-1]) == booking.R_OK, hit[-1]
+    # 결과가 떠 있는 동안에는 조준이 살아 있으면 안 된다(두 번 쏘지 않는다).
+    assert d.execute_script(booking._JS_STILL_ARMED) is False
+
+
 def test_site_side_rejections_are_not_retried():
     """사이트가 스스로 막는 문구는 재시도 대상이 아니다.
 

@@ -791,15 +791,17 @@ icmsLayerPopup.confirm2({title:"예약", contents: confirmText,
 python ci/selector_audit.py --verbose      # 항목별
 ```
 
-| | 2026-08-25 오전 (v1.0.6) | 2026-08-25 저녁 (v1.0.7) |
+| | 2026-08-25 오전 (v1.0.6) | 2026-08-25 저녁 (v1.0.7 게시본) |
 |---|---|---|
-| 확인 (실물 캡처) | 22 | **50** |
+| 확인 (실물 캡처) | 22 | **51** |
 | 영상 복원본에만 근거 | 15 | **1** |
 | 미확인 | 12 | **1** |
-| 합계 | 51 | 52 |
+| 합계 | 51 | 53 |
+| 제품 _JS_* 실물 실행 | (없음) | **13/13 통과** |
 
-52 인 이유: 어제의 51 에 "숨은 벌점/개월 열" 항목 하나가 새로 생겼다
-(그게 결함 1번의 원인이라 따로 못박을 값어치가 있다).
+53 인 이유: 어제의 51 에 두 개가 새로 생겼다. "숨은 벌점/개월 열"(결함 1번의
+원인이라 따로 못박을 값어치가 있다), 그리고 "결과 안내 껍데기
+`#layer-alert-popup2`" ([확인] 이후 서버 답이 도착하는 자리. 아래 참고).
 
 남은 둘:
 - **영상 복원본만(1):** 이용신청서가 없는 계정에서 `listChildSelect()` 가
@@ -813,8 +815,38 @@ python ci/selector_audit.py --verbose      # 항목별
   찍히는 원문으로 좁혀라. 그 전까지 CI 초록불은 "우리 분류기가 우리
   픽스처와 일치한다" 는 뜻일 뿐이라는 것을 잊지 마라.
 
-`제품 동작 검증 11개` 는 다른 질문이다: "사이트에 그 요소가 있는가" 가 아니라
-"우리 코드가 그것을 실제로 맞히는가". 11/11 통과.
+`제품 동작 검증 13개` 는 다른 질문이다: "사이트에 그 요소가 있는가" 가 아니라
+"우리 코드가 그것을 실제로 맞히는가". 13/13 통과.
+
+### [확인] 이후 서버 답이 도착하는 자리 (게시 직전에 추가로 못박음)
+
+캡처된 `OccasionTimeMainSlPL.html` 의 `fnSave` 콜백이 근거다. 서버 답은
+페이지 본문이 아니라 **alert2 껍데기**로 온다.
+
+```js
+customAjax.ajax({ type:"POST", url:"/icms/occasion/InsertOcreqst.html",
+  data: $('#pfrm').serializeArray(),
+  success: function(data){
+    if (data.returnval == "success") {
+      icmsLayerPopup.alert2({ contents : data.returnmsg }, function(){
+        NetFunnel_Complete(); window.location.href = "/?menuno=245"; });
+    } else { icmsLayerPopup.alert2({ contents : data.returnmsg }, ... ); }
+```
+
+그리고 `layerpopup.js` 의 `open("type-alert2")` 가 하는 일은 두 줄뿐이다.
+
+```js
+$("#layer-alert-popup-contents2").html(param.contents.nl2br());
+$("#layer-alert-popup2").show();
+```
+
+- 그 껍데기도 확인창처럼 페이지에 **두 벌**이다(감사 항목으로 못박음).
+  jQuery `#id` 는 앞의 한 벌만 건드리므로 우리 쪽은 id 를 믿지 말고
+  **보이는 것**을 읽어야 한다. `_JS_READ_NOTICE` 가 그렇게 한다.
+- 성공하면 `/?menuno=245`(예약내역) 로 이동한다. 이것도 성공 신호다.
+- 실물에서 alert2 를 열고 `_JS_READ_NOTICE` → `classify` 까지 돌리는 검증이
+  감사와 `tests/test_real_capture.py::test_the_server_answer_is_read_from_the_alert2_shell`
+  에 있다. **문구**는 자리표시자다. 서버 원문은 여전히 미확인(위 참고).
 
 ### 픽스처를 다룰 때 반드시 지킬 것
 

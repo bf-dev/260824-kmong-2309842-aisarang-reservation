@@ -21,6 +21,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# 이 감사는 항목 이름이 전부 한글이다. 윈도우 러너의 파이썬 stdout 은 기본이
+# cp1252 라서 '단계' 를 찍는 순간 UnicodeEncodeError 로 죽는다(실제로 CI 를
+# 세웠다). 여기는 콘솔 전용 CI 스크립트라 재설정이 안전하다. 다만 --noconsole
+# 로 얼린 제품에서는 stdout 이 None 이므로 같은 코드를 제품에 넣지 말 것.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 REAL = ROOT / "ci" / "fixtures" / "real"
 SITEMAP = ROOT / "docs" / "site-map"
 
@@ -288,7 +298,16 @@ def build_checks(p: Probe):
         out.push({i:i, text:(all[i].textContent||'').trim(), vis:(r.width>0&&r.height>0)});}
       return out.length?out:null;""")
 
-    # 서버가 실제로 돌려주는 결과 문구. 고객이 모달에서 멈췄으므로
+    # 결과가 도착하는 자리. 캡처된 fnSave 콜백이 서버 답(data.returnmsg)을
+    # icmsLayerPopup.alert2 로 띄우고, layerpopup.js 의 open('type-alert2') 는
+    # #layer-alert-popup-contents2 를 채우고 #layer-alert-popup2 를 편다.
+    # 확인창과 똑같이 이 껍데기도 페이지에 두 벌이다.
+    probe("9", "결과 안내 껍데기 #layer-alert-popup2 (두 벌)", P_MODAL, r"""
+      var s=document.querySelectorAll('[id=layer-alert-popup2]');
+      var c=document.querySelectorAll('[id=layer-alert-popup-contents2]');
+      return s.length ? {shells:s.length, contents:c.length} : null;""")
+
+    # 서버가 실제로 돌려주는 결과 **문구**. 고객이 모달에서 멈췄으므로
     # InsertOcreqst.html 이 호출된 적이 없다 -> 캡처에 없다.
     add("9", "서버 결과 문구(예약시간전 / 정원초과)", UNCONF,
         "캡처 373건 어디에도 없음. 고객이 확인을 누르지 않아 InsertOcreqst.html 미호출")
@@ -363,6 +382,22 @@ def product_checks(p: Probe) -> list:
         booking.classify("예약 가능 시간이 아닙니다.") == booking.R_NOT_BOOKABLE
         and not booking.result_is_retryable(booking.R_NOT_BOOKABLE),
         booking.classify("예약 가능 시간이 아닙니다."))
+
+    # [확인] 이후 서버 답이 오는 자리를 실물에서 열어 보고 읽는다.
+    # layerpopup.js 의 open('type-alert2') 가 하는 두 줄만 그대로 재현한다.
+    p.js("var c=document.querySelectorAll(\"[id='layer-confirm-popup2']\");"
+         "for(var i=0;i<c.length;i++) c[i].style.display='none';"
+         "document.querySelectorAll(\"[id='layer-alert-popup-contents2']\")[0]"
+         "  .innerHTML='예약이 완료되었습니다.';"
+         "document.querySelectorAll(\"[id='layer-alert-popup2']\")[0]"
+         "  .style.display='block';")
+    notices = [str(t) for t in (p.js(booking._JS_READ_NOTICE) or [])]
+    hit = [t for t in notices if "예약이 완료되었습니다." in t]
+    add("_JS_READ_NOTICE 가 결과 안내(alert2)를 읽는다",
+        bool(hit) and booking.classify(hit[-1]) == booking.R_OK,
+        f"notices={len(notices)} classify={booking.classify(hit[-1]) if hit else None}")
+    add("결과가 뜬 뒤에는 조준이 풀려 있다(두 번 쏘지 않는다)",
+        p.js(booking._JS_STILL_ARMED) is False, p.js(booking._JS_STILL_ARMED))
     return out
 
 
