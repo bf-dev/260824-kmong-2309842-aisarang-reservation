@@ -11,11 +11,16 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 96 passed (크롬 있으면 브라우저 8개 포함)
+.venv/bin/python -m pytest tests/ -q        # 130 passed (크롬 있으면 브라우저 19개 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
+python3 main.py --guidemo --showrecord       # 같은 데모인데 '5. 진단 기록' 카드가 보이게 스크롤
 python3 main.py --arrivaltest                # 도착시각 모델 실검증 (서버 Date 헤더로 대조)
+python3 main.py --clocktest=1.2 --interval=20  # 시각 재측정이 정말 주기적으로 도는지 (v1.0.6)
+AISARANG_BASE_URL=http://127.0.0.1:18777 \
+  python3 main.py --rectest                  # 진단 기록 모드 실행 (로컬 fixture 전용, v1.0.6)
+python3 ci/fixture_server.py 18777           # --rectest 가 붙을 로컬 서버 (/rec 화면)
 ```
 
 빌드는 GitHub Actions `windows-latest` (`.github/workflows/build.yml`).
@@ -521,7 +526,96 @@ function listChildSelect() {
 진단에 안 담겼다. 다음 실행 진단의 `page_source/*_after_add_and_tick.html`,
 `*_modal_open_armed.html` 을 보고 굳혀라.
 
-## 배포 현황 (v1.0.5, 2026-08-25 05:40Z) ← 지금 살아 있는 것
+## v1.0.6 (2026-08-25): 진단 기록 모드 + 5분 시각 재측정 + 아동/선택표 오선택 수정
+
+### 1) 진단 기록 모드 (`aisarang/recorder.py`, GUI '5. 진단 기록')
+
+**왜.** 날짜×시간 표부터 예약 모달까지의 진짜 마크업을 우리는 아직 못 봤다.
+그 화면은 아동 라디오 클릭으로 오는 ajax 응답
+(`SelectOccasionChild.html` / `OccasionTimeMainSlPL.html` /
+`OccasionTimeMainPiIs.html`) 안에 들어 있고, 공동인증서 세션에서만 열린다.
+고객 실행 진단은 전부 "09시 대기 중"에서 멈춰 거기까지 가지 않았다.
+그래서 **사람이 손으로 걸어가고 우리는 옆에서 받아적는** 모드를 만들었다.
+
+**설계 원칙 세 개.**
+1. 아무것도 누르지 않는다. 첫 화면을 여는 `driver.get()` 말고는 클릭/자동
+   진행/자동 닫기/자동 제출이 **코드에 존재하지 않는다.**
+   `tests/test_recorder_flow.py::test_the_recorder_has_no_way_to_click_anything`
+   이 소스에 `.click()` / `.submit()` / `send_keys` / `ActionChains` /
+   `dispatchEvent` 가 없다는 것을 못박는다. 누가 "한 번만 눌러주자" 를 넣으면
+   테스트가 깨진다.
+2. 사람을 방해하지 않는다. 펌프는 `network / console / clicks / screen` 네
+   단계로 나뉘고 **단계마다 따로** 감싼다. 하나가 실패해도 나머지는 돌고,
+   실패는 `record/summary.json` 의 `skipped[]` 에 남는다.
+3. 잃지 않는다. 5분마다 중간 업로드, 중지 때 한 번 더(그때는 blocking).
+   브라우저가 닫히면 그 자리에서 마지막 업로드를 하고 끝낸다.
+
+**남기는 것**: `record/wanted/*.html`(그 세 응답 본문), `record/network.json`
+(요청/응답 URL·메서드·상태·헤더·postData, 쿠키 값은 이름만),
+`record/bodies/*.txt`, `page_source/*.html`(화면이 의미 있게 바뀔 때마다),
+`record/clicks.json`, `record/console.json`, `cookies_record.json`(이름/길이만).
+
+**함정 두 개를 여기서 실제로 밟았다.**
+- `driver.quit()` 로 크롬드라이버가 사라지면 셀레니움은 "no such window" 가
+  아니라 **연결 거부**를 던진다. `_is_gone()` 이 그걸 몰라서 기록기가 죽은
+  세션에 1초마다 영원히 재시도했다. 연결 계열 문구를 전부 넣고, 그래도 못
+  알아본 경우를 위해 "한 바퀴에서 아무것도 성공 못 함"이 `DEAD_ROUNDS`(3)회
+  이어지면 끊긴 것으로 본다.
+- `automation.drain_network()` 는 예외를 삼켰다. 그래서 브라우저가 죽었는데도
+  "잘 돌았다"로 보였다. 기록기는 `raise_on_error=True` 로 부른다(예약 경로는
+  기본값 그대로 조용히 넘어간다).
+
+**검증**: `tests/test_recorder_flow.py` 가 진짜 크롬 + 진짜 fixture 서버로
+11개를 돌린다(누르지 않음 / 못 본 응답 본문 확보 / 화면 변화 스냅샷 /
+레이어 여닫기 / 이동 중 기록 유지 / 헤더에 쿠키값 없음 / 주기 업로드 /
+브라우저 닫힘 / 제품 옵션으로 크롬이 실제로 뜨는지).
+`ci/fixture_server.py` 의 `/rec` 화면에 계기가 두 개 심어져 있다:
+`window.__humanClicks`(클릭 수)와 `window.__reserved`(예약 계기).
+CI 는 프로즌 exe 로 `--rectest` 를 돌려 `reserved=False` 를 확인한다.
+
+### 2) 서버 시각을 5분마다 다시 잰다 (`clock.ClockKeeper`)
+
+전날 오후에 켜두면 09시에는 몇 시간 전 오프셋으로 쏘게 된다.
+`config.RESYNC_SECONDS=300` 마다 다시 재고, `RESYNC_QUIET_SECONDS=90` 초
+전부터는 멈춘다(발사에 끼어들지 않는다). 실패해도 마지막 성공값으로 간다.
+실제 실행 로그(고객 진단으로 올라온 것):
+
+```
+서버 시각 재측정 주기: 5분 (정각 90초 전부터는 멈춥니다)
+서버 시각 재측정(5분마다, 1회차): 보정 -246ms → -628ms
+  (변화 -382ms, 오차 ±789ms, 샘플 6개, 최소왕복 905ms)
+```
+
+`main.py --clocktest=<분> --interval=<초>` 가 제품이 쓰는 그 ClockKeeper 를
+그대로 돌려 `RESYNC n=...` 줄을 찍는다. CI 가 프로즌 exe 로 3줄 이상을 요구한다.
+
+### 3) 아동 표를 선택표로 골라 엉뚱한 라디오를 켜던 문제
+
+`ci/fixtures/real_reservation_page.html`(고객 PC 가 올린 진짜 마크업, 이름만
+가명)에 대고 돌리면 v1.0.5 가 그대로 재현된다. 아동 행의 생년월일
+`2025.10.22` 가 날짜 정규식을 통과해 `dated * 10` 으로 이겼고, `tick_slot_row`
+가 `rows[-1]` 로 떨어져 **아동 라디오를 켜고** "선택표 행을 체크했습니다" 를
+남겼다. `slot_row_is_ticked` 까지 참이 되어 `open_modal` 의 안전장치를 통과했다.
+→ 아동 표는 후보에서 배제하고, 점수를 **이용시간 구간**(`09 00 - 18 00 (9시간)`)
+기준으로 바꿨다. 마지막 행 폴백도 "선택표 행처럼 생겼을 때만" 쓴다.
+그리고 `_JS_READ_NOTICE` 의 `.popup` 은 실제 컨테이너 `popup_wrap` 에 **맞지
+않는다**(클래스 이름 전체가 popup_wrap 이다). 부분일치로 바꿨다.
+테스트: `tests/test_real_markup.py`(진짜 크롬).
+
+### 4) 크롬 네트워크 로그를 실제로 켰다 + 크롬이 아예 안 뜨던 함정
+
+`capture()` 의 `network_*.json` 은 고객 진단 ZIP 50개 중 **한 건도** 없었다.
+`goog:loggingPrefs` 가 없어서 `get_log("performance")` 가 언제나 예외였기
+때문이다. 이제 옵션을 켜고 `drain_network()` 로 링버퍼에 받는다.
+
+> **`perfLoggingPrefs` 에 `traceCategories: ""` 를 넣지 말 것.** chromedriver 가
+> `cannot parse traceCategories / cannot be empty` 로 **크롬을 아예 안 띄운다**
+> (실측: 크롬 149 / chromedriver 149, InvalidArgumentException). 작업 중에 실제로
+> 그 상태였다. 09시에 크롬이 안 뜨는 것보다 나쁜 실패는 없어서,
+> `test_the_products_own_chrome_options_actually_launch_chrome` 이 제품 옵션
+> 그대로 크롬을 띄워본다.
+
+## 배포 현황 (v1.0.5, 2026-08-25 05:40Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.5.zip
   (29,155,070 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.5/`

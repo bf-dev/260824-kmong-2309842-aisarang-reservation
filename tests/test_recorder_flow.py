@@ -236,12 +236,51 @@ def test_closing_the_browser_ends_the_session_quietly(session):
     before = len(diag.uploads)
     drv.quit()
     assert _wait(lambda: not rec.is_running(), 60)
-    assert len(diag.uploads) > before
+    # running 은 마지막 업로드 **전에** 내려간다. 업로드가 실제로 끝날 때까지 본다.
+    assert _wait(lambda: len(diag.uploads) > before, 30), diag.uploads[-1:]
     assert diag.uploads[-1]["meta"]["result"] == "browser_closed"
     # 그리고 stop() 을 눌러도(고객이 그럴 것이다) 예외가 밖으로 나오지 않는다.
     s = rec.stop()
     assert s["pages"] >= 2 and s["requests"] > 0
     assert any(row["where"] for row in rec.skipped)
+
+
+def test_restarting_after_the_browser_closed_builds_a_fresh_one(monkeypatch):
+    """창을 닫고 다시 [진단 기록 시작] 을 누르는 것은 자연스러운 순서다.
+
+    죽은 드라이버를 그대로 재사용하면 시작하자마자 또 끊긴다. 살아 있는지
+    찔러보고 죽었으면 새로 띄워야 한다.
+    """
+    class _DeadDriver:
+        def execute_script(self, *_a, **_k):
+            raise RuntimeError("invalid session id")
+
+    built = []
+
+    class _NewDriver(_DeadDriver):
+        def execute_script(self, *_a, **_k):
+            return 1
+
+        def execute_cdp_cmd(self, *_a, **_k):
+            return {}
+
+        def get(self, url):
+            built.append(url)
+
+        def get_log(self, _kind):
+            return []
+
+    from aisarang import automation
+    fresh = _NewDriver()
+    monkeypatch.setattr(automation, "build_driver", lambda *a, **k: fresh)
+    rec = recmod.DiagRecorder(diag=_CapturedDiag())
+    rec.driver = _DeadDriver()
+    assert rec.start(start_url="http://127.0.0.1:1/rec") is True
+    try:
+        assert rec.driver is fresh
+        assert built == ["http://127.0.0.1:1/rec"]
+    finally:
+        rec.running = False
 
 
 def test_cookie_values_are_never_collected():

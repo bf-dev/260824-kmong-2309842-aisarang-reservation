@@ -190,12 +190,21 @@ class DiagRecorder:
             self.log("이미 진단 기록 중입니다.")
             return True
         try:
+            # 앞선 기록에서 쓰던 크롬이 이미 닫혔을 수 있다(고객이 창을 닫고
+            # 다시 [진단 기록 시작] 을 누르는 것은 아주 자연스러운 순서다).
+            # 살아 있는지 한 번 찔러보고, 죽었으면 새로 띄운다.
+            if self.driver is not None:
+                try:
+                    self.driver.execute_script("return 1;")
+                except Exception:
+                    self.driver = None
             if self.driver is None:
                 self.status("크롬을 실행합니다(진단 기록)...")
                 self.driver = automation.build_driver(log=self.log)
             self._enable_cdp()
             self.started_at = time.time()
             self._last_flush = time.time()
+            self._dead_rounds = 0
             self.running = True
             self._thread = threading.Thread(target=self._loop, daemon=True,
                                             name="diag-recorder")
