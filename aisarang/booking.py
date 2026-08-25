@@ -590,45 +590,144 @@ def open_center(driver, center: dict, log=lambda *_: None) -> bool:
 
 # ---------------------------------------------------------------- 3단계 아동
 
-def select_child(driver, child_name: str = "", log=lambda *_: None) -> str:
-    """"시간제보육 아동 선택" 의 라디오를 고른다.
+# 여기부터는 **고객 PC 가 올려준 진짜 마크업**이 근거다
+# (2026-08-25T05:24Z 진단 ZIP, page_source/0002_reservation_page.html,
+#  인증서 세션에서만 열리는 화면이라 이 경로 말고는 볼 방법이 없었다).
+#
+# 사이트가 실제로 하는 일:
+#   <input type="radio" name="occasionChk" onclick="listChildSelect();" ...>
+#   function listChildSelect() {
+#     if (usereqstcnt < 1) { alert('이용신청서를 먼저 등록해주세요.'); ... }
+#     else if ($('#unityyn').val() == 'N') $('[data-tab=divOccasionTimeSlPL]').trigger('click');
+#     else                                 $('[data-tab=divOccasionTimePils]').trigger('click');
+#   }
+# 그 탭 클릭이 fnChildInfo() → POST /icms/occasion/OccasionTimeMainSlPL.html 을
+# 불러서 반명/이용시간/날짜표를 ajax 로 그려넣는다.
+#
+# 그래서 두 가지가 중요하다.
+#   1. 라디오가 이미 켜져 있으면 click 이 안 나가고, 그러면 이용정보 화면이
+#      아예 안 열린다. 항상 누른다.
+#   2. 화면이 ajax 로 늦게 채워진다. 채워질 때까지 기다리고 나서 다음 단계로 간다.
+_JS_PICK_CHILD = r"""
+function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
+var want = (arguments[0] || '').trim();
+var radios = document.querySelectorAll("input[type=radio][name=occasionChk]");
+if (!radios.length) {
+  var all = document.querySelectorAll("tr input[type=radio]");
+  radios = all;
+}
+var fallback = null;
+for (var i = 0; i < radios.length; i++) {
+  var box = radios[i];
+  var row = box.closest('tr');
+  var line = row ? txt(row) : '';
+  if (fallback === null) fallback = {box: box, line: line};
+  if (want && line.indexOf(want) >= 0) { fallback = {box: box, line: line}; break; }
+}
+if (!fallback) return null;
+try { fallback.box.scrollIntoView({block: 'center'}); } catch (err) {}
+// 이미 켜져 있어도 누른다. 사이트의 onclick(listChildSelect)이 이용정보 화면을
+// 여는 유일한 트리거이기 때문이다.
+fallback.box.click();
+return fallback.line;
+"""
 
-    영상 확인: 선택 / 아동명 / 생년월일 / 개월수 네 칸짜리 표에 라디오가 있고,
-    아동이 하나면 이미 골라져 있다. 이름을 지정하면 그 행을, 아니면 첫 행을 고른다.
+# 지금 켜져 있는 아동 행의 글자. alert 때문에 클릭 스크립트가 끊겼을 때 쓴다.
+_JS_READ_CHECKED_CHILD = r"""
+function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
+var box = document.querySelector("input[type=radio][name=occasionChk]:checked")
+       || document.querySelector("tr input[type=radio]:checked");
+if (!box) return null;
+var row = box.closest('tr');
+return row ? txt(row) : null;
+"""
+
+# 이용정보 탭. 라디오 onclick 이 무슨 이유로든 안 돌았을 때를 위한 두 번째 경로다.
+_JS_OPEN_USEINFO_TAB = r"""
+var unity = document.getElementById('unityyn');
+var yn = unity ? String(unity.value || 'N').toUpperCase() : 'N';
+var sel = (yn === 'Y') ? '[data-tab=divOccasionTimePils]' : '[data-tab=divOccasionTimeSlPL]';
+var tab = document.querySelector(sel);
+if (!tab) return false;
+tab.click();
+return true;
+"""
+
+# 이용정보가 실제로 그려졌는지. select(반명/이용시간)나 날짜표가 보이면 됐다.
+_JS_USEINFO_READY = r"""
+function vis(e){
+  var r = e.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
+}
+var sels = document.querySelectorAll('select');
+for (var i = 0; i < sels.length; i++) {
+  if (!vis(sels[i])) continue;
+  var row = sels[i].closest('tr,div,li');
+  var line = row ? (row.innerText || '') : '';
+  if (line.indexOf('이용시간') >= 0 || line.indexOf('반명') >= 0) return true;
+}
+var body = document.body ? (document.body.innerText || '') : '';
+return body.indexOf('날짜/시간') >= 0;
+"""
+
+
+def _take_alert(driver) -> str:
+    """네이티브 alert 이 떠 있으면 문구를 읽고 닫는다.
+
+    listChildSelect() 는 이용신청서가 없으면 alert() 을 띄운다. 그걸 안 닫으면
+    이후 모든 조작이 그 자리에서 막힌다.
     """
-    picked = _js(driver, r"""
-    function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
-    var want = (arguments[0] || '').trim();
-    var trs = document.querySelectorAll('tr');
-    var fallback = null;
-    for (var r = 0; r < trs.length; r++) {
-      var box = trs[r].querySelector("input[type=radio]");
-      if (!box) continue;
-      var line = txt(trs[r]);
-      if (!line) continue;
-      if (fallback === null) fallback = {box: box, line: line};
-      if (want && line.indexOf(want) >= 0) {
-        if (!box.checked) box.click();
-        return line;
-      }
-    }
-    if (fallback) {
-      if (!fallback.box.checked) fallback.box.click();
-      return fallback.line;
-    }
-    return null;
-    """, child_name, default=None)
-    if picked:
-        log(f"아동 선택: {picked}")
-        # 아동을 고른 뒤 진행 버튼이 있으면 누른다(영상의 파란 버튼).
-        for label in ("시간제보육 예약", "시간제보육예약", "다음", "확인", "선택"):
-            if _js(driver, _JS_CLICK_TEXT_BUTTON, label, None):
-                log(f"'{label}' 로 진행했습니다.")
-                time.sleep(1.2)
-                break
-        return str(picked)
-    log("아동 선택 화면이 아닙니다(건너뜁니다).")
-    return ""
+    try:
+        al = driver.switch_to.alert
+        text = (al.text or "").strip()
+        al.accept()
+        return text
+    except Exception:
+        return ""
+
+
+def select_child(driver, child_name: str = "", log=lambda *_: None) -> str:
+    """"시간제보육 아동 선택" 의 라디오를 고르고, 이용정보 화면이 뜰 때까지 기다린다.
+
+    이름을 지정하면 그 행을, 아니면 첫 행을 고른다.
+    """
+    picked = _js(driver, _JS_PICK_CHILD, child_name, default=None)
+
+    # 클릭 안에서 사이트가 alert() 을 띄우면 스크립트 호출 자체가 그 자리에서
+    # 끊긴다(라디오는 이미 눌린 뒤다). 알림을 닫고 고른 행을 다시 읽는다.
+    alert_text = _take_alert(driver)
+    if picked is None and alert_text:
+        picked = _js(driver, _JS_READ_CHECKED_CHILD, default=None)
+
+    if not picked:
+        log("아동 선택 화면이 아닙니다(건너뜁니다).")
+        return ""
+
+    log(f"아동 선택: {picked}")
+    if alert_text:
+        log(f"사이트 알림: {alert_text}")
+        if "이용신청서" in alert_text:
+            log("아이사랑에서 이 아동의 이용신청서를 먼저 등록해야 예약 화면이 열립니다.")
+            return str(picked)
+
+    # 라디오 onclick 이 이용정보 탭을 눌러 ajax 로 화면을 채운다. 그 결과를 기다린다.
+    deadline = time.time() + 15.0
+    opened_tab = False
+    while time.time() < deadline:
+        if _js(driver, _JS_USEINFO_READY, default=False):
+            log("이용정보 화면을 불러왔습니다.")
+            return str(picked)
+        if not opened_tab and time.time() > deadline - 12.0:
+            opened_tab = bool(_js(driver, _JS_OPEN_USEINFO_TAB, default=False))
+            if opened_tab:
+                log("이용정보 탭을 직접 눌렀습니다.")
+        got = _take_alert(driver)
+        if got:
+            log(f"사이트 알림: {got}")
+        time.sleep(0.4)
+
+    log("이용정보 화면이 아직 안 보입니다. 그대로 다음 단계로 가서 다시 확인합니다.")
+    return str(picked)
 
 
 # ---------------------------------------------------------------- 4단계 반/시간

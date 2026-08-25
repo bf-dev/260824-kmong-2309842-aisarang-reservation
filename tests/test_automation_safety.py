@@ -67,7 +67,7 @@ def _patch(monkeypatch, grid=None, cert_required=False, cell_click=True,
     monkeypatch.setattr(booking, "choose_region", lambda *a, **k: True)
     monkeypatch.setattr(booking, "press_search", lambda *a, **k: True)
     monkeypatch.setattr(booking, "open_center", lambda *a, **k: True)
-    monkeypatch.setattr(booking, "select_child", lambda *a, **k: "박승우")
+    monkeypatch.setattr(booking, "select_child", lambda *a, **k: "아동가")
     monkeypatch.setattr(booking, "select_class", lambda *a, **k: "매송아이")
     monkeypatch.setattr(booking, "select_hours", lambda d, h, log=None: int(h))
     monkeypatch.setattr(booking, "read_grid",

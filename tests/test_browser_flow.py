@@ -197,3 +197,47 @@ def test_confirm_is_not_fired_when_the_row_check_is_gone(drv):
     assert not res.ok and res.reason == "guard_row"
     assert drv.execute_script(
         "return document.getElementById('layer').classList.contains('open');") is False
+
+
+# --------------------------------------------------------------- 3단계 아동
+# 아래 fixture 는 고객 PC 진단 ZIP 에서 읽은 **실제 마크업**을 재현한 것이다
+# (2026-08-25T05:24Z, 인증서 세션. 개인정보는 가짜 값으로 바꿨다).
+CHILD_FIXTURE = os.path.join(ROOT, "ci", "fixtures", "child_select.html")
+
+
+def _open_child(d):
+    import pathlib
+    d.get(pathlib.Path(CHILD_FIXTURE).as_uri())
+
+
+def test_child_radio_is_clicked_even_when_already_checked(drv):
+    """실제 사이트에서 이용정보 화면을 여는 유일한 트리거가 이 클릭이다.
+
+    라디오에 checked 가 이미 걸려 있어도 누르지 않으면 반명/이용시간/날짜표가
+    영영 안 나온다. 그 화면이 ajax 로 늦게 그려지는 것까지 같이 본다.
+    """
+    _open_child(drv)
+    assert drv.execute_script(
+        "return document.querySelector('input[name=occasionChk]').checked;") is True
+    assert drv.execute_script("return window.loads;") == 0
+
+    line = booking.select_child(drv, "")
+    assert "아동가" in line
+    assert drv.execute_script("return window.loads;") >= 1, "이용정보 화면을 열지 않았다"
+    # select_child 가 돌아온 시점에는 이미 그려져 있어야 한다(기다렸어야 한다).
+    assert booking.select_class(drv) == "매송아이"
+    assert booking.select_hours(drv, 9) == 9
+
+
+def test_child_selection_reports_the_site_alert_and_never_hangs(drv):
+    """이용신청서가 없으면 사이트가 alert 을 띄운다. 닫지 않으면 그 뒤가 전부 막힌다."""
+    _open_child(drv)
+    drv.execute_script(
+        "document.querySelector('input[name=occasionChk]')"
+        ".setAttribute('data-usereqstcnt','0');")
+    lines = []
+    line = booking.select_child(drv, "", log=lines.append)
+    assert "아동가" in line
+    assert any("이용신청서" in s for s in lines), lines
+    # alert 이 닫혔으므로 이후 조작이 정상적으로 된다.
+    assert drv.execute_script("return 1 + 1;") == 2

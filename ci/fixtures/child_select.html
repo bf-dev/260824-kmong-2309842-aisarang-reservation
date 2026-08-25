@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시간제보육 아동 선택 (실제 마크업 재현)</title>
+<!--
+  이 파일은 추측이 아니다. 고객 PC 가 올려준 진단 ZIP 의
+  page_source/0002_reservation_page.html (2026-08-25T05:24Z, 공동인증서 세션)
+  에서 읽은 **실제 마크업 구조**를 그대로 옮긴 것이다. 개인정보(아동명,
+  아동식별번호, 연락처)는 전부 가짜 값으로 바꿨다.
+
+  실제 사이트가 하는 일:
+    · 아동 라디오: <input type=radio name=occasionChk onclick="listChildSelect();"
+                     data-usereqstcnt="1" ...>
+    · listChildSelect() 가 #unityyn 값을 보고
+      [data-tab=divOccasionTimeSlPL] (독립반) 또는
+      [data-tab=divOccasionTimePils] (통합반) 탭을 trigger('click') 한다.
+    · 그 탭 클릭이 fnChildInfo() -> POST /icms/occasion/OccasionTimeMainSlPL.html
+      로 반명/이용시간/날짜표를 **ajax 로 나중에** 그려넣는다.
+
+  그래서 두 가지가 검증 대상이다.
+    1. 라디오가 이미 켜져 있어도 우리가 다시 눌러서 이용정보 화면을 여는가
+    2. ajax 로 늦게 그려지는 화면을 기다렸다가 다음 단계로 가는가
+-->
+<style>
+ body { font-family: sans-serif; }
+ table { border-collapse: collapse; }
+ td, th { border: 1px solid #ccc; padding: 6px 10px; }
+ .tab_con_inner { border: 1px solid #ddd; min-height: 40px; padding: 8px; }
+</style>
+</head>
+<body>
+<section class="contents_wrap" id="contents">
+  <h4 class="title">시간제보육 아동 선택</h4>
+  <form name="pfrm" id="pfrm" method="post">
+    <input type="hidden" name="unityyn" id="unityyn" value="N">
+    <input type="hidden" name="unityynall" id="unityynall" value="">
+    <input type="hidden" name="stcode" id="stcode" value="11650000416">
+    <input type="hidden" name="crname" id="crname" value="서초구육아종합지원센터(신반포)">
+    <table>
+      <caption>시간제보육 아동 선택, 아동명, 생년월일, 개월수 내용의 테이블</caption>
+      <thead>
+        <tr><th scope="col">선택</th><th scope="col">아동명</th>
+            <th scope="col">생년월일</th><th scope="col">개월수</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <input onclick="listChildSelect();" type="radio" title="아동가선택"
+                   id="occasionChk000000000000000000" name="occasionChk"
+                   value="000000000000000000" data-birthday="10" data-scnt="Y"
+                   data-chcaregbyn="Y" data-usereqstcnt="1" checked>
+            <label for="occasionChk000000000000000000" class="radio"><span></span></label>
+          </td>
+          <td><a id="aOccasionChild" data-val="U02" data-chilinnb="000000000000000000">아동가</a></td>
+          <td>2025.10.22</td>
+          <td>10개월</td>
+        </tr>
+      </tbody>
+    </table>
+  </form>
+
+  <div class="btn_right">
+    <a href="#pop-up03" data-rel="pop" class="btn h50" id="childInfoReqBtn" data-val="N02">시간제보육 아동등록</a>
+  </div>
+
+  <div class="relative mt100">
+    <ul class="tab_wrap_inner tab_s">
+      <li class="on"><a id="tab1" href="javascript:;" data-tab="divOccasionTimeSlPL">이용정보 신청</a>
+        <div id="divOccasionTimeSlPL" class="tab_con_inner"></div>
+      </li>
+      <li><a id="tab2" href="javascript:;" data-tab="divOccasionTimePils">통합반 이용정보 신청</a>
+        <div id="divOccasionTimePils" class="tab_con_inner"></div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<script>
+// 실제 사이트와 같은 순서: 탭 클릭 -> (서버 왕복) -> 이용정보 그리기.
+// 여기서는 ajax 대신 800ms 뒤에 같은 내용을 넣는다. 늦게 그려지는 것이 핵심이다.
+var loads = 0;
+function loadUseInfo(paneId) {
+  loads += 1;
+  var pane = document.getElementById(paneId);
+  window.setTimeout(function () {
+    pane.innerHTML =
+      '<div><span>반명</span> <select id="ban">' +
+      '<option value="">선택</option><option>매송아이</option></select></div>' +
+      '<div><span>이용시간</span> <select id="usehour">' +
+      '<option value="">선택</option><option>9</option></select></div>' +
+      '<table><tr><th>날짜/시간</th><th>09</th></tr>' +
+      '<tr><th>2026-09-08(화)</th><td class="cell">2</td></tr></table>';
+  }, 800);
+}
+
+var tabs = document.querySelectorAll('.tab_wrap_inner > li > a');
+for (var i = 0; i < tabs.length; i++) {
+  tabs[i].addEventListener('click', function (e) {
+    e.preventDefault();
+    loadUseInfo(this.getAttribute('data-tab'));
+  });
+}
+
+function listChildSelect() {
+  var checked = document.querySelector('input[name=occasionChk]:checked');
+  if (!checked) { return false; }
+  if (Number(checked.getAttribute('data-usereqstcnt')) < 1) {
+    alert('이용신청서를 먼저 등록해주세요.');
+    return false;
+  }
+  var yn = document.getElementById('unityyn').value;
+  var sel = (yn === 'Y') ? '[data-tab=divOccasionTimePils]' : '[data-tab=divOccasionTimeSlPL]';
+  document.querySelector(sel).click();
+}
+</script>
+</body>
+</html>
