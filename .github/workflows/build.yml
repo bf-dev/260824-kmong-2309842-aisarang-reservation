@@ -23,24 +23,76 @@ jobs:
       - name: unit tests
         run: python -m pytest tests/ -q
 
-      - name: build exe
+      # v1.0.5 부터 --onedir 이다. --onefile 은 실행할 때마다 자기 자신을
+      # %TEMP% 에 풀어놓고, 윈도우 디펜더가 그 동작을 오탐해 고객 PC 에서
+      # 파일을 막아버렸다("지정한 장치, 경로 또는 파일에 액세스할 수 없습니다").
+      # 폴더 배포는 푸는 동작이 없다. 버전 리소스와 아이콘도 같이 박는다
+      # (메타데이터가 전혀 없는 exe 는 그 자체로 평판 점수가 깎인다).
+      - name: build (onedir)
         run: >
-          pyinstaller --onefile --noconsole
+          pyinstaller --onedir --noconsole
           --name aisarang-reservation
+          --version-file ci/version_info.txt
+          --icon ci/app.ico
           --collect-all selenium
           --hidden-import tkinter
+          --noconfirm
           main.py
 
       - name: exe exists and is a real PE
         shell: pwsh
         run: |
-          $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
+          $exe = Get-Item dist\aisarang-reservation\aisarang-reservation.exe
           if (-not $exe) { throw "no exe" }
           "{0}  {1:N1} MB" -f $exe.Name, ($exe.Length / 1MB)
           $fs = [System.IO.File]::OpenRead($exe.FullName)
           $b = New-Object byte[] 2; $fs.Read($b, 0, 2) | Out-Null; $fs.Close()
           if ($b[0] -ne 0x4D -or $b[1] -ne 0x5A) { throw "not a PE binary" }
           "PE header OK (MZ)"
+          $vi = (Get-Item $exe.FullName).VersionInfo
+          "version resource: $($vi.ProductName) / $($vi.FileVersion)"
+          if (-not $vi.FileVersion) { throw "version resource missing" }
+          if (-not (Test-Path dist\aisarang-reservation\_internal)) { throw "_internal missing" }
+
+      - name: package zip
+        run: python ci/package_zip.py dist/aisarang-reservation out
+
+      # 디펜더 정의를 최신으로 올린 뒤 실제 엔진으로 스캔한다. 고객에게 보낼
+      # 바이트를 스캔하지 않고 올리는 일은 없다.
+      - name: update Defender signatures
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -SignatureUpdate
+          "signature update exit: $LASTEXITCODE"
+          $s = Get-MpComputerStatus
+          "AMEngineVersion          : $($s.AMEngineVersion)"
+          "AntivirusSignatureVersion: $($s.AntivirusSignatureVersion)"
+          "SignatureLastUpdated     : $($s.AntivirusSignatureLastUpdated)"
+          "RealTimeProtectionEnabled: $($s.RealTimeProtectionEnabled)"
+          "AntivirusEnabled         : $($s.AntivirusEnabled)"
+
+      # 진단: 고객이 실제로 받은 v1.0.4 (--onefile) 바이트를 같은 엔진으로 스캔한다.
+      # 결과가 무엇이든 빌드를 세우지 않는다. 판정을 기록하는 것이 목적이다.
+      - name: diagnose the shipped v1.0.4 onefile exe
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path diag | Out-Null
+          Invoke-WebRequest -Uri "https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.4.exe" -OutFile diag\v104.exe
+          $h = (Get-FileHash diag\v104.exe -Algorithm SHA256).Hash.ToLower()
+          "downloaded v1.0.4: $((Get-Item diag\v104.exe).Length) bytes sha256=$h"
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path diag\v104.exe -Label "v1.0.4-onefile"
+
+      - name: Defender scan of the v1.0.5 onedir build
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.5-onedir" -MustBeClean
+
+      - name: Defender scan of the delivered zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem out\*.zip | Select-Object -First 1
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.5-zip" -MustBeClean
 
       # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
       # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.
@@ -53,7 +105,7 @@ jobs:
         if: steps.probe.outcome == 'success'
         shell: pwsh
         run: |
-          $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
+          $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
           "selftest exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "live selftest failed" }
 
@@ -67,7 +119,7 @@ jobs:
           Start-Sleep -Seconds 4
           try {
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18642"
-            $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
+            $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
             "fixture selftest exit code: $($p.ExitCode)"
             if ($p.ExitCode -ne 0) { throw "fixture selftest failed" }
           } finally {
@@ -77,9 +129,29 @@ jobs:
       - name: GUI construct selftest
         shell: pwsh
         run: |
-          $p = Start-Process dist\aisarang-reservation.exe -ArgumentList "--guiselftest" -PassThru -Wait
+          $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe -ArgumentList "--guiselftest" -PassThru -Wait
           "gui construct exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "gui construct failed" }
+
+      # 고객이 실제로 하는 것과 같은 경로로 한 번 더 확인한다: ZIP 을 풀어서
+      # 그 폴더의 exe 를 실행한다. 폴더 배포가 옮겨져도 도는지 여기서 걸린다.
+      - name: run the exe extracted from the delivered zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem out\*.zip | Select-Object -First 1
+          Expand-Archive -Path $zip.FullName -DestinationPath unzipped -Force
+          $exe = Get-ChildItem unzipped -Recurse -Filter aisarang-reservation.exe | Select-Object -First 1
+          "extracted exe: $($exe.FullName)"
+          $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18643" -PassThru
+          Start-Sleep -Seconds 4
+          try {
+            $env:AISARANG_BASE_URL = "http://127.0.0.1:18643"
+            $p = Start-Process $exe.FullName -ArgumentList "--selftest" -PassThru -Wait
+            "extracted-zip selftest exit code: $($p.ExitCode)"
+            if ($p.ExitCode -ne 0) { throw "extracted zip selftest failed" }
+          } finally {
+            Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - name: GUI screenshot (real window, real result on screen)
         shell: pwsh
@@ -97,11 +169,18 @@ jobs:
             if ($srv) { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
           }
 
+      - name: sha256 of the delivered zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem out\*.zip | Select-Object -First 1
+          $h = Get-FileHash $zip.FullName -Algorithm SHA256
+          "{0}  {1}  {2} bytes" -f $h.Hash.ToLower(), $zip.Name, $zip.Length
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: aisarang-reservation
           path: |
-            dist/*.exe
+            out/*.zip
             screenshots/*.png
           retention-days: 14

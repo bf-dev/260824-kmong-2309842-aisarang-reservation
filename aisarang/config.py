@@ -14,7 +14,13 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
+
+# 배포 형식. v1.0.5 부터 폴더(ZIP) 배포다. 한 덩어리 exe(--onefile)는 실행할
+# 때마다 자기 자신을 %TEMP% 에 풀어놓는데, 윈도우 디펜더가 그 동작을 오탐해
+# 파일을 격리해버린다(고객 PC 실제 사례, 2026-08-25). 폴더 배포는 푸는 동작이
+# 없다. 자세한 것은 updater.py 머리말과 NOTES.md 참고.
+PACKAGE_KIND = "onedir"
 
 # Kmong 고객 식별자. 로그/진단/업로드 경로 전부에 이 값이 찍힌다.
 CUSTOMER_ID = "2309842"

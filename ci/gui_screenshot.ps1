@@ -28,7 +28,9 @@ public class Win32Cap {
 $dir = Join-Path $PWD "screenshots"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
-$exe = Get-ChildItem (Join-Path $PWD "dist\*.exe") | Select-Object -First 1
+# --onedir since v1.0.5: the exe lives in dist\<name>\<name>.exe next to _internal.
+$exe = Get-Item (Join-Path $PWD "dist\aisarang-reservation\aisarang-reservation.exe") -ErrorAction SilentlyContinue
+if (-not $exe) { $exe = Get-ChildItem (Join-Path $PWD "dist\*.exe") -ErrorAction SilentlyContinue | Select-Object -First 1 }
 if (-not $exe) { throw "no exe in dist" }
 $base = [System.IO.Path]::GetFileNameWithoutExtension($exe.Name)
 Write-Host "launching $($exe.FullName)"
