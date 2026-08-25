@@ -615,6 +615,49 @@ CI 는 프로즌 exe 로 `--rectest` 를 돌려 `reserved=False` 를 확인한�
 > `test_the_products_own_chrome_options_actually_launch_chrome` 이 제품 옵션
 > 그대로 크롬을 띄워본다.
 
+## 배포 현황 (v1.0.6, 2026-08-25 07:50Z) ← 지금 살아 있는 것
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.6.zip
+  (29,196,243 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.6/`
+   = `aisarang-reservation.exe`(PE32+ GUI) + `_internal/` + `사용안내.txt`, 1,352 항목)
+  **빌드 바이트 sha256 = CI 가 찍은 값 = Caddy 로 실제 내려받은 바이트 sha256 =
+  `55364fbdbc4fae0f493dac74c912fa0af52a21e78a753039d658f570078288b0`**
+  (게이트웨이 루프백으로 확인하면 안 된다. `--resolve works.insu.ng:443:127.0.0.1`)
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json → 1.0.6 (`zipUrl` 만)
+  `choose_download` 실측: 1.0.4 → zip, 1.0.5 → zip, 1.0.6 → None.
+  **1.0.5 를 쓰는 PC 는 프로그램을 켜두면 15분 안에 자동으로 1.0.6 이 된다.**
+  1.0.4 는 옛 업데이터라 `exeUrl` 만 보므로 자동 갱신되지 않는다(의도한 것이다).
+  고객이 마지막으로 실제 실행한 것은 v1.0.4 였다 → **새 링크를 보내야 한다.**
+- CI: GitHub Actions run **32822319572**, 전 단계 green
+  (unit **131** → onedir 빌드 → PE + 버전리소스 → ZIP → 디펜더 정의 갱신 +
+   실제 스캔 3건 → **라이브 selftest(이번엔 러너가 childcare.go.kr 에 닿았다)** →
+   fixture selftest → GUI construct → ZIP 을 풀어서 그 exe 로 selftest →
+   **시각 재측정(프로즌 exe)** → **진단 기록(프로즌 exe)** → 스크린샷 2장 → sha256)
+  131개에 진짜 크롬 19개가 들어 있다(4·5단계 6 + 아동선택 2 + 진짜 마크업 3 +
+  진단 기록 8).
+- 프로즌 exe 실측 (windows-latest, CI 로그):
+  ```
+  RESYNC n=1 offsetMs=+53.0 deltaMs=+19.8 uncertaintyMs=133.8 samples=12
+  RESYNC n=2 offsetMs=+29.7 deltaMs=-23.2 uncertaintyMs=63.3  samples=12
+  RESYNC n=3 offsetMs=+5.8  deltaMs=-24.0 uncertaintyMs=133.8 samples=12
+  RECTEST pages=4 requests=53 wanted=2 clicks=3 reserved=False skipped=0
+  RECTEST wanted-url .../SelectOccasionChild.html  bytes=370
+  RECTEST wanted-url .../OccasionTimeMainSlPL.html bytes=799
+  ```
+  `clicks=3` 은 CI 하네스(사람 역할)가 누른 수이고 `reserved=False` 는
+  예약 계기가 끝까지 꺼져 있었다는 뜻이다. 즉 기록기는 한 번도 누르지 않았다.
+- 디펜더 실제 판정: `VERDICT v1.0.6-onedir: CLEAN`, `VERDICT v1.0.6-zip: CLEAN`
+  (같은 엔진으로 v1.0.4-onefile 도 CLEAN). 러너는 `RealTimeProtectionEnabled: False`
+  라 실행 시점 동작 감시는 여전히 재현되지 않는다. 그 이상으로 말하지 말 것.
+- 스크린샷(진짜 윈도우 창, 세션 1): `docs/gui-1.0.6.png`(라이브 조회 결과),
+  `docs/gui-1.0.6-record.png`(설정을 끝까지 내려 **[진단 기록 시작] / [기록 중지]**
+  버튼이 보이는 컷). 896x717, 187 / 160 colours.
+- Artifacts: 이 서버에서 돌린 `--rectest` 진단 ZIP 1건이 실제로 저장됐다
+  (37,302 bytes, `record/wanted/01_SelectOccasionChild.html.html`,
+   `record/wanted/02_OccasionTimeMainSlPL.html.html`, `record/network.json` 68행,
+   `cookies_record.json` 은 비어 있고 세션 값은 어디에도 없다).
+  + `aisarang-reservation-devnote` v1.0.6 1건.
+
 ## 배포 현황 (v1.0.5, 2026-08-25 05:40Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.5.zip
@@ -709,11 +752,14 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 1. **진짜 마크업은 절반만 확보했다.** 2026-08-25T05:24Z 고객 진단 ZIP 으로
    **아동 선택 화면까지는 실제 마크업을 봤다**(위 v1.0.5 절 참고).
    **날짜×시간 표 / [추가] / 선택표 / [예약하기] / 예약 모달은 여전히 못 봤다.**
-   고객 실행이 09시 대기 상태에서 멈춰 거기까지 안 갔다. 다음 실행 진단의
-   `page_source/*_modal_open_armed.html`, `*_after_add_and_tick.html`,
-   `grid.json` 을 열어 굳히고, 그때 `ci/fixtures/reserve_page.html` 도
-   진짜 마크업으로 바꿔라. 그 전까지 `booking.py` 의 뒷단계는 여전히
-   이름이 아니라 구조/글자로 찾는다.
+   고객 실행이 09시 대기 상태에서 멈춰 거기까지 안 갔다.
+   → **v1.0.6 의 진단 기록 모드가 바로 이것을 가져오려고 만든 것이다.**
+   고객이 [진단 기록 시작] 으로 한 번 걸어가면 `record/wanted/*.html` 에
+   `OccasionTimeMainSlPL.html` 응답 본문(= 반명/이용시간/날짜표 마크업)이,
+   `page_source/*_modal_open.html` 에 모달이 그대로 담겨 온다.
+   그것이 오면 `ci/fixtures/reserve_page.html` 을 진짜 마크업으로 바꾸고
+   `tests/test_browser_flow.py` 를 거기에 다시 걸어라. 그 전까지
+   `booking.py` 의 뒷단계는 여전히 이름이 아니라 구조/글자로 찾는다.
 2. **"예약시간전" / "정원초과" 의 정확한 원문**을 아직 우리 눈으로 본 적은
    없다(고객이 말로 알려준 문구다). `booking.TOO_EARLY_WORDS` /
    `FULL_WORDS` 에 표기 흔들림까지 넣어뒀지만, 첫 실전 실행의
@@ -727,6 +773,10 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 5. **[예약하기] 가 정말 서버로 아무것도 안 보내는지** 는 고객 진술과 화면
    흐름으로만 안다(모달이 클라이언트에서 계산된 60시간 안내를 띄운다).
    진단의 `network_*.json` 으로 확인하면 확정된다.
+   → v1.0.6 부터 그 파일이 **실제로 만들어진다**(그 전에는 크롬 네트워크
+   로그가 꺼져 있어서 50개 ZIP 중 0건이었다). 진단 기록 모드의
+   `record/network.json` 이면 더 확실하다: 사람이 [예약하기] 를 누른 시점의
+   요청 목록이 그대로 들어 있다.
 
 ### 고객 계정으로 실제로 해본 것 / 하지 않은 것
 
@@ -767,3 +817,10 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
   마스킹을 빠져나와 그대로 들어 있다. 구조만 재현해서 가짜 값으로 넣어라
   (`ci/fixtures/child_select.html` 이 그 방식이다).
 - 인증서 비밀번호를 로그/커밋/메시지에 남기지 말 것. 화면 입력 → 메모리 → 즉시 폐기.
+- **진단 기록 모드에 "한 번만 눌러주자" 를 넣지 말 것.** 이 모드는 예약을
+  만들 수 없다는 것이 유일한 안전 근거다(고객에게도 그렇게 안내했다).
+  `recorder.py` 에 클릭 경로가 없다는 것을 테스트가 소스로 못박아 둔다.
+- **`perfLoggingPrefs` 에 `traceCategories: ""` 를 넣지 말 것.** chromedriver 가
+  크롬을 아예 안 띄운다(위 v1.0.6 4번 참고).
+- `--rectest` 를 실사이트로 돌리지 말 것. 로컬 fixture(127.0.0.1)가 아니면
+  스스로 거부하게 해뒀다. 그 가드를 풀지 말 것.
