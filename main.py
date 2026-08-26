@@ -17,11 +17,27 @@ from aisarang.reporter import Diagnostics, install_excepthook
 
 
 def _out(line: str = "") -> None:
-    """stdout 이 없어도(--noconsole) 절대 죽지 않는 출력."""
+    """stdout 이 없어도(--noconsole) 절대 죽지 않는 출력.
+
+    두 번째 시도가 필요한 이유: windows-latest 러너가 이 exe 의 stdout 을
+    파일로 리디렉션하면 인코딩이 cp1252 가 된다. 그러면 한글 한 줄이
+    UnicodeEncodeError 를 내고, 예전에는 그 줄이 **조용히 사라졌다**
+    (CI 가 그 줄을 찾다가 섰다). 이제는 못 찍는 글자만 대체하고 줄은 남긴다.
+    제품 경로에서는 sys.stdout 이 None 이라 아무 일도 하지 않는다.
+    """
+    if sys.stdout is None:
+        return
     try:
-        if sys.stdout is not None:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+        return
+    except Exception:
+        pass
+    try:
+        enc = getattr(sys.stdout, "encoding", None) or "ascii"
+        safe = (line + "\n").encode(enc, "replace").decode(enc, "replace")
+        sys.stdout.write(safe)
+        sys.stdout.flush()
     except Exception:
         pass
 
@@ -230,11 +246,16 @@ def main(argv: list[str] | None = None) -> int:
                          f"modal={st.modal} confirm={st.confirm} armed={st.armed} "
                          f"rowTicked={st.ticked > 0} queue={st.queue} "
                          f"ready={st.ready()} fired={fired}")
+                    # CI 가 판정에 쓰는 줄은 전부 ASCII 로 찍는다. 러너가
+                    # stdout 을 파일로 받으면 cp1252 라서 한글 줄은 대체문자로
+                    # 바뀐다(위 _out 참고). 한글 줄은 사람이 읽는 용도로만 남긴다.
+                    _out(f"HANDOVERTEST   queueAhead={st.queue_ahead} "
+                         f"queueBehind={st.queue_behind} "
+                         f"blockers={len(st.blockers())} "
+                         f"confirmId={st.confirm_id or '-'}")
                     _out(f"HANDOVERTEST   line={handover.describe(st)}")
-                    if st.queue:
-                        _out(f"HANDOVERTEST   queue={st.queue_line()}")
                     if not st.ready():
-                        _out(f"HANDOVERTEST   blockers={'; '.join(st.blockers())}")
+                        _out(f"HANDOVERTEST   why={'; '.join(st.blockers())}")
 
                 visit("modal_open.html", True)              # 사람이 만든 확인창 → 발사
                 visit("modal_open.html", False)             # 체크 꺼짐 → 발사 금지
@@ -260,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
                   and by[("netfunnel_waiting.html", True)][1] is False
                   and by[("grid_selected_row_added.html", True)][1] is False)
             fired_total = sum(1 for _n, _t2, _s, f in rows if f)
-            _out(f"HANDOVERTEST fired={fired_total}/4 (기대: 1)")
+            _out(f"HANDOVERTEST fired={fired_total}/4 expected=1")
             diag.add_json("handovertest.json", {
                 "rows": [{"page": n, "ticked": t, "state": s.as_dict(),
                           "fired": f} for n, t, s, f in rows]})

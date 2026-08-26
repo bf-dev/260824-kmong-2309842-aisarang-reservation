@@ -238,9 +238,18 @@ jobs:
           "handovertest exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "handover mode check failed" }
           $raw = Get-Content $log -Raw
-          if ($raw -notmatch "HANDOVERTEST fired=1/4") { throw "expected exactly one fire" }
-          if ($raw -notmatch "netfunnel_waiting.html.*queue=True.*fired=False") {
+          if ($raw -notmatch "HANDOVERTEST fired=1/4 expected=1") { throw "expected exactly one fire" }
+          if ($raw -notmatch "netfunnel_waiting.html.*queue=True.*ready=False.*fired=False") {
             throw "the real queue page must never fire"
+          }
+          if ($raw -notmatch "queueAhead=72 queueBehind=26") {
+            throw "the captured queue numbers were not read back"
+          }
+          if ($raw -notmatch "modal_open.html ticked=True.*ready=True fired=True") {
+            throw "a human-made setup must actually fire"
+          }
+          if ($raw -notmatch "modal_open.html ticked=False.*ready=False fired=False") {
+            throw "an unticked row must never fire"
           }
 
       - name: GUI screenshot (real window, real result on screen)
