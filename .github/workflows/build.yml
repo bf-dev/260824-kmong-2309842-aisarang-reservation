@@ -29,6 +29,14 @@ jobs:
       - name: real captured markup regression (real Chromium)
         run: python -m pytest tests/test_real_capture.py tests/test_real_markup.py -v
 
+      # v1.0.8 의 핵심. 인계 모드를 **고객 캡처 실물**에 대고 진짜 크롬으로
+      # 돌린다. 사람이 만든 설정에서는 발사하고, 확인창이 없거나 대기열이거나
+      # 체크가 꺼져 있으면 발사하지 않는다는 것을 여기서 증명한다.
+      # netfunnel_waiting.html 은 2026-08-26 08:57 고객 PC 캡처의 진짜 대기열
+      # 레이어다(고객이 그날 예약을 놓친 화면).
+      - name: handover mode fires only on a real human-made setup (real Chromium)
+        run: python -m pytest tests/test_handover.py -v
+
       # 셀렉터 의존성 전수 감사. 미확인이 늘거나 제품 동작 검증이 하나라도
       # 깨지면 0 이 아닌 코드로 끝나 빌드를 세운다.
       - name: selector dependency audit
@@ -95,15 +103,15 @@ jobs:
           "downloaded v1.0.4: $((Get-Item diag\v104.exe).Length) bytes sha256=$h"
           powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path diag\v104.exe -Label "v1.0.4-onefile"
 
-      - name: Defender scan of the v1.0.7 onedir build
+      - name: Defender scan of the v1.0.8 onedir build
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.7-onedir" -MustBeClean
+        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.8-onedir" -MustBeClean
 
       - name: Defender scan of the delivered zip
         shell: pwsh
         run: |
           $zip = Get-ChildItem out\*.zip | Select-Object -First 1
-          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.7-zip" -MustBeClean
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.8-zip" -MustBeClean
 
       # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
       # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.
@@ -215,6 +223,26 @@ jobs:
             Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           }
 
+      # 인계 모드를 **프로즌 exe** 로 실물 캡처에 대고 한 번 더 돌린다.
+      # 단위 테스트가 아니라 고객이 받는 그 바이트가 그렇게 동작하는지 본다.
+      # 실사이트에는 가지 않는다(로컬 http 픽스처 전용).
+      - name: handover mode on the frozen exe (real captured markup)
+        shell: pwsh
+        run: |
+          $log = "handovertest.log"
+          $dir = Join-Path (Get-Location) "ci\fixtures\real"
+          $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe `
+               -ArgumentList "--handovertest=$dir" `
+               -RedirectStandardOutput $log -PassThru -Wait
+          Get-Content $log
+          "handovertest exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "handover mode check failed" }
+          $raw = Get-Content $log -Raw
+          if ($raw -notmatch "HANDOVERTEST fired=1/4") { throw "expected exactly one fire" }
+          if ($raw -notmatch "netfunnel_waiting.html.*queue=True.*fired=False") {
+            throw "the real queue page must never fire"
+          }
+
       - name: GUI screenshot (real window, real result on screen)
         shell: pwsh
         run: |
@@ -232,6 +260,11 @@ jobs:
             powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1 `
               -DemoArgs "--guidemo,--showrecord,--hold=90000" `
               -Out "gui-record.png" -SettleSeconds 20
+            # 세 번째 컷: 인계 모드 상태판이 '확인창 감지됨 / 선택표 체크 켜짐'
+            # 으로 켜진 순간. 고객이 9시 직전에 보게 되는 바로 그 화면이다.
+            powershell -ExecutionPolicy Bypass -File ci\gui_screenshot.ps1 `
+              -DemoArgs "--guidemo,--hold=200000" `
+              -Out "gui-handover.png" -SettleSeconds 110
           } finally {
             if ($srv) { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
           }

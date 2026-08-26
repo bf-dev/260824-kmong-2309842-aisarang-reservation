@@ -268,8 +268,21 @@ class App:
         tk.Label(head, text="매일 오전 9시 오픈분을 서버 시각에 맞춰 신청합니다",
                  bg=BG, fg=MUTED, font=("맑은 고딕", 10)).pack(side="right", pady=(8, 0))
 
+        # 0. 실행 방식. 2026-08-26 부터 인계 모드가 기본이다.
+        c = card(outer, "1. 실행 방식", self.compact)
+        self.mode_choice = SegmentedChoice(
+            c,
+            [(config.MODE_HANDOVER, "인계 모드 · 제가 확인창까지 만들어 둡니다"),
+             (config.MODE_AUTO, "자동 모드 · 프로그램이 처음부터 진행")],
+            value=config.MODE_HANDOVER, command=self._on_run_mode)
+        self.mode_choice.grid(row=0, column=0, columnspan=4, sticky="w")
+        self.lbl_mode = tk.Label(
+            c, text="", bg=CARD, fg=INK, font=("맑은 고딕", 10),
+            anchor="w", justify="left")
+        self.lbl_mode.grid(row=1, column=0, columnspan=4, sticky="w", pady=(10, 0))
+
         # 1. 로그인
-        c = card(outer, "1. 로그인 방식", self.compact)
+        c = card(outer, "2. 로그인 방식", self.compact)
         self.login_choice = SegmentedChoice(
             c,
             [("manual", "크롬에서 직접 로그인"), ("cert", "공동인증서 자동 로그인")],
@@ -296,7 +309,7 @@ class App:
         self.cert_hint.grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(10, 0))
 
         # 2. 센터
-        c = card(outer, "2. 지역과 센터", self.compact)
+        c = card(outer, "3. 지역과 센터", self.compact)
         tk.Label(c, text="시/도", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
             row=0, column=0, sticky="w")
         self.cb_sido = ttk.Combobox(c, width=18, state="readonly", font=("맑은 고딕", 10))
@@ -326,7 +339,7 @@ class App:
         self.cb_center.bind("<<ComboboxSelected>>", lambda e: self._show_center())
 
         # 3. 예약 조건
-        c = card(outer, "3. 예약 조건", self.compact)
+        c = card(outer, "4. 예약 조건", self.compact)
         tk.Label(c, text="이용일", bg=CARD, fg=INK, font=("맑은 고딕", 10)).grid(
             row=0, column=0, sticky="w")
         self.date_choice = SegmentedChoice(
@@ -386,10 +399,11 @@ class App:
             row=7, column=2, columnspan=3, sticky="w", padx=(10, 0), pady=(14, 0))
 
         # 4. 타이밍 안내. 이 프로그램이 실제로 무엇을 정각에 하는지.
-        c = card(outer, "4. 9시 정각에 하는 일", self.compact)
-        tk.Label(c, text="검색 → 센터 → 아동 → 반/이용시간 → 날짜 칸 → 추가 → 체크 → [예약하기] 까지는\n"
-                         "9시가 되기 전에 미리 끝내고, 예약 확인창을 열어둔 채 기다립니다.\n"
-                         "정각에 누르는 것은 확인창의 [확인] 하나뿐입니다.",
+        c = card(outer, "5. 9시 정각에 하는 일", self.compact)
+        tk.Label(c, text="어느 방식이든 정각에 누르는 것은 예약 확인창의 [확인] 하나뿐입니다.\n"
+                         "인계 모드에서는 확인창을 만드는 일까지 직접 하시고, 프로그램은\n"
+                         "화면을 계속 지켜보다가 그 [확인] 만 정각에 맞춰 누릅니다.\n"
+                         "확인창이 없으면 누르지 않습니다 (잘못 누르는 것보다 안전합니다).",
                  bg=CARD, fg=INK, font=("맑은 고딕", 10), anchor="w",
                  justify="left").grid(row=0, column=0, columnspan=4, sticky="w")
         tk.Label(c, text="너무 이르면 사이트가 '예약시간전' 이라고 답합니다. 자리는 남아 있으므로 "
@@ -407,7 +421,7 @@ class App:
                                       pady=(8, 0))
 
         # 5. 진단 기록. 사람이 손으로 걸어가는 동안 우리는 받아적기만 한다.
-        c = card(outer, "5. 진단 기록 (예약이 잘 안 될 때만)", self.compact)
+        c = card(outer, "6. 진단 기록 (예약이 잘 안 될 때만)", self.compact)
         self.btn_rec = tk.Button(c, text="진단 기록 시작", command=self.on_record_start,
                                  bg="#1f8a70", fg="white", relief="flat", bd=0,
                                  font=("맑은 고딕", 11, "bold"), padx=20,
@@ -450,6 +464,30 @@ class App:
                                padx=16, pady=9 if self.compact else 12)
         self.result.pack(side="bottom", fill="x")
 
+        # 인계 모드 상태판. 고객이 9시 직전에 이 화면을 사진으로 찍어 보낸다.
+        # 그래서 모드 / 확인창 감지 여부 / 체크 여부 / 남은 시간이 한눈에
+        # 읽혀야 한다. 실행 전에는 접혀 있고, 시작하면 펼쳐진다.
+        self.panel = tk.Frame(shell, bg="#101a2b")
+        row = tk.Frame(self.panel, bg="#101a2b")
+        row.pack(fill="x", padx=16, pady=(10, 2))
+        self.pl_mode = tk.Label(row, text="", bg="#2b3a55", fg="white",
+                                font=("맑은 고딕", 11, "bold"), padx=12, pady=5)
+        self.pl_mode.pack(side="left")
+        self.pl_modal = tk.Label(row, text="확인창 확인 중", bg="#3a3f4b",
+                                 fg="white", font=("맑은 고딕", 11, "bold"),
+                                 padx=12, pady=5)
+        self.pl_modal.pack(side="left", padx=(8, 0))
+        self.pl_tick = tk.Label(row, text="선택표 확인 중", bg="#3a3f4b",
+                                fg="white", font=("맑은 고딕", 11, "bold"),
+                                padx=12, pady=5)
+        self.pl_tick.pack(side="left", padx=(8, 0))
+        self.pl_count = tk.Label(row, text="", bg="#101a2b", fg="#8fb4ff",
+                                 font=("맑은 고딕", 15, "bold"))
+        self.pl_count.pack(side="right")
+        self.pl_line = tk.Label(self.panel, text="", bg="#101a2b", fg="#cfd8e6",
+                                font=("맑은 고딕", 10), anchor="w", justify="left")
+        self.pl_line.pack(fill="x", padx=16, pady=(0, 10))
+
         run = tk.Frame(shell, bg=BG)
         run.pack(side="bottom", fill="x", pady=(2, 7 if self.compact else 12))
         self.btn_start = tk.Button(run, text="예약 시작", command=self.on_start,
@@ -490,6 +528,54 @@ class App:
         except Exception:
             pass
 
+    # ------------------------------------------------------ 인계 상태판
+    def show_panel(self, mode_label: str):
+        def _do():
+            try:
+                self.pl_mode.config(text=mode_label)
+                if not self.panel.winfo_ismapped():
+                    self.panel.pack(side="bottom", fill="x", pady=(0, 6),
+                                    before=self.result)
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _do)
+        except Exception:
+            pass
+
+    def set_state(self, st: dict):
+        """runner 가 화면을 다시 읽을 때마다 부른다. 여기가 고객이 보는 곳이다."""
+        def _do():
+            try:
+                self.pl_mode.config(text=st.get("modeLabel") or "")
+                if st.get("queue"):
+                    self.pl_modal.config(text="가상대기열 대기 중", bg="#8a5a10")
+                elif st.get("modal"):
+                    self.pl_modal.config(text="확인창 감지됨", bg="#0b6b3a")
+                else:
+                    self.pl_modal.config(text="확인창 없음", bg="#8c2a22")
+                if st.get("ticked"):
+                    self.pl_tick.config(text="선택표 체크 켜짐", bg="#0b6b3a")
+                else:
+                    self.pl_tick.config(text="선택표 체크 꺼짐", bg="#8c2a22")
+                secs = float(st.get("secondsToFire") or 0.0)
+                m, s = divmod(int(secs), 60)
+                h, m = divmod(m, 60)
+                clockstr = (f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}")
+                self.pl_count.config(
+                    text=("[확인] 까지 " + clockstr) if secs > 0 else "지금 누릅니다",
+                    fg="#8fb4ff" if st.get("ready") else "#ffb4a8")
+                self.pl_line.config(text=st.get("line") or "")
+                if not self.panel.winfo_ismapped():
+                    self.panel.pack(side="bottom", fill="x", pady=(0, 6),
+                                    before=self.result)
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _do)
+        except Exception:
+            pass
+
     def set_result(self, text: str, kind: str = "info"):
         colors = {"info": ("#e8ecf4", INK), "ok": ("#e3f5eb", OK),
                   "bad": ("#fdeceb", BAD), "busy": ("#fff4e0", "#a8620a")}
@@ -502,6 +588,9 @@ class App:
     # ------------------------------------------------------ 설정 반영
     def _apply_settings(self):
         s = self.settings
+        mode = config.normalize_run_mode(s.get("run_mode"))
+        self.mode_choice.set(mode)
+        self._on_run_mode(mode)
         self.login_choice.set(s.get("login_mode", "manual"))
         self._on_login_mode(s.get("login_mode", "manual"))
         self.slots.set(s.get("time_slots") or [])
@@ -554,6 +643,27 @@ class App:
         if 0 <= i < len(self.centers):
             return self.centers[i]
         return self.centers[0] if self.centers else None
+
+    HANDOVER_HELP = (
+        "크롬 창에서 아동 선택 → 반/이용시간 → 날짜 칸 → [추가] → 선택표 체크 →\n"
+        "[예약하기] 까지 직접 해서 예약 확인창을 띄워 두세요.\n"
+        "프로그램은 그 확인창의 [확인] 만 9시 정각에 맞춰 누릅니다.\n"
+        "화면을 옮기거나 다시 진행하는 일은 하지 않습니다.")
+    AUTO_HELP = (
+        "프로그램이 검색부터 [예약하기] 까지 스스로 진행하고 확인창을 열어 둡니다.\n"
+        "9시 직전에는 사이트가 가상대기열을 띄워 확인창이 늦게 열릴 수 있습니다.\n"
+        "그때는 기다립니다. 처음부터 다시 하지 않습니다(대기열 맨 뒤로 갑니다).")
+
+    def _on_run_mode(self, key):
+        handover = (key == config.MODE_HANDOVER)
+        self.lbl_mode.config(
+            text=self.HANDOVER_HELP if handover else self.AUTO_HELP,
+            fg=INK if handover else MUTED)
+        try:
+            self.btn_start.config(
+                text="[확인] 대기 시작" if handover else "예약 시작")
+        except Exception:
+            pass
 
     def _on_login_mode(self, key):
         if key == "cert":
@@ -665,6 +775,7 @@ class App:
                 "ctprvn": c.get("ctprvn", ""), "ctprvnName": c.get("ctprvnName", ""),
                 "signgu": c.get("signgu", ""), "signguName": c.get("signguName", ""),
             }
+        s["run_mode"] = config.normalize_run_mode(self.mode_choice.get())
         s["login_mode"] = self.login_choice.get()
         s["time_slots"] = self.slots.get()
         s["child_name"] = self.ent_child.get().strip()
@@ -706,12 +817,19 @@ class App:
 
         self.btn_start.config(state="disabled", bg="#b9c6de")
         self.btn_stop.config(state="normal", bg="#ffd9d6", fg=BAD)
-        self.set_result("실행 중입니다. 창을 닫지 말고 두세요.", "busy")
+        mode = config.normalize_run_mode(self.settings.get("run_mode"))
+        self.show_panel(config.RUN_MODE_LABELS[mode])
+        if mode == config.MODE_HANDOVER:
+            self.set_result("인계 모드 · 크롬 창에서 예약 확인창까지 진행해 주세요.",
+                            "busy")
+        else:
+            self.set_result("실행 중입니다. 창을 닫지 말고 두세요.", "busy")
 
         self.runner = Runner(status_cb=self.set_status, log_cb=self.log,
-                             done_cb=self._on_done, diag=self.diag)
+                             done_cb=self._on_done, diag=self.diag,
+                             state_cb=self.set_state)
         self.runner.start(self.settings, self.cert_pw.get())
-        self.log("실행을 시작했습니다.")
+        self.log(f"실행을 시작했습니다. ({config.RUN_MODE_LABELS[mode]})")
 
     @safe_handler
     def on_stop(self):
@@ -809,7 +927,7 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
              show_record: bool = False):
     """CI 스크린샷용. 진짜 조회를 돌려 결과를 화면에 띄운 뒤 그대로 붙잡고 있는다.
 
-    show_record=True 면 설정 영역을 끝까지 내려 '5. 진단 기록' 카드가 화면에
+    show_record=True 면 설정 영역을 끝까지 내려 '6. 진단 기록' 카드가 화면에
     보이게 한다. 새 버튼이 실제로 창에 있다는 것을 스크린샷으로 증명하기 위한
     것이다(설정 영역은 스크롤되므로 기본 화면에서는 접혀 있다).
     """
@@ -826,7 +944,9 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
         root.after(9000, _scroll)
 
     def _work():
+        import time as _t
         try:
+            app.show_panel(config.RUN_MODE_LABELS[config.MODE_HANDOVER])
             app.set_result("실행 중입니다. 창을 닫지 말고 두세요.", "busy")
             app.set_status("서버 시각을 맞추는 중입니다...")
             r = Runner(status_cb=app.set_status, log_cb=app.log, diag=app.diag)
@@ -861,15 +981,47 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
                          # 사이트가 막는 문구는 재시도 대상이 아니다
                          and checks["칸거절"] == booking.R_NOT_BOOKABLE
                          and not booking.result_is_retryable(booking.R_NOT_BOOKABLE))
-            app.log("확인창 흐름: 준비(검색→센터→아동→반/이용시간→칸→추가→체크→예약하기) "
-                    "후 [확인] 만 정각 발사")
+            app.log("확인창 흐름: 인계 모드는 사람이 만든 확인창의 [확인] 만 정각 발사")
+
+            # 인계 모드 상태판을 실제 판정기로 채운다. 아래 세 상태는 전부
+            # handover.LiveState 를 그대로 통과시킨 것이고, 화면에 그리는
+            # 경로도 실행 중과 똑같은 App.set_state 다.
+            from . import handover
+            queue_state = handover.LiveState(
+                on_reserve_page=True, ticked=1,
+                row_text="해솔아이 2026-09-09(수) 09 : 00 ~ 18 : 00 (9시간)",
+                queue=True, queue_ahead=72, queue_behind=26,
+                queue_eta="2분  10초")
+            ready_state = handover.LiveState(
+                modal=True, modal_text=real_modal, modal_how="layer-confirm-popup2",
+                confirm=True, confirm_id="layer-confirm-popup-confirm2",
+                armed=True, rows=1, ticked=1, on_reserve_page=True,
+                row_text="해솔아이 2026-09-09(수) 09 : 00 ~ 18 : 00 (9시간)")
+            blank_state = handover.LiveState(on_reserve_page=True)
+            label = config.RUN_MODE_LABELS[config.MODE_HANDOVER]
+            handover_ok = (blank_state.ready() is False
+                           and queue_state.ready() is False
+                           and ready_state.ready() is True)
+            app.log(f"인계 모드 판정: 확인창 없음 → 발사 안 함 / "
+                    f"대기열 → 발사 안 함 / 확인창+체크 → 발사")
+            app.log("대기열 실측(2026-08-26 08:57): " + queue_state.queue_line())
+            for st, secs in ((blank_state, 214.0), (queue_state, 126.0),
+                             (ready_state, 41.0)):
+                app.set_state({
+                    "mode": config.MODE_HANDOVER, "modeLabel": label,
+                    "line": handover.describe(st), "ready": st.ready(),
+                    "modal": st.modal, "ticked": st.ticked > 0,
+                    "queue": st.queue, "secondsToFire": secs})
+                _t.sleep(2.0)
+
             resyncs = out.get("clock_resyncs", 0)
             ok = (out.get("default_found") and isinstance(out.get("centers"), int)
-                  and grader_ok and resyncs >= 2)
+                  and grader_ok and handover_ok and resyncs >= 2)
             if ok:
                 app.set_result(
                     f"점검 완료 · 서초구 센터 {out['centers']}곳 조회, "
-                    f"기본 센터(신반포) 확인, 예약시간전/정원초과 판정 정상, "
+                    f"기본 센터(신반포) 확인, 인계 모드 판정 정상"
+                    f"(확인창 없음/대기열이면 누르지 않음), "
                     f"서버 시각 {config.RESYNC_SECONDS // 60}분 주기 재측정 {resyncs}회 확인, "
                     f"{out.get('clock_after_resync', offset_line)}", "ok")
             else:

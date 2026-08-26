@@ -563,27 +563,40 @@ def page_says_cert_required(driver) -> bool:
     return False
 
 
-def handle_netfunnel(driver, log=lambda *_: None, max_wait: int = 60) -> None:
-    """넷퍼널(가상대기열)이 뜨면 통과할 때까지 기다린다.
+def handle_netfunnel(driver, log=lambda *_: None, max_wait: int = 60) -> bool:
+    """넷퍼널(가상대기열) 레이어가 떠 있으면 사라질 때까지 기다린다.
 
-    사이트에 netfunnel-pcms.js 가 실제로 배포돼 있다. 9시 정각에 대기열이
-    열리면 곧바로 재시도해봐야 소용이 없으므로 순번이 빠질 때까지 둔다.
+    v1.0.7 까지 이 함수는 `"NetFunnel" not in driver.page_source` 로 판정했다.
+    그런데 [예약하기] 를 누르면 사이트가 `netfunnel-pcms.js` 와
+    `nf.childcare.go.kr:8443/ts.wseq?...&prefix=NetFunnel.gRtype=...` 스크립트
+    태그를 **문서에 남긴다.** 그래서 대기열이 이미 지나갔는데도 문자열은
+    계속 잡혔고, 반대로 진짜 대기 레이어가 떠 있어도 그 사실을 순번으로
+    읽어내지 못했다. 이제는 **보이는 레이어**로 판정한다
+    (`booking._JS_QUEUE`, 2026-08-26 고객 캡처의 실물 마크업).
+
+    돌려주는 값: 대기열을 한 번이라도 봤는가.
     """
+    from . import booking
+
     deadline = time.time() + max_wait
     seen = False
+    last_log = 0.0
     while time.time() < deadline:
-        try:
-            src = driver.page_source
-        except Exception:
-            return
-        if "NetFunnel" not in src and "대기하고 계십니다" not in src:
+        q = booking.queue_info(driver)
+        if not q.get("queue"):
             if seen:
                 log("대기열을 통과했습니다.")
-            return
+            return seen
         if not seen:
             seen = True
-            log("가상대기열에 들어갔습니다. 순번을 기다립니다...")
+            log("가상대기열에 들어갔습니다. 순번을 기다립니다"
+                "(다시 누르면 맨 뒤로 갑니다).")
+        now = time.time()
+        if now - last_log >= booking.QUEUE_LOG_SECONDS:
+            last_log = now
+            log(booking.queue_line(q))
         time.sleep(1.0)
+    return seen
 
 
 # ------------------------------------------------------- 예약 흐름

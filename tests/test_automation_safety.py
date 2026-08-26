@@ -178,7 +178,8 @@ def test_full_prepare_reaches_the_modal(monkeypatch):
     pressed = _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]))
     monkeypatch.setattr(booking, "slot_row_is_ticked", lambda d, i=-1: True)
     monkeypatch.setattr(booking, "wait_modal",
-                        lambda d, t=8.0, log=None: "예약하시겠습니까?")
+                        lambda d, t=8.0, log=None, deadline_local=None:
+                        ("예약하시겠습니까?", False))
     monkeypatch.setattr(booking, "arm_confirm", lambda d, log=None: True)
     d = FakeDriver()
     res = booking.prepare(d, CENTER, "20260908", [9], 9)
@@ -197,7 +198,8 @@ def test_dry_run_never_fires_confirm(monkeypatch):
     _patch(monkeypatch, grid=_grid([("20260908", ["2"] * 9)]))
     monkeypatch.setattr(booking, "slot_row_is_ticked", lambda d, i=-1: True)
     monkeypatch.setattr(booking, "wait_modal",
-                        lambda d, t=8.0, log=None: "예약하시겠습니까?")
+                        lambda d, t=8.0, log=None, deadline_local=None:
+                        ("예약하시겠습니까?", False))
     monkeypatch.setattr(booking, "arm_confirm", lambda d, log=None: True)
     d = FakeDriver()
     res = booking.prepare(d, CENTER, "20260908", [9], 9)

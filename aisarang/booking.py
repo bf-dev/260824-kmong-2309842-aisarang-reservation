@@ -790,6 +790,66 @@ var s = window.getComputedStyle(b);
 return s.visibility !== 'hidden' && s.display !== 'none';
 """
 
+# ---------------------------------------------------------------- 가상대기열
+#
+# 2026-08-26 실측. 고객 PC 캡처(page_source/0005_modal_not_open.html)의
+# 꼬리에 이 마크업이 통째로 들어 있고, network 로그에는
+# nf.childcare.go.kr:8443/ts.wseq?opcode=5101(진입) → opcode=5002(폴링) 이
+# 줄줄이 찍혀 있다. **[예약하기] 를 누르면 대기열에 선다.** 확인창은 순번이
+# 올 때까지 열리지 않는다.
+#
+#   <div id="NetFunnel_Loading_Popup" style="display: block; ...">
+#     <b>시간제 보육 예약 <span>대기 중</span>입니다.</b>
+#     <b>예상대기시간 : <span id="NetFunnel_Loading_Popup_TimeLeft">2분  10초 </span></b>
+#     <div id="Progress_Print">6 % (5/77) - ... sec</div>
+#     현재 앞에 <span id="NetFunnel_Loading_Popup_Count">72</span> 명,
+#     뒤에 <span id="NetFunnel_Loading_Popup_NextCnt">26</span> 명의 대기자가 있습니다.
+#     ※ 재접속하시면 대기시간이 더 길어집니다. <span id="NetFunnel_Countdown_Stop">[중지]</span>
+#
+# 마지막 줄이 이 판의 전부다. v1.0.7 은 확인창이 8초 안에 안 열리면 검색
+# 화면부터 다시 했고, 그래서 매번 대기열 맨 뒤로 갔다. 캡처 세 장:
+# 앞에 72명 → 138명 → 177명, 예상 2분10초 → 3분50초 → 4분32초.
+_JS_QUEUE = r"""
+function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
+function vis(e){
+  if (!e) return false;
+  var r = e.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  var s = window.getComputedStyle(e);
+  return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+}
+var out = {queue: false, ahead: null, behind: null, eta: '', progress: ''};
+var qs = document.querySelectorAll("[id='NetFunnel_Loading_Popup']");
+for (var i = 0; i < qs.length; i++) {
+  if (!vis(qs[i])) continue;
+  out.queue = true;
+  var a = qs[i].querySelector("[id='NetFunnel_Loading_Popup_Count']");
+  var b = qs[i].querySelector("[id='NetFunnel_Loading_Popup_NextCnt']");
+  var t = qs[i].querySelector("[id='NetFunnel_Loading_Popup_TimeLeft']");
+  var p = qs[i].querySelector("[id='Progress_Print']");
+  if (a && /^\d+$/.test(txt(a))) out.ahead = parseInt(txt(a), 10);
+  if (b && /^\d+$/.test(txt(b))) out.behind = parseInt(txt(b), 10);
+  if (t) out.eta = txt(t);
+  if (p) out.progress = txt(p);
+  return out;
+}
+// 넷퍼널 스킨이 바뀌었을 때. 레이어 문구는 실물 그대로다.
+var all = document.querySelectorAll("div,section");
+for (var i = 0; i < all.length; i++) {
+  if (!vis(all[i])) continue;
+  var s = txt(all[i]);
+  if (s.length > 800) continue;
+  if (s.indexOf('대기 중입니다') < 0 || s.indexOf('대기자가 있습니다') < 0) continue;
+  out.queue = true;
+  var m = s.match(/앞에\s*(\d+)\s*명/);   if (m)  out.ahead = parseInt(m[1], 10);
+  var m2 = s.match(/뒤에\s*(\d+)\s*명/);  if (m2) out.behind = parseInt(m2[1], 10);
+  var m3 = s.match(/예상대기시간\s*:?\s*([^*]{0,20})/); if (m3) out.eta = m3[1].trim();
+  return out;
+}
+return out;
+"""
+
+
 # 화면 어디든 떠 있는 안내 문구(레이어 알림, alert 대체 팝업)를 그대로 읽어온다.
 _JS_READ_NOTICE = r"""
 function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
@@ -1514,16 +1574,72 @@ def modal_info(driver) -> dict:
     return _js(driver, _JS_MODAL, default=None) or {}
 
 
-def wait_modal(driver, timeout: float = 8.0, log=lambda *_: None) -> str:
-    """예약 확인창이 뜰 때까지 기다린다. 뜬 본문을 돌려준다."""
+def queue_info(driver) -> dict:
+    """가상대기열(넷퍼널) 레이어가 떠 있는지, 순번이 몇인지."""
+    return _js(driver, _JS_QUEUE, default=None) or {"queue": False}
+
+
+def queue_line(info: dict) -> str:
+    bits = []
+    if info.get("ahead") is not None:
+        bits.append(f"앞에 {info['ahead']}명")
+    if info.get("behind") is not None:
+        bits.append(f"뒤에 {info['behind']}명")
+    if info.get("eta"):
+        bits.append(f"예상 {info['eta']}")
+    return "가상대기열 대기 중" + (" (" + ", ".join(bits) + ")" if bits else "")
+
+
+# 대기열이 없을 때 확인창을 기다리는 시간. 사이트가 대기열을 안 태우면
+# 확인창은 곧바로 뜬다.
+QUIET_MODAL_WAIT = 8.0
+# 대기열 순번을 로그에 적는 간격.
+QUEUE_LOG_SECONDS = 15.0
+
+
+def wait_modal(driver, timeout: float = QUIET_MODAL_WAIT, log=lambda *_: None,
+               deadline_local: float | None = None) -> tuple:
+    """예약 확인창이 뜰 때까지 기다린다. (본문, 대기열을 봤는가) 를 돌려준다.
+
+    **대기열을 만나면 실패로 치지 않는다.** [예약하기] 는 예약 전송이 아니라
+    가상대기열 진입이고(2026-08-25 캡처의 마지막 요청이 ts.wseq 였다),
+    09시 직전에는 서버가 그 대기열을 실제로 켠다(2026-08-26 실측: 앞에 72명,
+    예상 2분 10초). 이때 필요한 것은 재시도가 아니라 **기다리는 것**이다.
+    대기열 레이어가 스스로 "재접속하시면 대기시간이 더 길어집니다" 라고
+    적어 놓았고, v1.0.7 은 정확히 그 짓을 세 번 했다.
+
+    deadline_local 을 주면 대기열에 서 있는 동안 그 시각까지 기다린다.
+    """
     end = time.time() + timeout
-    while time.time() < end:
+    seen_queue = False
+    last_log = 0.0
+    while True:
         info = modal_info(driver)
         if info.get("text"):
+            if seen_queue:
+                log("대기열을 통과했습니다.")
             log("예약 확인창이 열렸습니다: " + info["text"][:80])
-            return str(info["text"])
+            return str(info["text"]), seen_queue
+
+        q = queue_info(driver)
+        if q.get("queue"):
+            if not seen_queue:
+                seen_queue = True
+                log("사이트가 가상대기열을 띄웠습니다. 예약 확인창은 순번이 올 때까지 "
+                    "열리지 않습니다. 다시 누르지 않고 그대로 기다립니다.")
+            now = time.time()
+            if now - last_log >= QUEUE_LOG_SECONDS:
+                last_log = now
+                log(queue_line(q))
+            if deadline_local is not None:
+                end = max(end, min(deadline_local, time.time() + 1.0))
+        elif seen_queue:
+            # 레이어가 사라졌는데 확인창이 아직 없다. 잠깐 더 본다.
+            end = max(end, time.time() + 3.0)
+
+        if time.time() >= end:
+            return "", seen_queue
         time.sleep(0.2)
-    return ""
 
 
 def arm_confirm(driver, log=lambda *_: None) -> bool:
@@ -1720,10 +1836,18 @@ def prepare(driver, center: dict, target_date: str, preferred_hours: list,
     return StepResult(True, "준비가 끝났습니다.", "prepared", p)
 
 
-def open_modal(driver, p: Prepared, log=lambda *_: None, diag=None) -> StepResult:
+def open_modal(driver, p: Prepared, log=lambda *_: None, diag=None,
+               deadline_local: float | None = None) -> StepResult:
     """8단계. [예약하기] 를 눌러 확인창을 열고 [확인] 을 조준한다.
 
     **불변식**: 칸이 선택돼 있고 선택표 행이 체크돼 있지 않으면 누르지 않는다.
+
+    실패 코드가 두 갈래인 것이 중요하다.
+      guard_* / no_reserve_button  → [예약하기] 를 **아직 누르지 않았다.**
+                                     준비를 다시 해도 잃을 것이 없다.
+      no_modal / no_modal_queue    → [예약하기] 를 **이미 눌렀다.**
+                                     대기열 표를 쥐고 있으므로 여기서 준비를
+                                     다시 하면 순번이 맨 뒤로 간다. 절대 금지.
     """
     if not p.cell_selected:
         return StepResult(False, "날짜 칸이 선택되지 않아 [예약하기] 를 누르지 않았습니다.",
@@ -1737,12 +1861,20 @@ def open_modal(driver, p: Prepared, log=lambda *_: None, diag=None) -> StepResul
     if not press_reserve(driver, log):
         return StepResult(False, "[예약하기] 버튼을 찾지 못했습니다.", "no_reserve_button", p)
 
-    text = wait_modal(driver, 8.0, log)
+    text, saw_queue = wait_modal(driver, QUIET_MODAL_WAIT, log,
+                                 deadline_local=deadline_local)
     p.modal_open = bool(text)
     p.modal_text = text
     if not text:
         from . import automation
         automation.capture(driver, diag, "modal_not_open")
+        if saw_queue:
+            q = queue_info(driver)
+            return StepResult(
+                False,
+                "가상대기열에서 순번을 기다리는 중이라 예약 확인창이 아직 "
+                "열리지 않았습니다. " + queue_line(q),
+                "no_modal_queue", p, {"queue": q})
         return StepResult(False, "예약 확인창이 열리지 않았습니다.", "no_modal", p)
 
     p.armed = arm_confirm(driver, log)
@@ -1826,7 +1958,7 @@ def redrive_confirm(driver, p: Prepared, log=lambda *_: None) -> bool:
             return False
     if not press_reserve(driver, log):
         return False
-    text = wait_modal(driver, 3.0, log)
+    text, _saw_queue = wait_modal(driver, 3.0, log)
     if not text:
         return False
     p.modal_open, p.modal_text = True, text

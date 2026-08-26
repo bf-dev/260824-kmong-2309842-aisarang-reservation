@@ -171,6 +171,106 @@ def main(argv: list[str] | None = None) -> int:
             _out(f"RECTEST {'OK' if ok else 'FAILED'}")
             return 0 if ok else 1
 
+        if any(a.startswith("--handovertest") for a in argv):
+            # 인계 모드를 **실물 캡처 마크업**에 대고 프로즌 exe 로 돌린다.
+            # 두 가지를 증명한다.
+            #   1) 사람이 만들어 둔 확인창에서는 실제로 [확인] 이 눌린다
+            #   2) 확인창이 없거나(대기열 화면) 체크가 꺼져 있으면 누르지 않는다
+            # 실사이트에는 가지 않는다. ci/fixtures/real/ 로컬 http 서버 전용이다.
+            import functools as _ft
+            import os as _os
+            import threading as _th
+            import time as _t
+            from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+            from aisarang import automation, booking, handover
+
+            # 픽스처 폴더는 exe 안에 없다(빌드에 포함하지 않는다). CI 가
+            # --handovertest=<dir> 로 체크아웃의 경로를 넘긴다.
+            real_dir = ""
+            for a in argv:
+                if a.startswith("--handovertest="):
+                    real_dir = a.split("=", 1)[1]
+            if not real_dir:
+                real_dir = _os.path.join(
+                    _os.path.dirname(_os.path.abspath(__file__)),
+                    "ci", "fixtures", "real")
+            if not _os.path.isdir(real_dir):
+                _out(f"HANDOVERTEST REFUSED: no fixtures at {real_dir}")
+                return 2
+
+            # file:// 로 띄우면 안 된다. 크롬이 문서마다 오리진을 따로 줘서
+            # CSS 가 제대로 안 붙고, 그러면 .popup_wrap{display:none} 이 죽어
+            # 숨어 있어야 할 확인창 사본까지 '보인다' 로 판정된다.
+            class _Quiet(SimpleHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+            httpd = ThreadingHTTPServer(
+                ("127.0.0.1", 0), _ft.partial(_Quiet, directory=real_dir))
+            port = httpd.server_address[1]
+            _th.Thread(target=httpd.serve_forever, daemon=True).start()
+
+            rows = []
+            drv = automation.build_driver(headless=True, log=_out)
+            try:
+                def visit(name, tick):
+                    drv.get(f"http://127.0.0.1:{port}/{name}")
+                    _t.sleep(0.6)
+                    if tick:
+                        # 사람이 손으로 체크한 것을 재현한다. click 은 attribute 가
+                        # 아니라 property 를 바꾸므로 캡처에는 남지 않는다.
+                        drv.execute_script(
+                            "var b=document.getElementById('rowSchChkNo0');"
+                            "if(b){b.checked=true;}")
+                    st = handover.read_state(drv)
+                    fired = booking.fire_confirm(drv) if st.ready() else False
+                    rows.append((name, tick, st, fired))
+                    _out(f"HANDOVERTEST page={name} ticked={tick} "
+                         f"modal={st.modal} confirm={st.confirm} armed={st.armed} "
+                         f"rowTicked={st.ticked > 0} queue={st.queue} "
+                         f"ready={st.ready()} fired={fired}")
+                    _out(f"HANDOVERTEST   line={handover.describe(st)}")
+                    if st.queue:
+                        _out(f"HANDOVERTEST   queue={st.queue_line()}")
+                    if not st.ready():
+                        _out(f"HANDOVERTEST   blockers={'; '.join(st.blockers())}")
+
+                visit("modal_open.html", True)              # 사람이 만든 확인창 → 발사
+                visit("modal_open.html", False)             # 체크 꺼짐 → 발사 금지
+                visit("netfunnel_waiting.html", True)       # 대기열 → 발사 금지
+                visit("grid_selected_row_added.html", True)  # 확인창 없음 → 발사 금지
+            finally:
+                try:
+                    drv.quit()
+                except Exception:
+                    pass
+                try:
+                    httpd.shutdown()
+                    httpd.server_close()
+                except Exception:
+                    pass
+
+            by = {(n, t): (st, f) for n, t, st, f in rows}
+            fire_st, fire_ok = by[("modal_open.html", True)]
+            ok = (fire_ok is True and fire_st.ready() is True
+                  and fire_st.confirm_id == "layer-confirm-popup-confirm2"
+                  and by[("modal_open.html", False)][1] is False
+                  and by[("netfunnel_waiting.html", True)][0].queue is True
+                  and by[("netfunnel_waiting.html", True)][1] is False
+                  and by[("grid_selected_row_added.html", True)][1] is False)
+            fired_total = sum(1 for _n, _t2, _s, f in rows if f)
+            _out(f"HANDOVERTEST fired={fired_total}/4 (기대: 1)")
+            diag.add_json("handovertest.json", {
+                "rows": [{"page": n, "ticked": t, "state": s.as_dict(),
+                          "fired": f} for n, t, s, f in rows]})
+            diag.upload("인계 모드 점검 " + ("성공" if ok else "실패"),
+                        {"mode": "handovertest",
+                         "result": "success" if ok else "fail",
+                         "fired": fired_total}, blocking=True)
+            _out(f"HANDOVERTEST {'OK' if ok else 'FAILED'}")
+            return 0 if ok else 1
+
         if "--guiselftest" in argv:
             from aisarang.gui import run_construct_selftest
             rc = run_construct_selftest()

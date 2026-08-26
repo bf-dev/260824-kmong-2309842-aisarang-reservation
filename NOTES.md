@@ -21,6 +21,9 @@ python3 main.py --clocktest=1.2 --interval=20  # 시각 재측정이 정말 주�
 AISARANG_BASE_URL=http://127.0.0.1:18777 \
   python3 main.py --rectest                  # 진단 기록 모드 실행 (로컬 fixture 전용, v1.0.6)
 python3 ci/fixture_server.py 18777           # --rectest 가 붙을 로컬 서버 (/rec 화면)
+python3 main.py --handovertest               # 인계 모드를 실물 캡처에 대고 실행 (v1.0.8)
+                                             #   기대: fired=1/4, HANDOVERTEST OK
+python3 ci/build_netfunnel_fixture.py <ZIP>  # 대기열 픽스처 재생성 (v1.0.8)
 ```
 
 빌드는 GitHub Actions `windows-latest` (`.github/workflows/build.yml`).
@@ -100,8 +103,12 @@ install -m 0644 version-aisarang.json \
 - `disable-devtool.0.3.7.min.js` — **개발자도구를 열면 `/logout` 으로 강제 로그아웃**된다.
   그리고 **셀레니움 크롬 자체를 오탐한다**(2026-08-24 실측, 6단계 참고).
   v1.0.3 부터 이 파일만 네트워크에서 막는다. devtools 는 여전히 열지 말 것.
-- `netfunnel-pcms.js` (넷퍼널 가상대기열) 이 배포돼 있다. 목록 화면에서는 주석 처리돼
-  있지만 9시 몰릴 때 서버가 켤 수 있다. `automation.handle_netfunnel()` 이 대기 처리.
+- `netfunnel-pcms.js` (넷퍼널 가상대기열). **2026-08-26 실측: 9시 직전에는 실제로
+  켜진다.** 목록 화면 소스에서는 주석 처리돼 있지만, [예약하기] 를 누르는 순간
+  사이트가 `netfunnel-pcms.js` / `netfunnel-skin.js` 를 XHR 로 불러오고
+  `nf.childcare.go.kr:8443/ts.wseq?opcode=5101` 로 대기열에 세운다. 그동안
+  예약 확인창은 **열리지 않는다**. 순번과 예상 대기는 `#NetFunnel_Loading_Popup`
+  안에서 읽는다. 자세한 것은 아래 v1.0.8 절. 다시 누르면 맨 뒤로 간다.
 
 ## 실사이트 단계별 검증 맵 (2026-08-24 / 4·5단계는 2026-08-25 갱신)
 
@@ -867,7 +874,203 @@ $("#layer-alert-popup2").show();
   같은 증상이 났다). 바깥 네트워크는 위 플래그로 막으면 된다.
 - `<link>` 순서를 원본대로 유지한다. 알파벳순으로 붙이면 캐스케이드가 달라진다.
 
-## 배포 현황 (v1.0.7, 2026-08-25 10:40Z) ← 지금 서빙 중
+## v1.0.8 (2026-08-26): 인계 모드 + 가상대기열 + 재준비 금지
+
+**이 판은 하나의 사고에서 나왔다. 고객이 그날 예약을 놓쳤고, 원인은 우리 코드였다.**
+
+### 무슨 일이 있었나 (고객 진단 ZIP, 전부 실측)
+
+```
+artifacts/private/05788f12-b025-48ba-bb01-7c45121013d8/
+  1787702295153-aisarang-reservation-2309842-20260826-085814.zip
+  523,608 B  v1.0.7  Windows 10 19045  mode=gui  08:36:37 ~ 08:58:14 KST
+```
+
+`run.log` 는 08:56:11 부터 08:58:08 까지 **똑같은 8단계를 네 번** 반복한다.
+매 회차 마지막 세 줄이 이것이다.
+
+```
+[08:57:32] [예약하기] 를 눌렀습니다 (#timecareConfirm).
+[08:57:40] 준비 실패(no_modal): 예약 확인창이 열리지 않았습니다.
+[08:57:40] 20초 뒤 다시 준비합니다. (정각까지 140초)
+```
+
+**확인창 자리에 무엇이 있었는지는 캡처에 그대로 남아 있다.**
+`page_source/0005_modal_not_open.html` 의 꼬리(원문 그대로):
+
+```html
+<div id="NetFunnel_Loading_Popup" style="display: block; ... visibility: visible; z-index: 32002;">
+  <b>시간제 보육 예약 <span style="color:#013dc1"> 대기 중</span>입니다.</b>
+  <b>예상대기시간 : <span id="NetFunnel_Loading_Popup_TimeLeft">2분  10초 </span></b>
+  <div id="Progress_Print">6 % (5/77) - 130.931468-2****** sec</div>
+  현재 앞에 <b><span id="NetFunnel_Loading_Popup_Count">72</span></b> 명,
+  뒤에 <b><span id="NetFunnel_Loading_Popup_NextCnt">26</span></b> 명의 대기자가 있습니다.
+  <div>현재 접속 사용자가 많아 대기 중이며, 잠시만 기다리시면 </div>
+  <div>예약이 완료됩니다.</div>
+  <div>*<b><span style="color: red;">시간당 인원이 초과</span>될 경우 예약이 불가할 수 있습니다.</b></div>
+  <b>※ 재접속하시면 대기시간이 더 길어집니다. <span id="NetFunnel_Countdown_Stop">[중지]</span></b>
+</div>
+<div id="mpopup_bg" style="... display: block;">   <!-- 딤 -->
+<div id="pop_iframe" style="... display: block;">
+```
+
+`network_modal_not_open.json` 이 뒷받침한다. [예약하기] 직후
+`nf.childcare.go.kr:8443/ts.wseq?opcode=5101`(대기열 진입) → `opcode=5002` 폴링이
+줄줄이 찍혀 있다. **넷퍼널은 켜져 있었다.** (NOTES 예전 판이 "목록 화면에서는
+주석 처리돼 있다" 고 적어둔 것과 모순되지 않는다. 목록 화면이 아니라
+[예약하기] 시점에 XHR 로 `netfunnel-pcms.js` / `netfunnel-skin.js` 를 불러온다.)
+
+그리고 레이어가 직접 적어 놓은 마지막 줄이 이 판의 전부다.
+
+> ※ 재접속하시면 대기시간이 더 길어집니다.
+
+v1.0.7 은 정확히 그 짓을 세 번 했다. 세 캡처의 순번이 그 대가다.
+
+| 회차 | 캡처 | 앞에 선 사람 | 뒤에 | 예상 대기 | Progress |
+|---|---|---|---|---|---|
+| 1 | `0005_modal_not_open.html` | **72명** | 26 | 2분 10초 | 6 % (5/77) |
+| 2 | `0010_modal_not_open.html` | **138명** | 26 | 3분 50초 | 3 % (5/143) |
+| 3 | `0015_modal_not_open.html` | **177명** | 18 | 4분 32초 | 3 % (6/183) |
+
+고객 원문:
+> "아 이게 4분전으로 셋팅하니까 이미 앞에 대기자가 많아서 그때부터 오류가 생깁니다."
+> "예약이 원래대로 안되니까 프로그램은 다시 처음부터 다시 아동선택을 하게 되고
+>  그게 반복되서 오늘은 결국 못했네요"
+> "제가 아동선택부터 시간선택까지 모두 끝내놓으면 프로그램은 확인만 누르는
+>  방식을 변경 요청드립니다."
+
+### 1) 인계 모드 (`aisarang/handover.py`, 이제 **기본 모드**)
+
+사람이 아동~[예약하기] 까지 손으로 끝내 확인창을 띄워 두면, 프로그램은
+**그 확인창의 [확인] 만** 정각에 맞춰 누른다. 도착 기준 조준, '예약시간전'
+재발사, '정원초과' 즉시 중단은 자동 모드와 같은 코드다.
+
+**하지 않는 것이 이 모드의 정의다.** 화면 이동, 검색, 센터 열기, 아동/반/시간
+선택, 칸 클릭, [추가], 체크, [예약하기] 가 **소스에 존재하지 않는다.**
+`tests/test_handover.py::test_handover_has_no_way_to_touch_the_page_except_the_final_confirm`
+이 `ast` 로 파싱해서 (문서화 문자열 제외) `.click(` / `.submit(` / `send_keys` /
+`ActionChains` / `dispatchEvent` / `driver.get(` / `booking.prepare` /
+`booking.open_modal` / `booking.press_*` / `booking.redrive_confirm` 이
+하나도 없다는 것을 못박는다. 누가 "확인창이 닫혔으니 [예약하기] 한 번만 다시
+눌러주자" 를 넣으면 테스트가 깨진다. **그 한 번이 72명을 177명으로 만들었다.**
+
+유일한 발사 경로는 `booking.fire_confirm(driver)` 한 줄이다. 조준(`_JS_ARM`,
+= `window.__aisarang_fire` 를 만드는 일)조차 `booking.py` 가 한다. 그래서
+`handover.py` 안에는 누를 수 있는 자바스크립트가 한 조각도 없다.
+
+예외가 딱 하나 있다: 시작 직후 `_handover_open_once()` 가 예약 화면까지 한 번
+열어준다. 그것도 **먼저 화면을 읽어서** 확인창이 이미 떠 있거나 선택표 체크가
+켜져 있거나 예약 화면 위라면 **열지 않는다.** 고객이 8시 58분에 프로그램을
+다시 켰을 때 자기가 만들어 둔 것을 우리가 날리면 안 되기 때문이다.
+
+### 2) 안전 불변식을 살아 있는 화면에서 다시 만든다
+
+이것이 이번 판의 진짜 설계 변경이다.
+
+`Prepared.ready()` 는 **우리가 우리 클릭으로 세운 플래그**를 본다.
+`cell_selected` 는 `click_cell` 안에서만 참이 되고 그 뒤로 **한 번도 다시
+계산되지 않는다.** 사람이 손으로 만든 화면에서는 영원히 거짓이다. 그대로
+두면 인계 모드는 구조적으로 발사할 수 없다.
+
+`handover.LiveState.ready()` 는 매번 `_JS_HANDOVER_STATE` 한 번으로 페이지에서
+다시 읽는다.
+
+1. `modal`: 보이는 `#layer-confirm-popup2` 껍데기가 있고 본문이 비어 있지 않다
+2. `confirm`: 그 안의 `#layer-confirm-popup-confirm2` 가 보인다
+3. `asks`: 본문이 예약 질문이다 (`...하시겠습니까`)
+4. `ticked > 0`: `#INFOQUALF` 의 체크박스가 **지금** 켜져 있다
+5. `armed`: `booking._JS_ARM` 이 그 버튼을 실제로 잡았다
+
+하나라도 거짓이면 누르지 않고 이유를 한국어로 크게 남긴다(`blockers()`).
+**취소가 센터 전화(1661-9361)로만 되므로 잘못된 예약은 놓친 예약보다 나쁘다.**
+
+> 함정: 체크박스는 `page_source` 로 알 수 없다. `click` 은 attribute 가 아니라
+> **property** 를 바꾸고 `page_source` 는 attribute 만 직렬화한다. 그래서
+> `ci/fixtures/real/modal_open.html` 에는 고객이 켠 체크가 남아 있지 않다.
+> 실행 중에는 살아 있는 DOM 의 `.checked` 를 읽으므로 문제가 없고, 테스트에서는
+> `b.checked = true` 로 사람의 클릭을 재현한다. 이 사실을 모르고 픽스처만
+> 보면 "체크가 꺼져 있는데 왜 발사하지" 로 잘못 판단하게 된다.
+
+### 3) 대기열을 실패가 아니라 상태로 다룬다
+
+`booking._JS_QUEUE` / `queue_info()` / `queue_line()` 이 실물 id
+(`#NetFunnel_Loading_Popup`, `_Count`, `_NextCnt`, `_TimeLeft`, `#Progress_Print`)
+로 순번을 읽는다. 스킨이 바뀔 때를 위한 글자 경로도 둔다.
+
+- `wait_modal()` 이 (본문, 대기열을 봤는가) 튜플을 돌려준다. 대기열에 서 있으면
+  `deadline_local`(정각 5초 전)까지 기다린다. 대기열이 없으면 예전처럼 8초.
+- `open_modal()` 의 실패 코드가 `no_modal` / **`no_modal_queue`** 로 갈린다.
+- `automation.handle_netfunnel()` 을 고쳤다. **v1.0.7 은
+  `"NetFunnel" not in driver.page_source` 로 판정했는데, [예약하기] 를 누르면
+  사이트가 `ts.wseq` 스크립트 태그를 문서에 남기므로 대기열이 지나간 뒤에도
+  그 문자열이 계속 잡혔다.** 이제 보이는 레이어로만 판정한다.
+  `tests/test_handover.py::test_handle_netfunnel_no_longer_trips_on_the_leftover_script_tag`
+  가 그 태그를 실제로 심어놓고 확인한다.
+
+### 4) [예약하기] 를 누른 뒤에는 준비를 다시 하지 않는다 (자동 모드)
+
+`Runner.PRESSED_RESERVE = ("no_modal", "no_modal_queue", "not_armed")`.
+이 코드가 나오면 `_prepare_with_retries` 는 **즉시 재준비를 포기하고**
+`_watch_for_late_modal()` 로 넘어간다. 그 함수는 누르지 않는다. 1초마다
+확인창이 열렸는지 읽고, 열리면 그 자리에서 조준해 성공으로 바꾼다.
+대기열이 보이면 순번을 상태줄에 계속 적는다.
+
+`_hold_modal()` 에서도 같은 규칙이다. 예전에는 `redrive_confirm` 이 실패하면
+`_prepare_with_retries` 를 다시 불렀다(= 검색 화면부터). 그 경로를 지웠다.
+
+누르기 **전** 단계의 실패(`guard_cell` / `guard_row` / `no_reserve_button` /
+`no_capacity` / `cell_not_selected` / `row_not_ticked`)는 예전처럼 재시도한다.
+그때는 대기열 표를 쥐고 있지 않으므로 잃을 것이 없다.
+
+`tests/test_handover.py::test_auto_mode_never_re_prepares_once_reserve_was_pressed`
+가 호출 수로 못박는다: `prepare` 1회, `open_modal` 1회, `_watch_for_late_modal` 1회.
+
+### 5) 화면 (고객이 사진으로 찍어 보내는 그 줄)
+
+- 카드 "1. 실행 방식" 이 새로 생겼다. 기본이 인계 모드이고, 각 방식이 무엇을
+  하는지 카드 안에 한국어로 적혀 있다. 나머지 카드 번호가 하나씩 밀렸다.
+- 실행하면 결과 표시줄 **위에** 어두운 상태판이 펼쳐진다(`App.set_state`).
+  ```
+  인계 모드 ([확인] 만 누름) | 확인창 감지됨 | 선택표 체크 켜짐 | [확인] 까지 00:41
+  확인창 감지됨 · 선택표 체크 켜짐 · 정각에 [확인] 을 누릅니다
+  ```
+  칸 색: 초록 = 됨, 빨강 = 안 됨, 주황 = 대기열.
+- 폴링 주기 `handover.POLL_SECONDS = 0.5`. 고객이 [예약하기] 를 누르면
+  0.5초 안에 "확인창 감지됨" 으로 바뀐다.
+- 정각 90초 전(`Runner.NAG_SECONDS`)에도 준비가 안 돼 있으면 크게 알린다.
+
+### 실측 증거 (이 서버, 진짜 크롬, 실물 캡처)
+
+```
+python main.py --handovertest
+HANDOVERTEST page=modal_open.html ticked=True  modal=True  ... ready=True  fired=True
+HANDOVERTEST page=modal_open.html ticked=False modal=True  ... ready=False fired=False
+   blockers=선택표 행의 체크가 켜져 있지 않습니다
+HANDOVERTEST page=netfunnel_waiting.html ticked=True modal=False queue=True ready=False fired=False
+   queue=가상대기열 대기 중 (앞에 72명, 뒤에 26명, 예상 2분 10초)
+HANDOVERTEST page=grid_selected_row_added.html ticked=True modal=False ready=False fired=False
+HANDOVERTEST fired=1/4 (기대: 1)
+HANDOVERTEST OK
+```
+
+감사: `의존성 58개: 확인 56 / 영상복원본만 1 / 미확인 1`,
+`제품 동작 검증 19개 중 19개 통과`.
+
+### 새 픽스처
+
+```
+ci/fixtures/real/netfunnel_waiting.html    2026-08-26 08:57 의 진짜 대기열 레이어
+```
+
+`python ci/build_netfunnel_fixture.py <ZIP경로>` 로 다시 만든다.
+만드는 방식이 중요하다: **오늘 캡처의 페이지 본문에는 아동 실명이 평문으로
+4번 남아 있다.** 그래서 본문은 쓰지 않고, 이미 개인정보가 지워진
+`grid_selected_row_added.html` 에 **대기열 레이어 조각만** 붙인다.
+그 조각에는 개인정보 모양이 하나도 없고(스크립트가 검사하고 실패하면 종료),
+`tests/test_handover.py::test_the_netfunnel_fixture_carries_no_personal_data`
+가 커밋된 결과물을 한 번 더 본다.
+
+## 배포 현황 (v1.0.7, 2026-08-25 10:40Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.7.zip
   (29,199,016 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.7/`
@@ -1087,12 +1290,16 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
    **우리 설계(정각 240초 전에 준비를 끝내고 확인창을 붙잡고 있다가 [확인]
    하나만 정각에 쏜다)가 대기열을 미리 통과해 두는 셈이라 유리하다.**
 
-6. **넷퍼넬 대기열 표를 4분 붙잡고 있어도 유효한가.** 위 5번의 결과로 새로
-   생긴 질문이다. `NetFunnel_Action` 은 [예약하기] 시점에 통과하고
-   `NetFunnel_Complete()` 는 [확인] 콜백에서 불린다. 그 사이(우리는 최대
-   4분)에 표가 만료되는지는 캡처로 알 수 없다. 첫 실전 실행의
-   `network_*.json` 에서 `ts.wseq` 응답 코드를 보고 판정하라.
-   만약 만료된다면 준비 시각(`setup_seconds`, 지금 240)을 줄여야 한다.
+6. **넷퍼널 대기열은 '4분 전 준비' 를 통째로 무력화한다.** ~~표가 만료되는가~~ 보다
+   먼저 밟힌 문제가 있었다. 2026-08-26 실측: 09시 4분 전에 [예약하기] 를 누르면
+   대기열에 서게 되고(앞에 72명, 예상 2분 10초) **확인창 자체가 열리지 않는다.**
+   "표를 미리 쥐어둔다" 는 설계가 성립하려면 대기열을 통과할 때까지 기다려야
+   한다. v1.0.8 이 그렇게 고쳤고, 인계 모드에서는 사람이 원하는 시각에 직접
+   줄을 선다. **아직 모르는 것은 그대로 남아 있다**: 통과한 표가 정각까지
+   유효한지. 첫 실전 실행의 `network_*.json` 에서 `ts.wseq` 응답 코드로 판정하라.
+7. **`setup_seconds` 기본값 240 이 인계 모드에서는 쓰이지 않는다.** 언제 줄을 설지는
+   고객이 정한다. 자동 모드에서는 그대로 240 이지만, 대기열이 2~5분이면 4분
+   전은 아슬아슬하다. 고객이 자동 모드를 다시 쓰게 되면 이 값을 재검토하라.
 
 ### 고객 계정으로 실제로 해본 것 / 하지 않은 것
 
@@ -1139,4 +1346,17 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 - **`perfLoggingPrefs` 에 `traceCategories: ""` 를 넣지 말 것.** chromedriver 가
   크롬을 아예 안 띄운다(위 v1.0.6 4번 참고).
 - `--rectest` 를 실사이트로 돌리지 말 것. 로컬 fixture(127.0.0.1)가 아니면
-  스스로 거부하게 해뒀다. 그 가드를 풀지 말 것.
+  스스로 거부하게 해뒀다. 그 가드를 풀지 말 것. `--handovertest` 도 같다
+  (로컬 http 픽스처 서버만 띄운다).
+- **[예약하기] 를 누른 뒤에 준비를 처음부터 다시 하지 말 것.** 그것이 정확히
+  2026-08-26 에 고객이 예약을 놓친 이유다. 대기열 맨 뒤로 가고(72명 → 138명 →
+  177명), 사람이 만들어 둔 설정도 같이 날아간다. `Runner.PRESSED_RESERVE`
+  목록을 줄이지 말 것.
+- **인계 모드(`handover.py`)에 "한 번만 눌러주자" 를 넣지 말 것.** 이 모드는
+  [확인] 말고는 아무것도 누를 수 없다는 것이 유일한 안전 근거이고, 고객에게도
+  그렇게 안내했다. `tests/test_handover.py` 가 소스로 못박아 둔다.
+- **`Prepared.ready()` 를 인계 모드에 쓰지 말 것.** `cell_selected` 는 우리
+  `click_cell` 안에서만 참이 되고 다시 계산되지 않아서, 사람이 만든 화면에서는
+  영원히 거짓이다. 인계 모드는 `handover.LiveState.ready()` 로 매번 다시 읽는다.
+- **오늘(2026-08-26) 캡처의 `page_source` 를 저장소에 넣지 말 것.** 아동 실명이
+  평문으로 4번 들어 있다. 대기열 픽스처는 레이어 조각만 떼어 붙인 것이다.

@@ -103,6 +103,8 @@ P_AJAX_RAW = REAL / "occasion_time_main_slpl.raw.html"
 P_ENTRY = SITEMAP / "01-entry-242.html"
 P_CENTERS = SITEMAP / "07-centers-seocho-idsession.html"
 P_RESERVE = SITEMAP / "07-reserve-605-idsession.html"
+# 2026-08-26 08:57 고객 PC 캡처의 진짜 가상대기열 레이어
+P_QUEUE = REAL / "netfunnel_waiting.html"
 
 
 def exists(p: Probe, page: Path, script, *args):
@@ -312,6 +314,34 @@ def build_checks(p: Probe):
     add("9", "서버 결과 문구(예약시간전 / 정원초과)", UNCONF,
         "캡처 373건 어디에도 없음. 고객이 확인을 누르지 않아 InsertOcreqst.html 미호출")
 
+    # ---------------- 대기열: 2026-08-26 실물. 확인창 자리에 뜬 것이 이것이다.
+    probe("Q", "대기열 레이어 #NetFunnel_Loading_Popup", P_QUEUE, r"""
+      var e=document.querySelectorAll('[id=NetFunnel_Loading_Popup]')[0];
+      if(!e) return null;
+      var r=e.getBoundingClientRect();
+      return {visible: r.width>0 && r.height>0,
+              style: (e.getAttribute('style')||'').slice(0,60)};""")
+    probe("Q", "대기 인원 #..._Count / #..._NextCnt", P_QUEUE, r"""
+      var a=document.querySelectorAll('[id=NetFunnel_Loading_Popup_Count]')[0];
+      var b=document.querySelectorAll('[id=NetFunnel_Loading_Popup_NextCnt]')[0];
+      if(!a||!b) return null;
+      return {ahead:(a.textContent||'').trim(), behind:(b.textContent||'').trim()};""")
+    probe("Q", "예상 대기시간 #..._TimeLeft", P_QUEUE, r"""
+      var t=document.querySelectorAll('[id=NetFunnel_Loading_Popup_TimeLeft]')[0];
+      return t ? (t.textContent||'').replace(/\s+/g,' ').trim() : null;""")
+    probe("Q", "레이어 경고문 '재접속하시면 대기시간이 더 길어집니다'", P_QUEUE, r"""
+      var e=document.querySelectorAll('[id=NetFunnel_Loading_Popup]')[0];
+      if(!e) return null;
+      var s=(e.innerText||e.textContent||'').replace(/\s+/g,' ');
+      return s.indexOf('재접속하시면 대기시간이 더 길어집니다') >= 0 ? '있음' : null;""")
+    probe("Q", "대기 중에는 확인창이 없다", P_QUEUE, r"""
+      var sh=document.querySelectorAll("[id='layer-confirm-popup2']");
+      for (var i=0;i<sh.length;i++){
+        var r=sh[i].getBoundingClientRect();
+        if (r.width>0 && r.height>0) return null;
+      }
+      return '확인창 없음 확인';""")
+
     return C
 
 
@@ -398,6 +428,39 @@ def product_checks(p: Probe) -> list:
         f"notices={len(notices)} classify={booking.classify(hit[-1]) if hit else None}")
     add("결과가 뜬 뒤에는 조준이 풀려 있다(두 번 쏘지 않는다)",
         p.js(booking._JS_STILL_ARMED) is False, p.js(booking._JS_STILL_ARMED))
+
+    # ---- v1.0.8: 인계 모드와 대기열 판정기
+    from aisarang import handover
+
+    d = p.load(P_QUEUE).d
+    q = p.js(booking._JS_QUEUE)
+    add("_JS_QUEUE 가 실물 대기열을 순번까지 읽는다",
+        isinstance(q, dict) and q.get("queue") is True and q.get("ahead") == 72
+        and q.get("behind") == 26,
+        json.dumps(q, ensure_ascii=False)[:200])
+    st = handover.read_state(d)
+    add("인계 모드는 대기열 화면에서 발사 조건을 만족하지 않는다",
+        st.queue is True and st.ready() is False and st.modal is False,
+        f"queue={st.queue} modal={st.modal} ready={st.ready()}")
+    add("대기열 화면에서 fire 가 실제로 거부된다",
+        handover.fire(d) is False, "fire() -> False")
+
+    d = p.load(P_MODAL).d
+    d.execute_script("var b=document.getElementById('rowSchChkNo0');"
+                     "if(b){b.checked=true;}")
+    st = handover.read_state(d)
+    add("사람이 만든 확인창에서 인계 모드가 발사 조건을 만족한다",
+        st.ready() is True and st.confirm_id == "layer-confirm-popup-confirm2",
+        f"ready={st.ready()} confirmId={st.confirm_id} ticked={st.ticked} "
+        f"blockers={st.blockers()}")
+    add("그 화면에서 fire 가 실제로 눌린다", handover.fire(d) is True,
+        f"firedAt={d.execute_script('return window.__aisarang_fired_at;')}")
+
+    d.execute_script("var b=document.getElementById('rowSchChkNo0');"
+                     "if(b){b.checked=false;}")
+    st = handover.read_state(d)
+    add("체크가 꺼지면 같은 화면에서도 발사하지 않는다",
+        st.ready() is False and st.ticked == 0, f"blockers={st.blockers()}")
     return out
 
 

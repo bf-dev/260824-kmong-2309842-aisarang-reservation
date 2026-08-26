@@ -1,0 +1,1623 @@
+<!-- https://www.childcare.go.kr/?menuno=605 -->
+<html lang="ko" style="--vh: 8.65px;"><head><title>시간제보육 입소신청 &gt; 시간제보육신청 &gt; 시간제보육사업 &gt; 어린이집 &gt; 임신육아종합포털 아이사랑</title>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+<meta name="format-detection" content="telephone=no, address=no, email=no">
+<meta name="title" content="ZCMS">
+<meta name="keywords" content="ZCMS,전자정부표준프레임워크,Z5Solution">
+<!--[if lt IE 10]>
+<![endif]-->
+<!--[if lt IE 9]>
+
+<![endif]-->
+ <!--zcms css-->
+
+<link rel="stylesheet" href="assets/20221201_37145513442998453.css">
+<link rel="stylesheet" href="assets/xkp_html5.css">
+<link rel="stylesheet" href="assets/common.css">
+<link rel="stylesheet" href="assets/font-face.css">
+<link rel="stylesheet" href="assets/jquery-ui.css">
+<link rel="stylesheet" href="assets/main.css">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/sub.css">
+<link rel="stylesheet" href="assets/swiper.min.css">
+</head>
+<body>
+
+<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="format-detection" content="telephone=no, address=no, email=no">
+
+
+
+
+
+
+
+<!-- 유보통합 신규 디자인 JS, CSS 파일 시작 -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- 유보통합 신규 디자인 JS, CSS 파일 끝 -->
+
+<!-- 인증서 로그인 Non-ActiveX 변경 -->
+<!-- AnySign stylesheet -->
+
+
+
+
+
+
+<!-- loadingbar -->
+<style>
+.loading_wrap {box-sizing:border-box}
+.loading_wrap {width:100%; height:100%; margin:0 auto 0; display:flex; align-items:center; justify-content:center; background-color:rgba(255,255,255,0.5); position:fixed; top:0; left:0; z-index:9000}
+.loading { display:flex; flex-direction:column; justify-content:center; align-items:center; width:500px; height:216px;}
+.loading-title {margin-bottom:20px; text-align:center; font-size:18px; font-weight:600; line-height:1.333; color:#333; animation-name:flicker; animation-duration:1600ms; animation-iteration-count:infinite; animation-direction:alternate;}
+.progress-bar {position:relative; width:300px; height:12px; border-radius:100px; background-color:rgb(167,167,167); overflow:hidden}
+.progress-bar-gauge {position:absolute; top:0; left:0; width:20px; height:12px; border-radius:100px; background-color:rgb(44,228,167); animation-name:loading-bar; animation-duration:1600ms; animation-iteration-count:infinite; animation-timing-function:ease-out;}
+@keyframes flicker {
+from {opacity:1;}
+to {opacity:0}
+}
+@keyframes loading-bar {
+0% {width:0; opacity:1}
+80% {width:100%; opacity:1}
+100% {width:100%; opacity:0 }
+}
+</style>
+
+<div class="loading_wrap" style="display: none;">
+	<section class="loading">
+		<h1 class="loading-title">Loading...</h1>
+		<div class="progress-bar" aria-hidden="true">
+			<span class="progress-bar-gauge"></span>
+		</div>
+	</section>
+</div>
+<!-- //loadingbar -->
+
+
+<style>
+	.type-confirm, .type-confirm2, .type-alert, .type-alert2, .type-alert3 {
+		z-index: 3000;
+	}
+	
+	#dimmed1 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2000;
+		display: none;
+	}
+	#dimmed2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2100;
+		display: none;
+	}
+	#dimmed3 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2200;
+		display: none;
+	}
+	#dimmed_confirm2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2300;
+		display: none;
+	}
+</style>
+<div class="popup_wrap s_size wp400 type-confirm" id="layer-confirm-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close" title="닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm">확인</a>
+                <a href="#none" class="btn gray" id="layer-popup-close">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-confirm2" id="layer-confirm-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-confirm-popup-close2" title="닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title2"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm2">확인</a>
+                <a href="#none" class="btn gray" id="layer-confirm-popup-close2">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert" id="layer-alert-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close2" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert3" id="layer-alert-popup3">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close3" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents3"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close3">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="dimmed1"></div>
+<div id="dimmed2"></div>
+<div id="dimmed3"></div>
+<div id="dimmed_confirm2"></div><!-- 세션 메세지 체크 -->
+
+
+
+
+
+
+<!--Skip menu-->
+<div class="skipnav">
+    <a href="#contents">본문내용 바로가기</a>
+    <a href="#gnbMenu">대메뉴 바로가기</a>
+    <a href="#footer">푸터 바로가기</a>
+</div>
+
+<!-- units -->
+<section class="utility">
+    <div>
+        <ul class="left">
+            <li class="h_line">아이사랑 헬프데스크 1566-3232(단축번호 1번)</li>
+            <li>임신 · 출산 · 육아 상담 1644-7373</li>
+        </ul>
+        <ul class="right">
+            <li class="h_line"><a href="http://userguide.ebrochure.kr/"><em>포털이용가이드</em></a></li><!-- 260318 교육부요청가이드추가 -->
+            <li class="h_line"><a href="https://enter.childinfo.go.kr/icms/main/TotalSearchSlPL.html"><em>어린이집·유치원 통합검색</em></a></li>
+            <li class="h_line">
+            <a href="javascript:void(0);" onclick="fnMemberInfoCheck('EDUAGREYN');">
+            <em>유치원 입학 바로가기</em></a>
+            </li>
+			  <li><a href="http://pf.kakao.com/_tsaxmn" target="_blank" class="icon_kakaotalk" aria-label="아이사랑 카카오톡 상담채널 바로가기" title="새창열림">
+                <em class="hidden">카카오톡</em></a>
+            </li>
+            <li><a href="https://www.facebook.com/agasarang16447373" target="_blank" class="icon_facebook" aria-label="아이사랑 페이스북 바로가기" title="새창열림">
+                <em class="hidden">페이스북</em></a>
+            </li>
+            <li><a href="https://www.instagram.com/childcare16447373/?hl=ko" target="_blank" class="icon_instagram" aria-label="아이사랑 인스타그램 바로가기" title="새창열림">
+                <em class="hidden">인스타그램</em></a>
+            </li>
+            <li class=" btn_language">
+                <a href="#" class="icon_language" title="언어선택 열기"><em class="hidden">한국어</em></a>
+                <div class="language">
+                    <a href="https://eng.childcare.go.kr/">English</a>
+                    <a href="https://china.childcare.go.kr/">中文</a>
+                    <a href="https://vt.childcare.go.kr/">Tiếng Việt</a>
+                </div>
+            </li>
+        </ul>
+    </div>
+</section>
+
+<!-- header -->
+<header id="header" class="header action">
+    <div class="navi">
+       <h1><a href="https://www.childcare.go.kr/" aria-label="아이사랑"><span class="hidden">아***</span></a></h1>
+        <nav id="gnbMenu">
+             <div class="gnbwrap">
+				<p class="all_menu_close">
+                <a href="javascript:void(0)" title="전체메뉴 닫기"><em class="hidden">전체메뉴 닫기</em></a>
+            </p>
+            <h2 class="all_menu_title">전체메뉴</h2>
+            <p class="m_menu_close">
+                <a href="#"><span class="hidden">모바일메뉴 닫기</span></a>
+            </p>
+            <ul class="gnb">
+                <li>
+                    <a class="menu01" href="?menuno=3">임신</a>
+                    <div class="depth">
+                        <span>임*</span>
+                        <ul>
+                            <li>
+                                <a href="?menuno=251">임신계획</a>
+                                <ul>
+                                    <li><a href="?menuno=251">임신준비</a></li> 
+                                    <li><a href="?menuno=252">임신하기</a></li>
+                                    <li><a href="?menuno=253">임신확인</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=8">임신 중 잘지내기</a>
+                                <ul>
+                                    <li><a href="?menuno=254">임신초기(3~13주)</a></li>
+                                    <li><a href="?menuno=255">임신중기(14~27주)</a></li>
+                                    <li><a href="?menuno=256">임신후기(28~40주)</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=11">고위험임신</a>
+                                <ul>
+                                    <li><a href="?menuno=257">고위험 임신이란</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=259">유산</a>
+                                <ul>
+                                    <li><a href="?menuno=259">유산이란</a></li>
+                                    <li><a href="?menuno=260">자연유산</a></li>
+                                    <li><a href="?menuno=261">유산 후 관리</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=262">난임</a>
+                                <ul>
+                                    <li><a href="?menuno=262">난임이란</a></li>
+                                    <li><a href="?menuno=263">난임 검사</a></li>
+                                    <li><a href="?menuno=264">대표적 난임치료</a></li>
+                                    <li><a href="?menuno=258">정부지정 난임 시술기관</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=302">임신 상담</a></li>
+                            <li><a href="https://www.ei.go.kr/ei/eih/eg/pb/pbPersonBnef/retrievePb0301Info.do">근로자 지원제도</a></li>
+                            <li><a href="?menuno=124">임산부 신고</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu02" href="?menuno=265">출산</a>
+                    <div class="depth">
+                        <span>출*</span>
+                        <ul>
+                            <li><a href="?menuno=266">출산준비</a></li>
+                            <li><a href="?menuno=267">출산징후</a></li>
+                            <li>
+                                <a href="?menuno=268">분만</a>
+                                <ul>
+                                    <li><a href="?menuno=269">조산</a></li>
+                                    <li><a href="?menuno=270">자연분만</a></li>
+                                    <li><a href="?menuno=271">유도분만</a></li>
+                                    <li><a href="?menuno=272">통증관리</a></li>
+                                    <li><a href="?menuno=273">제왕절개술</a></li>
+                                    <li><a href="?menuno=274">난산</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=275">산후관리</a>
+                                <ul>
+                                    <li><a href="?menuno=276">산욕기</a></li>
+                                    <li><a href="?menuno=277">산후관리</a></li>
+                                    <li><a href="?menuno=640">산후조리원 현황</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=278">출산예정일</a></li>
+                            <li><a href="?menuno=305">출산 상담</a></li>
+                            <li><a href="https://www.ei.go.kr/ei/eih/eg/pb/pbPersonBnef/retrievePb0305Info.do">근로자 지원제도</a></li>
+                            <li><a href="?menuno=279">출산지원금</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu03" href="?menuno=282">육아</a>
+                    <div class="depth">
+                        <span>육*</span>
+                        <ul>
+                            <li>
+                                <a href="?menuno=282">함께하는 육아</a>
+                                <ul>
+                                    <li><a href="?menuno=282">부부함께 육아하기</a></li>
+                                    <li><a href="?menuno=283">육아갈등 해결하기</a></li>
+                                    <li><a href="?menuno=284">대리양육</a></li>
+                                    <li><a href="?menuno=285">쌍둥이 육아</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=286">월령별 성장 및 돌보기</a>
+                                <ul>
+                                    <li><a href="?menuno=287">이른둥이</a></li>
+                                    <li><a href="?menuno=288">신생아</a></li>
+                                    <li><a href="?menuno=289">1~3개월</a></li>
+                                    <li><a href="?menuno=290">4~6개월</a></li>
+                                    <li><a href="?menuno=291">7~9개월</a></li>
+                                    <li><a href="?menuno=292">10~12개월</a></li>
+                                    <li><a href="?menuno=293">13~24개월</a></li>
+                                    <li><a href="?menuno=294">25~36개월</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="https://www.nhis.or.kr/nhis/healthin/retrieveMdcAdminSknsClinic.do">병(의)원찾기</a></li>
+                            <li><a href="https://www.pharm114.or.kr/">약국찾기</a></li>
+                            <li><a href="https://sooyusil.com/">수유실 찾기</a></li>
+                            <li><a href="?menuno=309">육아 상담</a></li>
+                            <li><a href="https://www.ei.go.kr/ei/eih/eg/pb/pbPersonBnef/retrievePb0302Info.do">근로자 지원제도</a></li>
+                            <li>
+                                <a href="?menuno=295">장애아육아</a>
+                                <ul>
+                                    <li><a href="?menuno=467">장애아동의 이해</a></li>
+                                    <li><a href="?menuno=468">가족을 위한 가이드</a></li>
+                                    <li><a href="?menuno=469">특수교육</a></li>
+                                    <li><a href="?menuno=470">가정연계놀이활동</a></li>
+                                    <li><a href="?menuno=471">상담</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="https://www.nise.go.kr/onmam/front/index.do">특수교육 정보</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu04 on" href="?menuno=166">어린이집</a>
+                    <div class="depth">
+                        <span>어린이집</span>
+                        <ul>
+                            <li>
+                                <a href="?menuno=166">어린이집찾기</a>
+                                <ul>
+                                    <li><a href="?menuno=166">어린이집찾기</a></li>
+                                    <li><a href="?menuno=167">즐겨찾기한 어린이집</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=168">등록대기</a>
+                                <ul>
+                                    <li><a href="?menuno=169">모집·신청 안내</a></li>
+                                    <li><a href="?menuno=616">등록대기 아동등록</a></li>
+                                    <li><a href="?menuno=175">등록대기 신청</a></li>
+                                    <li><a href="?menuno=178">등록대기 신청현황</a></li>
+                                    <li><a href="?menuno=179">우선순위 자료제출</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=180">국민행복카드</a>
+                                <ul>
+                                    <li><a href="?menuno=181">국민행복카드안내</a></li>
+                                    <li><a href="?menuno=186">국민행복카드신청</a></li>
+                                    <li><a href="?menuno=187">카드발급내역조회</a></li>
+                                    <li><a href="?menuno=188">자주쓰는 카드</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=191">보육료결제</a>
+                                <ul>
+                                    <li><a href="?menuno=192">보육료 결제</a></li>
+                                    <li><a href="?menuno=540">보육료 결제 현황</a></li>
+                                    <li><a href="?menuno=194">긴급보육바우처 이용현황</a></li>
+                                    <li><a href="?menuno=241">보육료 연간 지원 내역</a></li>
+                                    <li><a href="?menuno=196">추가 결제권자 관리</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=200">시간제보육사업</a>
+                                <ul>
+                                    <li><a href="?menuno=200">시간제보육 안내</a></li>
+                                    <li><a href="?menuno=617">시간제보육 아동등록</a></li>
+                                    <li><a href="?menuno=242">시간제보육 신청</a></li>
+                                    <li><a href="?menuno=245">시간제보육 신청현황</a></li>
+                                    <li><a href="?menuno=246">시간제보육 결제</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=215&amp;type=top">어린이집 이용 불편신고</a>
+                                <ul>
+                                    <li><a href="?menuno=216">소개</a></li>
+                                <li><a href="?menuno=221">신고서작성</a></li>
+                                <li><a href="?menuno=225">신고내역</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=612">보육교직원</a>
+                                <ul>
+                                    <li><a href="?menuno=613">인사기록카드</a></li>
+                                    <li><a href="?menuno=614">자격/경력 조회</a></li>
+                                    <li><a href="?menuno=615">인력뱅크</a></li>
+                                </ul>
+                            </li>
+                            <li>
+										<a href="?menuno=226">지역개방/근로복지 어린이집</a>
+										<ul>
+											<li><a href="?menuno=226">지역개방 직장어린이집</a></li>
+                                    <li><a href="?menuno=664">근로복지공단 어린이집</a></li>
+                                </ul>
+										</li>
+                            <li>
+                                <a href="?menuno=227">직장어린이집 모집공고</a>
+                                <ul>
+                                    <li><a href="?menuno=249">직장어린이집 모집공고현황</a></li>
+                                    <li><a href="?menuno=250">직장어린이집 신청현황</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=228">민간업체 공개현황</a></li>
+                            <li><a href="http://info.childcare.go.kr/info/pnis/search/NurseryEtntctClassAdditionSlL.jsp">연장반어린이집</a></li>
+                            <li>
+                                <a href="?menuno=229">어린이집 이용 신청</a>
+                                <ul>
+                                    <li><a href="?menuno=230">상(하)위연령반 편성</a></li>
+                                    <li><a href="?menuno=233">야간연장보육</a></li>
+                                    <li><a href="?menuno=236">24시간 어린이집</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu05" href="?menuno=296">소통 · 참여</a>
+                    <div class="depth">
+                        <span>소통 · 참여</span>
+                        <ul>
+                            <li><a href="?menuno=297">마음을 전해요</a></li>
+                            <li><a href="?menuno=298">행복 이야기</a></li>
+                            <li><a href="?menuno=299">이벤트</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu06" href="?menuno=301">상담실</a>
+                    <div class="depth">
+                        <span>상**</span>
+                        <ul>
+                            <li><a href="?menuno=301">상담 안내</a></li>
+                            <li>
+                                <a href="?menuno=303">임신 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=303">자주하는질문</a></li>
+                                    <li><a href="?menuno=304">산부인과상담</a></li>
+                                    <li><a href="?menuno=637">임산부(수유부) 약물상담</a></li>
+                                    <li><a href="https://www.loveplan.kr/home/59.htm" target="_blank" title="새창열림">성건강 · 임신유지종결상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=305">출산 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=306">자주하는질문</a></li>
+                                    <li><a href="?menuno=307">모유수유 상담</a></li>
+                                    <li><a href="?menuno=308">산전후우울증 상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=309">육아 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=310">자주하는질문</a></li>
+                                    <li><a href="?menuno=311">인구보건복지협회 육아상담</a></li>
+                                    <li><a href="?menuno=312">육아종합지원센터 육아상담</a></li>
+                                    <li><a href="?menuno=313">소아청소년과상담</a></li>
+                                    <li><a href="?menuno=307">모유수유 상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=315">심리 · 정책상담</a>
+                                <ul>
+                                    <li><a href="?menuno=316">임신 · 출산 · 육아</a></li>
+                                    <li><a href="https://www.loveplan.kr/home/59.htm" target="_blank" title="새창열림">성건강 · 임신유지종결상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=317">상담 예약</a>
+                                <ul>
+                                    <li><a href="?menuno=318">임신출산육아 전화상담예약</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=319">어린이집 이용 상담</a>
+                                <ul>
+                                    <li><a href="?menuno=320">부모 상담</a></li>
+                                    <li><a href="?menuno=321">보육교직원 상담</a></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <a href="?menuno=322">시스템 이용 문의</a>
+                                <ul>
+                                    <li><a href="?menuno=323">자주하는질문</a></li>
+                                    <li><a href="?menuno=324">오류신고</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li>
+                    <a class="menu07" href="?menuno=325">홍보 · 알림</a>
+                    <div class="depth">
+                        <span>홍보 · 알림</span>
+                        <ul>
+                            <li><a href="?menuno=326">공지사항</a></li>
+                            <li><a href="?menuno=327">정책뉴스</a></li>
+                            <li><a href="?menuno=328">행사 및 교육</a></li>
+                            <li>
+                                <a href="?menuno=329">건강정보</a>
+                                <ul>
+                                    <li><a href="?menuno=330">임산부건강정보</a></li>
+                                    <li><a href="?menuno=331">소아청소년건강정보</a></li>
+                                    <li><a href="?menuno=332">성인건강정보</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="?menuno=333">자료실</a>
+                                <ul>
+                                    <li><a href="?menuno=648">아이사랑 자료실</a></li>
+                                    <li><a href="?menuno=647">보육통계</a></li>
+                                </ul>
+                             </li>
+                            <li>
+                                <a href="?menuno=334" class="end_menu">미디어 자료실</a>
+                                <ul>
+                                    <li><a href="?menuno=335">건강웹툰</a></li>
+                                    <li><a href="?menuno=336">교육동영상</a></li>
+                                    <li><a href="?menuno=337">E-book</a></li>
+                                    <li><a href="?menuno=338">공통 부모교육</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </li>
+                <li id="gnb_myroom">
+                            <a class="menu08" href="?menuno=49">마이룸</a>
+                            <div class="depth">
+                                <span>마**</span>
+                                <ul>
+                                        <li><a href="?menuno=49">대시보드</a></li>
+                                        <li>
+                                                <a href="?menuno=341">우리아이정보</a>
+                                                <ul>
+                                                           <li><a href="?menuno=341">아동정보</a></li>
+                                                        <li><a href="?menuno=382">재원아동정보</a></li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                                <a href="?menuno=392">나의 결제정보</a>
+                                                <ul>
+                                                           <li><a href="?menuno=393">자주 쓰는 카드 관리</a></li>
+                                                        <li><a href="?menuno=555">보육료 결제 관리</a></li>
+                                                        <li><a href="?menuno=627">시간제 보육료 결제 관리</a></li>
+                                                        <li><a href="?menuno=397">추가 결제권자 관리</a></li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                                <a href="?menuno=400">나의 회원정보</a>
+                                                <ul>
+                                                           <li><a href="?menuno=400">회원정보 수정</a></li>
+                                                        <li><a href="?menuno=502">비밀번호 변경</a></li>
+                                                        <li><a href="?menuno=403">회원탈퇴신청</a></li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                                <a href="?menuno=404">나의 인증관리</a>
+                                                <ul>
+                                                           <li><a href="?menuno=404&amp;ttype=0">공동인증서</a></li>
+                                                        <li><a href="?menuno=404&amp;ttype=1">금융인증서</a></li>
+                                                        <li><a href="?menuno=404&amp;ttype=2">공동인증서FAQ</a></li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                                <a href="?menuno=407">나의 상담</a>
+                                                <ul>
+                                                           <li><a href="?menuno=409">나의 상담 내용</a></li>
+                                                        <li><a href="?menuno=408">설문조사</a></li>
+                                                </ul>
+                                        </li>
+                                        <li>
+                                                <a href="?menuno=650">시범학교</a>
+                                                <ul>
+                                                           <li><a href="?menuno=651">교육보육비 결제</a></li>
+                                                        <li><a href="?menuno=652">교육보육비 결제현황</a></li>
+                                                        <li><a href="?menuno=655">결제권자관리</a></li>
+                                                </ul>
+                                        </li>
+                                    <li><a href="?menuno=410" class="end_menu">어린이집 즐겨찾기</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
+                <div class="m_menu_box">
+                        <p>
+                                <span>아이사랑 헬프데스크</span> 1566-3232 (단축번호 1번) <br>
+                                <span>임신·출산·육아 상담</span> 1644-7373
+                        </p>
+                        <a href="https://enter.childinfo.go.kr/icms/main/IntroPage.html?fromI=Y">어린이집·유치원 통합검색</a>
+<a href="javascript:void(0);" onclick="fnMemberInfoCheck('EDUAGREYN');">
+            
+                        유치원 입학 바로가기</a>
+                        <ul class="sns">
+								 <li><a href="http://pf.kakao.com/_tsaxmn" target="_blank" class="icon_kakaotalk" title="새창열림" aria-label="카카오톡 상담채널 바로가기">
+                                <em class="hidden">카카오톡 상담채널 바로가기</em></a>
+                           </li>
+                           <li><a href="https://www.facebook.com/agasarang16447373" target="_blank" class="icon_facebook" title="새창열림" aria-label="아이사랑 페이스북 바로가기">
+                                <em class="hidden">페이스북</em></a>
+                            </li>
+                            <li><a href="https://www.instagram.com/childcare16447373/?hl=ko" target="_blank" class="icon_instagram" title="새창열림" aria-label="아이사랑 인스타그램 바로가기">
+                                <em class="hidden">인스타그램</em></a>
+                            </li>
+                           <li class=" btn_language">
+                <a href="#" class="icon_language" title="언어선택 목록 열기"><em class="hidden">한국어</em></a>
+                <div class="language">
+                    <a href="https://eng.childcare.go.kr/">English</a>
+                    <a href="https://china.childcare.go.kr/">中文</a>
+                    <a href="https://vt.childcare.go.kr/">Tiếng Việt</a>
+                </div>
+            </li>
+                            
+                        </ul>        
+                </div>                
+            </div>
+        </nav>
+        <ul class="member">
+            <li class="my_account"><a href="?menuno=49">***REDACTED***</a>(인증서)</li>
+                        <li class="login"><a href="https://www.childcare.go.kr/logout">로그아웃</a></li>
+                <li class="all_menu_btn">
+                <a class="all_menu" href="#" role="button" aria-label="전체메뉴 보기">
+                    <em class="hidden">전체메뉴 보기</em>
+                    <span class="line_wrap">
+                        <span class="line"></span>
+                        <span class="line"></span>
+                        <span class="line"></span>
+                    </span>
+                </a>
+            </li>
+            <li class="m_menu">
+                <a href="#" role="button" aria-label="전체메뉴 보기">
+                    <em class="hidden">모바일메뉴</em>
+                    <span class="line_wrap">
+                        <span class="line"></span>
+                        <span class="line"></span>
+                        <span class="line"></span>
+                    </span>
+                </a>
+            </li>
+        </ul>
+    </div>
+</header>
+<!--// header -->
+
+<!-- 상담 검색 영역 -->
+<div class="top_search">
+    <strong class="d_none">통***</strong>
+    <p class="top_search_close">
+        <a href="#"><em class="d_none">검색 닫기</em></a>
+    </p>
+    <fieldset>
+        <form>
+            <label for="topKwd" class="d_none">검색어를 입력해주세요.</label>
+            <input type="text" autocomplete="off" id="topKwd" name="innerKwd" placeholder="검색어를 입력해주세요" value="">
+            <button class="btn_search" title="Next" onclick="">검색</button>
+            <dt>
+                </dt><dt>
+                    추천검색어
+                </dt>
+                <dd>#인기검색어1</dd>                
+                <dd>#인기검색어2</dd>
+                <dd>#인기검색어3</dd>
+                <dd>#인기검색어4</dd>
+                <dd>#인기검색어553423423</dd>
+                <dd>#인기검색어6</dd>
+                <dd>#인기검색어234234</dd>
+            
+        </form>
+    </fieldset>
+</div>
+
+
+<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-stor, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="format-detection" content="telephone=no, address=no, email=no">
+
+<!-- 인증서 로그인 Non-ActiveX 변경 -->
+<!-- AnySign stylesheet -->
+
+
+
+
+
+
+<!-- loadingbar -->
+<style>
+.loading_wrap {box-sizing:border-box}
+.loading_wrap {width:100%; height:100%; margin:0 auto 0; display:flex; align-items:center; justify-content:center; background-color:rgba(255,255,255,0.5); position:fixed; top:0; left:0; z-index:9000}
+.loading { display:flex; flex-direction:column; justify-content:center; align-items:center; width:500px; height:216px;}
+.loading-title {margin-bottom:20px; text-align:center; font-size:18px; font-weight:600; line-height:1.333; color:#333; animation-name:flicker; animation-duration:1600ms; animation-iteration-count:infinite; animation-direction:alternate;}
+.progress-bar {position:relative; width:300px; height:12px; border-radius:100px; background-color:rgb(167,167,167); overflow:hidden}
+.progress-bar-gauge {position:absolute; top:0; left:0; width:20px; height:12px; border-radius:100px; background-color:rgb(44,228,167); animation-name:loading-bar; animation-duration:1600ms; animation-iteration-count:infinite; animation-timing-function:ease-out;}
+@keyframes flicker {
+from {opacity:1;}
+to {opacity:0}
+}
+@keyframes loading-bar {
+0% {width:0; opacity:1}
+80% {width:100%; opacity:1}
+100% {width:100%; opacity:0 }
+}
+</style>
+
+<div class="loading_wrap" style="display: none;">
+	<section class="loading">
+		<h1 class="loading-title">Loading...</h1>
+		<div class="progress-bar" aria-hidden="true">
+			<span class="progress-bar-gauge"></span>
+		</div>
+	</section>
+</div>
+<!-- //loadingbar -->
+
+
+<style>
+	.type-confirm, .type-confirm2, .type-alert, .type-alert2, .type-alert3 {
+		z-index: 3000;
+	}
+	
+	#dimmed1 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2000;
+		display: none;
+	}
+	#dimmed2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2100;
+		display: none;
+	}
+	#dimmed3 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2200;
+		display: none;
+	}
+	#dimmed_confirm2 {
+		position: fixed;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 2300;
+		display: none;
+	}
+</style>
+<div class="popup_wrap s_size wp400 type-confirm" id="layer-confirm-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close" title="닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm">확인</a>
+                <a href="#none" class="btn gray" id="layer-popup-close">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-confirm2" id="layer-confirm-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-confirm-popup-close2" title="닫기"><span class="hidden">닫기</span></a>
+        <h5 id="layer-confirm-popup-title2"></h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-confirm-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-confirm-popup-confirm2">확인</a>
+                <a href="#none" class="btn gray" id="layer-confirm-popup-close2">취소</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert" id="layer-alert-popup">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close2" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="popup_wrap s_size wp400 type-alert3" id="layer-alert-popup3">
+	<div class="popup_inner_wrap maxw525">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close3" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents3"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close3">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="dimmed1"></div>
+<div id="dimmed2"></div>
+<div id="dimmed3"></div>
+<div id="dimmed_confirm2"></div><!-- 세션 메세지 체크 -->
+<!-- sub title -->
+<section class="sub_visual sub04">
+	<div class="sub_title">
+		<h2>어린이집</h2>
+		<p>사랑하는 아이를 기르는 일, "아이사랑"이 함께 하겠습니다.</p>
+	</div>
+</section>
+
+<div class="location">
+    <ul>
+        <li class="l_home"><a href="/?menuno=1" role="button" aria-label="홈으로 이동"><em class="hidden">홈</em></a></li>
+        <li class="l_depth_01"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">어린이집</div><div class="select_items" style="display: none;"><div tabindex="-1" id="option-${index}"><a href="?menuno=4">임신</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=266">출산</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=282">육아</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=166">어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=297">소통·참여</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=301">상담실</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=326">홍보·알림</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=49">마이룸</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=511">포털이용안내</a></div></div></div></li>
+        <li class="l_depth_02"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">시간제보육사업</div><div class="select_items" style="display: none;"><div tabindex="-1" id="option-${index}"><a href="?menuno=166">어린이집찾기</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=168">등록대기</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=180">국민행복카드</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=191">보육료결제</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=199">시간제보육사업</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=215">어린이집 이용 불편신고</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=612">보육교직원</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=226">지역개방 직장어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=664">근로복지공단 어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=227">직장어린이집 모집공고</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=228">민간업체 공개현황</a></div><div tabindex="-1" id="option-${index}"><a href="http://info.childcare.go.kr/info/pnis/search/NurseryEtntctClassAdditionSlL.jsp">연장반어린이집</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=229">어린이집 이용 신청</a></div></div></div></li>
+        <li class="l_depth_03"><div class="custom_select" role="listbox"><div class="select_selected" tabindex="0" aria-expanded="false" aria-haspopup="listbox">시간제보육신청</div><div class="select_items" style="display: none;"><div tabindex="-1" id="option-${index}"><a href="?menuno=200">시간제보육안내</a></div><div class="on" tabindex="-1" id="option-${index}"><a href="?menuno=242">시간제보육신청</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=617">시간제보육아동등록</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=245">시간제보육이용현황</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=247">시간제보육결제</a></div><div tabindex="-1" id="option-${index}"><a href="?menuno=248">시간제보육결제현황</a></div></div></div></li>
+        
+        
+    </ul>
+</div>
+
+<!-- Contents -->
+<section class="contents_wrap" id="contents">
+    <h4 class="title">시간제보육 아동 선택</h4>
+    <div class="board boardlist t_center mt20">
+    	<form name="pfrm" id="pfrm" method="post">
+			<input type="hidden" name="field1" id="field1">
+			<input type="hidden" name="field2" id="field2">
+			<input type="hidden" name="field3" id="field3">
+			<input type="hidden" name="sdateArray" id="sdateArray" value="2026-08-28(금)">
+			<input type="hidden" name="restimeArray" id="restimeArray" value="09 : 00  ~  10 : 00  (1시간)">
+			<input type="hidden" name="resdtArray" id="resdtArray" value="20260828">
+			<input type="hidden" name="resbgntmArray" id="resbgntmArray" value="09 : 00">
+			<input type="hidden" name="resendtmArray" id="resendtmArray" value="10 : 00">
+			<input type="hidden" name="rtmArray" id="rtmArray" value="1">
+			<input type="hidden" name="resclseqArray" id="resclseqArray" value="1"> <!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반번호 항목 추가.(INDEX_YBH_20260129) -->
+			<input type="hidden" name="chage" id="chage" value="0">
+			<input type="hidden" name="infoNum" id="infoNum" value="1"> <!-- 이용정보갯수 -->
+			<input type="hidden" name="clseq" id="clseq" value="0"> <!-- 이용정보갯수 -->
+			<input type="hidden" name="resgb" id="resgb"> <!-- 예약구분 -->
+			<input type="hidden" name="resYn" id="N"> <!-- 예약등록처리중여부 -->
+			<input type="hidden" name="mlsvsnckreqstyn" id="N"> <!-- 23년 기능개선사업 - 시간제보육 기타활동 신청 기능 개발 : 급간식신청여부 컬럼 추가. (INDEX_YBH_20240530) -->
+			<input type="hidden" name="scnt" id="scnt" value="Y">
+			<input type="hidden" name="chkTime" id="chkTime" value="N">
+			<input type="hidden" name="chname" id="chname" value="0">
+			<input type="hidden" name="chobschk" id="chobschk" value="N"><!-- 장애여부 -->
+			<input type="hidden" name="chilinnb" id="chilinnb" value="0">
+			<input type="hidden" name="cntctelno1" id="cntctelno1" value="010"> <!-- 보호자 연락처1 -->
+			<input type="hidden" name="cntctelno2" id="cntctelno2" value="0000"> <!-- 보호자 연락처2 -->
+			<input type="hidden" name="cntctelno3" id="cntctelno3" value="0000"> <!-- 보호자 연락처3 -->
+			<input type="hidden" name="birthday" id="birthday" value="10"> <!-- 2016.12.27 아동개월수 추가 -->
+			<input type="hidden" name="chjumin" id="chjumin" value="0">
+			<input type="hidden" name="chcaregbyn" id="chcaregbyn" value="Y">
+			<input type="hidden" name="mons" id="mons" value="">
+			<input type="hidden" name="emyn" id="emyn" value="예약가능">
+			<input type="hidden" name="exmplbsnspartcptnyn" id="exmplbsnspartcptnyn" value="N">
+			<input type="hidden" name="sidogun" id="sidogun" value="서울특별시서초구">
+			<input type="hidden" name="crname" id="crname" value="서초구육아종합지원센터(신반포)">
+			<input type="hidden" name="stcode" id="stcode" value="11650000416">
+			<input type="hidden" name="crcnt" id="crcnt" value="1">
+			<input type="hidden" name="crtelno1" id="crtelno1" value="02"><!-- 어린이집연락처 -->
+			<input type="hidden" name="crtelno2" id="crtelno2" value="596"><!-- 어린이집연락처 -->
+			<input type="hidden" name="crtelno3" id="crtelno3" value="9340"><!-- 어린이집연락처 -->
+			
+			<input type="hidden" name="moblphonno1" id="moblphonno1" value="010"><!-- 어린이집 원장 연락처 -->
+			<input type="hidden" name="moblphonno2" id="moblphonno2" value="6247"><!-- 어린이집 원장 연락처 -->
+			<input type="hidden" name="moblphonno3" id="moblphonno3" value="7049"><!-- 어린이집 원장 연락처 -->
+			
+			<input type="hidden" name="unityyn" id="unityyn" value="N"><!-- 어린이집연락처 -->
+			<input type="hidden" name="unityynall" id="unityynall" value=""><!-- 어린이집연락처 -->
+			
+			<input type="hidden" name="resventwkgb" id="resventwkgb" value="P"> <!-- 포탈 -->
+			
+	        <table>
+	            <caption>시간제보육 아동 선택, 아동명, 생년월일, 개월수 내용의 테이블</caption>
+	            <colgroup>
+	                <col style="width: 5%">
+	                <col style="width: auto;">
+	                <col style="width: 25%;">
+	                <col style="width: 25%;">
+	            </colgroup>
+	            <thead>
+	                <tr>
+	                    <th scope="col">선택</th>
+	                    <th scope="col">아동명</th>
+	                    <th scope="col">생년월일</th>
+	                    <th scope="col">개월수</th>
+	                </tr>
+	            </thead>
+	            <tbody>
+	            	<tr>
+									<td>
+										<input onclick="listChildSelect();" type="radio" title="***REDACTED***선택" id="occasionChk100000000000000001" name="occasionChk" value="100000000000000001" data-birthday="10" data-scnt="Y" data-chcaregbyn="Y" data-usereqstcnt="1">
+										<label for="occasionChk100000000000000001" class="radio"><span></span><span class="sr-only">***REDACTED*** 아동 선택</span></label>
+									</td>
+									<td><a id="aOccasionChild" data-val="U02" data-chilinnb="100000000000000001">***REDACTED***</a></td>
+									<td>2025.10.22</td>
+									<td>10개월</td>
+								</tr>
+							</tbody>
+	        </table>
+        </form>
+    </div>
+    <div class="btn_right">
+        <a href="#pop-up03" data-rel="pop" class="btn h50" id="childInfoReqBtn" data-val="N02">시간제보육 아동등록</a>
+    </div>
+
+    <div class="board responsive t_left mt70">
+		<table>
+			<caption>시간제보육 아동등록의 어린이집명, 주소 내용의 테이블</caption>
+			<colgroup class="medium_none">
+				<col style="width: 20%">
+				<col style="width: auto;">
+			</colgroup>
+			<tbody>
+				<tr>
+					<th scope="row">어린이집명</th>
+					<td>
+						<em id="emCrname">서초구육아종합지원센터(신반포) (02-****-40**)</em>
+                        <input type="button" value="어린이집 검색" class="btn h36 line navy square ml20" id="btnOccasionNurserySlPLPu">
+					</td>
+				</tr>  
+                <tr>
+					<th scope="row">주소</th>
+					<td><em id="emZip">[06504] 서울특별시 서초구 신반포로19길 26</em></td>
+				</tr>                           
+			</tbody>
+		</table>
+	</div>
+
+    <div class="relative mt100">
+        <ul class="tab_wrap_inner tab_s" style="height: 2000px;">
+            <li class="on"><a id="tab1" href="javascript:;" data-tab="divOccasionTimeSlPL" title="선택됨">이용정보 신청</a>
+            	<div id="divOccasionTimeSlPL" class="tab_con_inner" style="display: block;">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	<form name="sfrm" method="post">
+		<input type="hidden" name="stcode" value="11650000416">
+		<input type="hidden" name="chilinnb" value="0">
+		<input type="hidden" name="chage" value="0"> <!-- 예약 시점의 아동 개월 -->
+		<input type="hidden" name="reswaityn" value=""> <!-- 예약 대기 가능여부 -->
+		<input type="hidden" name="reswaitdt" value=""> <!-- 예약 대기 일자 -->
+		<input type="hidden" name="reswaitbgntm" value=""> <!-- 예약 대기 시작시간 -->
+		<input type="hidden" name="reswaitendtm" value=""> <!-- 예약 대기 종료시간 -->
+		<input type="hidden" name="chobschk" id="chobschk" value="">
+		<input type="hidden" name="field1" value="">
+		<input type="hidden" name="field2" value="">
+		<input type="hidden" name="bigo" id="bigo" value=""> <!--비고 -->
+		<!-- 20160721_박정현 : 코드레이 조치 시작 -->
+		<input type="hidden" name="stmm" value="6"> 
+		<input type="hidden" name="edmm" value="36"> 
+		
+		<input type="hidden" name="f_sdate" id="f_sdate" value="2026-08-28(금)">
+		<input type="hidden" name="sdate" id="sdate" value="20260828">
+		<input type="hidden" name="resbgntm" id="resbgntm1" value="09 : 00">
+		<input type="hidden" name="resendtm" value="10 : 00">
+		
+		<p class="point mt20">* 예약방법 : 이용시간 선택 &gt; 이용시간의 숫자선택 &gt; 추가 버튼 클릭 &gt; 시간정정완료 클릭</p>
+		<div class="board responsive t_left mt10">
+			<table>
+				<caption>이용정보 신청의 이용기관명, 예약가능일, 반선택, 이용시간에 대한 내용의 테이블</caption>
+				<colgroup class="medium_none">
+					<col style="width: 20%">
+					<col style="width: auto;">
+				</colgroup>
+				<tbody>
+					<tr>
+						<th scope="row">이용기관명</th>
+						<td>서초구육아종합지원센터(신반포)<input type="hidden" name="crname" value="서초구육아종합지원센터(신반포)"></td>
+					</tr>  
+					<tr>
+						<th scope="row">예약 가능일</th>
+						<td>2026-08-26 ~ 2026-09-08</td>
+					</tr> 
+					<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 태그 추가.(INDEX_YBH_20260129) - START -->
+					<tr>
+						<th scope="row">반명 <i class="required" aria-label="필수입력사항">*</i></th>
+						<td>
+							<select class="selectbox" name="clname" id="clname" onchange="fnSerChange();" title="반명 선택">
+								
+							<option value="">선택</option><option value="1">해솔아이</option></select>
+						</td>
+					</tr>   
+					<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 태그 추가.(INDEX_YBH_20260129) - END -->
+					<tr>
+						<th scope="row">이용시간 <i class="required" aria-label="필수입력사항">*</i></th>
+						<td>
+		                    <select class="selectbox" name="rtm" id="rtm" onchange="fnTimeReset();" title="이용시간 선택">
+								<option value="">선택</option>
+								
+									<option value="1">1</option>
+								
+									<option value="2">2</option>
+								
+									<option value="3">3</option>
+								
+									<option value="4">4</option>
+								
+									<option value="5">5</option>
+								
+									<option value="6">6</option>
+								
+									<option value="7">7</option>
+								
+									<option value="8">8</option>
+								
+									<option value="9">9</option>
+								
+							</select>
+		                </td>
+		            </tr>                            
+		        </tbody>
+	    	</table>
+		</div>
+
+		<ul class="dot_list_blue mt80">
+			<li class="mb22">
+				<b>예***</b> 
+				<i class="count ml30" title="이용가능">0</i> 이용가능시간대 
+				<i class="count not ml30" title="예약 불가능">X</i> 이용불가시간대 (숫자는 이용 가능한 아동수) 
+			</li>
+			<li class="mb22">
+				<b>당일예약 및 예약완료 건에 대한 추가 예약 가능여부나 기타 문의사항은 육아종합지원센터(1661-9361)로 문의하여 주시기를 바랍니다.</b> 
+			</li>
+			<li>
+				<b>시간제보육 결제금액 :</b> 시간당 정부지원 3,000원, 부모부담금 2,000원
+			</li>
+		</ul>
+                
+		<p class="exclamation mt70">점심시간(12시)를 포함하여 예약하신 경우 점심도시락을 지참하여 주시기를 바랍니다.</p>
+		
+		<!-- 예약 가능 테이블 -->
+		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 테이블 주석 처리.(INDEX_YBH_20260129) - START -->
+		<div id="crtminfo" class="board boardlist sticky_th t_center">
+
+
+
+
+			<table>
+				<caption>예약상태 날짜와 시간에 대한 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 18%">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+					<col style="width: auto;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">날짜/시간</th>
+						<th scope="col">09</th>
+						<th scope="col">10</th>
+						<th scope="col">11</th>
+						<th scope="col">12</th>
+						<th scope="col">13</th>
+						<th scope="col">14</th>
+						<th scope="col">15</th>
+						<th scope="col">16</th>
+						<th scope="col">17</th>
+					</tr>
+				</thead>
+				<tbody>
+					
+						
+							
+							<tr>
+								<th id="day_0" class="table_tit1" scope="row">2026-08-26(수)<input type="hidden" name="resdt" id="resdt" value="20260826"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_0" onclick="selectDay2(this,'9',0);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_0" onclick="selectDay2(this,'10',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_0" onclick="selectDay2(this,'11',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_0" onclick="selectDay2(this,'12',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_0" onclick="selectDay2(this,'13',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_0" onclick="selectDay2(this,'14',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_0" onclick="selectDay2(this,'15',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_0" onclick="selectDay2(this,'16',0);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_0" onclick="selectDay2(this,'17',0);"><i class="count" title="이용가능">1</i></a></td>
+								<td id="pp_0" style="display: none;">2</td> 
+								<td id="bm_0" style="display: none;">10</td>
+								<td id="nsc_0" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_1" class="table_tit1" scope="row">2026-08-27(목)<input type="hidden" name="resdt" id="resdt" value="20260827"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_1" onclick="selectDay2(this,'9',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_1" onclick="selectDay2(this,'10',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_1" onclick="selectDay2(this,'11',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_1" onclick="selectDay2(this,'12',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_1" onclick="selectDay2(this,'13',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_1" onclick="selectDay2(this,'14',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_1" onclick="selectDay2(this,'15',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_1" onclick="selectDay2(this,'16',1);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_1" onclick="selectDay2(this,'17',1);"><i class="count" title="이용가능">1</i></a></td>
+								<td id="pp_1" style="display: none;">2</td> 
+								<td id="bm_1" style="display: none;">10</td>
+								<td id="nsc_1" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_2" class="table_tit1" scope="row">2026-08-28(금)<input type="hidden" name="resdt" id="resdt" value="20260828"></th>
+								<td><a href="javascript:;" class="time-option on" id="tm_9_2" onclick="selectDay2(this,'9',2);" title="선택됨"><i class="count on" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_2" onclick="selectDay2(this,'10',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_2" onclick="selectDay2(this,'11',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_2" onclick="selectDay2(this,'12',2);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_2" onclick="selectDay2(this,'13',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_2" onclick="selectDay2(this,'14',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_2" onclick="selectDay2(this,'15',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_2" onclick="selectDay2(this,'16',2);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_2" onclick="selectDay2(this,'17',2);"><i class="count" title="이용가능">1</i></a></td>
+								<td id="pp_2" style="display: none;">2</td> 
+								<td id="bm_2" style="display: none;">10</td>
+								<td id="nsc_2" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_3" class="table_sat" scope="row">2026-08-29(토)<input type="hidden" name="resdt" id="resdt" value="20260829"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_3" onclick="selectDay2(this,'9',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_3" onclick="selectDay2(this,'10',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_3" onclick="selectDay2(this,'11',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_3" onclick="selectDay2(this,'12',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_3" onclick="selectDay2(this,'13',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_3" onclick="selectDay2(this,'14',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_3" onclick="selectDay2(this,'15',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_3" onclick="selectDay2(this,'16',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_3" onclick="selectDay2(this,'17',3);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_3" style="display: none;">2</td> 
+								<td id="bm_3" style="display: none;">10</td>
+								<td id="nsc_3" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_4" class="table_sun" scope="row">2026-08-30(일)<input type="hidden" name="resdt" id="resdt" value="20260830"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_4" onclick="selectDay2(this,'9',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_4" onclick="selectDay2(this,'10',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_4" onclick="selectDay2(this,'11',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_4" onclick="selectDay2(this,'12',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_4" onclick="selectDay2(this,'13',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_4" onclick="selectDay2(this,'14',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_4" onclick="selectDay2(this,'15',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_4" onclick="selectDay2(this,'16',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_4" onclick="selectDay2(this,'17',4);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_4" style="display: none;">2</td> 
+								<td id="bm_4" style="display: none;">10</td>
+								<td id="nsc_4" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_5" class="table_tit1" scope="row">2026-08-31(월)<input type="hidden" name="resdt" id="resdt" value="20260831"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_5" onclick="selectDay2(this,'9',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_5" onclick="selectDay2(this,'10',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_5" onclick="selectDay2(this,'11',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_5" onclick="selectDay2(this,'12',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_5" onclick="selectDay2(this,'13',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_5" onclick="selectDay2(this,'14',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_5" onclick="selectDay2(this,'15',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_5" onclick="selectDay2(this,'16',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_5" onclick="selectDay2(this,'17',5);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_5" style="display: none;">2</td> 
+								<td id="bm_5" style="display: none;">10</td>
+								<td id="nsc_5" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_6" class="table_tit1" scope="row">2026-09-01(화)<input type="hidden" name="resdt" id="resdt" value="20260901"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_6" onclick="selectDay2(this,'9',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_6" onclick="selectDay2(this,'10',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_6" onclick="selectDay2(this,'11',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_6" onclick="selectDay2(this,'12',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_6" onclick="selectDay2(this,'13',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_6" onclick="selectDay2(this,'14',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_6" onclick="selectDay2(this,'15',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_6" onclick="selectDay2(this,'16',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_6" onclick="selectDay2(this,'17',6);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_6" style="display: none;">0</td> 
+								<td id="bm_6" style="display: none;">10</td>
+								<td id="nsc_6" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_7" class="table_tit1" scope="row">2026-09-02(수)<input type="hidden" name="resdt" id="resdt" value="20260902"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_7" onclick="selectDay2(this,'9',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_7" onclick="selectDay2(this,'10',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_7" onclick="selectDay2(this,'11',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_7" onclick="selectDay2(this,'12',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_7" onclick="selectDay2(this,'13',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_7" onclick="selectDay2(this,'14',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_7" onclick="selectDay2(this,'15',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_7" onclick="selectDay2(this,'16',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_7" onclick="selectDay2(this,'17',7);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_7" style="display: none;">0</td> 
+								<td id="bm_7" style="display: none;">10</td>
+								<td id="nsc_7" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_8" class="table_tit1" scope="row">2026-09-03(목)<input type="hidden" name="resdt" id="resdt" value="20260903"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_8" onclick="selectDay2(this,'9',8);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_8" onclick="selectDay2(this,'10',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_8" onclick="selectDay2(this,'11',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_8" onclick="selectDay2(this,'12',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_8" onclick="selectDay2(this,'13',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_8" onclick="selectDay2(this,'14',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_8" onclick="selectDay2(this,'15',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_8" onclick="selectDay2(this,'16',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_8" onclick="selectDay2(this,'17',8);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_8" style="display: none;">0</td> 
+								<td id="bm_8" style="display: none;">10</td>
+								<td id="nsc_8" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_9" class="table_tit1" scope="row">2026-09-04(금)<input type="hidden" name="resdt" id="resdt" value="20260904"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_9" onclick="selectDay2(this,'9',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_9" onclick="selectDay2(this,'10',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_9" onclick="selectDay2(this,'11',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_9" onclick="selectDay2(this,'12',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_9" onclick="selectDay2(this,'13',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_9" onclick="selectDay2(this,'14',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_9" onclick="selectDay2(this,'15',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_9" onclick="selectDay2(this,'16',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_9" onclick="selectDay2(this,'17',9);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_9" style="display: none;">0</td> 
+								<td id="bm_9" style="display: none;">10</td>
+								<td id="nsc_9" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_10" class="table_sat" scope="row">2026-09-05(토)<input type="hidden" name="resdt" id="resdt" value="20260905"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_10" onclick="selectDay2(this,'9',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_10" onclick="selectDay2(this,'10',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_10" onclick="selectDay2(this,'11',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_10" onclick="selectDay2(this,'12',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_10" onclick="selectDay2(this,'13',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_10" onclick="selectDay2(this,'14',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_10" onclick="selectDay2(this,'15',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_10" onclick="selectDay2(this,'16',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_10" onclick="selectDay2(this,'17',10);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_10" style="display: none;">0</td> 
+								<td id="bm_10" style="display: none;">10</td>
+								<td id="nsc_10" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_11" class="table_sun" scope="row">2026-09-06(일)<input type="hidden" name="resdt" id="resdt" value="20260906"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_11" onclick="selectDay2(this,'9',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_11" onclick="selectDay2(this,'10',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_11" onclick="selectDay2(this,'11',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_11" onclick="selectDay2(this,'12',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_11" onclick="selectDay2(this,'13',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_11" onclick="selectDay2(this,'14',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_11" onclick="selectDay2(this,'15',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_11" onclick="selectDay2(this,'16',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_11" onclick="selectDay2(this,'17',11);"><i class="count not" title="이용불가능">X</i></a></td>
+								<td id="pp_11" style="display: none;">0</td> 
+								<td id="bm_11" style="display: none;">10</td>
+								<td id="nsc_11" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_12" class="table_tit1" scope="row">2026-09-07(월)<input type="hidden" name="resdt" id="resdt" value="20260907"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_12" onclick="selectDay2(this,'9',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_12" onclick="selectDay2(this,'10',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_12" onclick="selectDay2(this,'11',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_12" onclick="selectDay2(this,'12',12);"><i class="count" title="이용가능">1</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_12" onclick="selectDay2(this,'13',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_12" onclick="selectDay2(this,'14',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_12" onclick="selectDay2(this,'15',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_12" onclick="selectDay2(this,'16',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_12" onclick="selectDay2(this,'17',12);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_12" style="display: none;">0</td> 
+								<td id="bm_12" style="display: none;">10</td>
+								<td id="nsc_12" style="display: none;">0</td>
+							</tr>
+							
+							<tr>
+								<th id="day_13" class="table_tit1" scope="row">2026-09-08(화)<input type="hidden" name="resdt" id="resdt" value="20260908"></th>
+								<td><a href="javascript:;" class="time-option" id="tm_9_13" onclick="selectDay2(this,'9',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_10_13" onclick="selectDay2(this,'10',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_11_13" onclick="selectDay2(this,'11',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_12_13" onclick="selectDay2(this,'12',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_13_13" onclick="selectDay2(this,'13',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_14_13" onclick="selectDay2(this,'14',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_15_13" onclick="selectDay2(this,'15',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_16_13" onclick="selectDay2(this,'16',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td><a href="javascript:;" class="time-option" id="tm_17_13" onclick="selectDay2(this,'17',13);"><i class="count" title="이용가능">0</i></a></td>
+								<td id="pp_13" style="display: none;">0</td> 
+								<td id="bm_13" style="display: none;">10</td>
+								<td id="nsc_13" style="display: none;">0</td>
+							</tr>
+							
+						
+						
+					
+				</tbody>
+			</table>
+</div>
+		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 테이블 주석 처리.(INDEX_YBH_20260129) - END -->
+                
+		<div class="btn_right">
+			<a href="javascript:;" id="timecareTableAddBtn" class="btn h50" onclick="f_AddQualRow();">추가</a>
+			<a href="javascript:;" id="timecareTableCancelBtn" class="btn gray h50" onclick="f_DelQualRow();">삭제</a>
+			<a href="javascript:;" id="timecareTableRefreshBtn" class="btn line navy h50" onclick="fnRefresh();">새로고침</a>
+		</div>
+		
+		<ul class="dot_list_blue mt20" id="monthList">
+		<li id="currentMonthLi" name="202608" value="73"><b>8월 예약시간 : 73시간</b></li><li id="futureMonthLi" name="202609" value="44"><b>9월 예약시간 : 44시간</b></li></ul>
+                
+		<div class="board boardlist t_center mt20">
+			<table id="INFOQUALF">
+				<caption>시간제보육사업 이용일, 이용시간 예약하기 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 10%">
+					<col style="width: 20%">
+					<col style="width: 35%;">
+					<col style="width: 35%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">선택</th>
+						<th scope="col">반명</th>		<!-- 25년기능개선사업 - 시간제보육 독립반 1:2 비율 적용 및 반선택 기능 개발 : 반선택 기능 추가로 반명 컬럼 추가.(INDEX_YBH_20260129) -->
+						<th scope="col">이용일</th>
+						<th scope="col">이용시간</th>
+					</tr>
+				</thead>
+				<tbody>
+				<tr id="tId_0"><td><input type="checkbox" id="rowSchChkNo0" name="rowQualChkNo" class="chkHd"><label for="rowSchChkNo0" class="checkbox"><span></span></label></td><td><input name="resclname0" type="text" id="resclname0" value="해솔아이" class="uin" validexp="반명:yes" style="width: 200px; text-align:center" readonly="readonly" title="반명0"><input name="resclseq0" type="hidden" value="1" id="resclseq0"></td><td><input name="sdate0" type="text" id="sdate0" value="2026-08-28(금)" class="uin" validexp="이용일:yes" style="width: 300px; text-align:center" readonly="readonly" title="이용일0"><input name="resdt0" type="hidden" id="resdt0" value="20260828"></td><td><input name="restime0" type="text" id="restime0" value="09 : 00  ~  10 : 00  (1시간)" validexp="이용시간:yes" class="uin" style="width: 300px; text-align:center" readonly="readonly" title="이용시간0"><input name="resbgntm0" type="hidden" value="09 : 00" id="resbgntm0"><input name="resendtm0" type="hidden" value="10 : 00" id="resendtm0"><input name="rtm0" type="hidden" value="1" id="rtm0"></td></tr></tbody>
+			</table>
+		</div>
+                
+		<div class="btn_right">
+			<a href="javascript:;" class="btn h50" id="timecareConfirm" onclick="fnSave();">예약하기</a>
+			<a href="javascript:;" class="btn lightgray h50" id="tooltip" data-rel="pop_bb" pop-href="#pop-up-tt01">예약대기</a>
+		</div>
+                
+		<dl class="dot_list_blue large mt70">
+			<dt>시간제보육 이용 시 주의사항</dt>
+			<dd>
+				<ul class="dash_list">
+					<li><em class="caution">바우처 지원은 월 최대 60시간까지만 가능합니다.</em></li>
+					<li><em class="caution">예약한 이용시간을 준수</em>해 주시기바랍니다.</li>
+					<li>이용시간이 예약시관과 다를 경우 별점제가 적용됩니다.</li>
+				</ul>
+			</dd>
+			<dt>시간제보육 이용 시 제출서류</dt>
+			<dd>
+				<ul class="dash_list">
+					<li>제출서류 : 이용신청 서 및 운영규정서약서 <a href="/icms/board/web/common/DownloadBoardFile.html?BBSGB=42&amp;BID=264699&amp;ATCHMNFLSEQ=1" class="btn_file_download" title="이용신청 서 및 운영규정서약서 다운로드">다운로드</a>, 가족관계증명서, 신분증 사본</li>
+					<li>제출시기 : 시간제보육 기관 처음 방문 시 제출 (보완이 필요할 경우 1주일 이내 제출)
+						<p class="ml0">* 첫 방문 시에는 초기 적응 및 서류 제출 등을 고려하여 예약시간을 설정하여 주시기 바랍니다.</p>
+					</li>
+				</ul>
+			</dd>
+			<dt>시간제보육 이용 시 개인 준비물</dt>
+			<dd>
+				<ul class="dash_list">
+					<li>기저귀, 여벌옷, 간식 등  (필요 시)
+						<p class="ml0">* 시간제보육기관에서 급간식은 별도로 제공하지 않습니다.</p>
+					</li>
+				</ul>
+			</dd>
+		</dl>
+		
+		<p class="dot_list_blue bold">시간제보육 문의</p>
+                
+		<div class="board boardlist t_center mt20">
+			<table>
+				<caption>시간제보육 문의 기관명, 업무분장, 연락처 내용의 테이블</caption>
+				<colgroup>
+					<col style="width: 20%">
+					<col style="width: 60%;">
+					<col style="width: 20%;">
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col">기관명</th>
+						<th scope="col">업무분장</th>
+						<th scope="col">연락처</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>시도육아종합지원센터</td>
+						<td>시간제보육 이용안내, 정책 및 지침 등 사업 관련 문의</td>
+						<td>1661-9361</td>
+					</tr>
+					<tr>
+						<td>한국사회보장정보원</td>
+						<td>사용법 등 시스템 관련 문의</td>
+						<td>1566-3232</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</form>
+
+
+
+		
+
+
+<div id="pop-up-tt01" class="popup_wrap" style="display:none;">
+	<div class="popup_inner_wrap maxw1000">
+		<a href="javascript:;" onclick="fnWaitCancel();" class="popup_close" role="button" aria-label="예약대기 등록 팝업 닫기"><span class="hidden">닫기</span></a>
+		<h3>예약대기 등록</h3>
+		<section class="t_left">
+
+			<div class="board responsive t_left">
+				<table>
+					<caption>보호자 기본정보의 성명, 주민등록번호, 관계, 이메일, 휴대전화, 추가 연락처 내용의 테이블</caption>
+					<colgroup class="medium_none">
+						<col style="width: 25%">
+						<col style="width: auto;">
+					</colgroup>
+					<tbody>
+		                <tr>
+							<th scope="row"><label for="">비고</label></th>
+							<td>
+		                        <textarea title="내용 입력" class="textarea textarea_maxlength" id="etc" name="etc"></textarea>
+		                    </td>
+						</tr>
+					</tbody>
+				</table>
+			</div>	
+    		
+    		<div class="btn_right mt100">
+       		 	<a href="javascript:;" id="waitConfirmBtn" role="button" aria-label="예약대기 등록 저장" onclick="fnWaitSave();" class="btn h50">저장</a>
+        		<a href="javascript:;" id="cancelConfirmBtn" role="button" aria-label="예약대기 등록 취소" onclick="fnWaitCancel();" class="btn lightgray h50">취소</a>
+    		</div>
+						            
+		</section>
+	</div>
+</div>
+</div>
+            </li>
+            <li><a id="tab2" href="javascript:;" data-tab="divOccasionTimePils">통합반 이용정보 신청</a>
+            	<div id="divOccasionTimePils" class="tab_con_inner" style="display: none;"></div>
+            </li>
+        </ul>
+    </div>
+
+</section>
+
+<!-- [S]레이어팝업 -->
+<div id="dimmed"></div>
+<div class="popup_wrap" id="divChildInfoReqBtn"></div>
+
+
+
+<footer id="footer">
+    <div class="footer_wrap">
+        <div class="f_link">
+            <ul class="link_wrap">
+                <li><a href="?menuno=511">이용약관</a></li>
+                <li><a href="?menuno=512" style="font-weight: 900;">개인정보처리방침</a></li>
+                <li><a href="?menuno=324">시스템 이용문의</a></li>
+                <li><a href="?menuno=514">전화번호 안내</a></li>
+                <li><a href="?menuno=515">모바일 서비스</a></li>
+                <li>
+                    <span class="webwach_logo">
+                        <a href="https://www.wa.or.kr/board/list.asp?search=total&amp;SearchString=%BE%C6%C0%CC%BB%E7%B6%FB&amp;BoardID=0006" target="_blank" title="새창열림"><img src="data:," alt="(사)한국장애인단체총연합회 한국웹접근성인증평가원 웹 접근성 우수사이트 인증마크(WA인증마크)"></a>
+                    </span>
+                </li>
+            </ul>
+        </div>
+        <div class="address_wrap">
+            <div class="address_inner">
+                <p><img src="data:," alt="교육부 로고"></p>
+                <address>정부세종청사 14동<span class="br"></span>
+                    세종특별자치시 갈매로 408</address>
+            </div>
+            <div class="address_inner">
+                <p><img src="data:," alt="보건복지부 로고"></p>
+                <address>정부세종청사 10동<span class="br"></span>
+                    세종특별자치시 도움4로 13</address>
+            </div>
+            <div class="address_inner">
+                <p><img src="data:," alt="한국사회보장정보원 로고"></p>
+                <address>
+                    한국사회보장정보원(04933) 서울 광진구 능동로 400<br>
+                        Copyright ⓒ 한국사회보장정보원. All rights reserved.
+                </address>
+            </div>
+            <div class="address_inner">
+                <address>
+                    <span>아이사랑 헬프데스크</span><em><b>1566-3232</b>(단축번호 1번)</em>
+                </address>
+            </div>
+        </div>
+    </div>
+</footer>
+
+
+
+
+<!-- 아래는 2026-08-26 08:57 고객 PC 캡처의 진짜 넷퍼널 대기열 레이어다. [예약하기] 를 누른 뒤 예약 확인창 대신 이것이 떴다. -->
+<div id="NetFunnel_Loading_Popup" style="display: block; top: 1971px; left: 249px; overflow: visible; white-space: normal; position: absolute; visibility: visible; z-index: 32002;" tabindex="0"><div id="NetFunnel_Skin_Top" style="background-color:#ffffff;border:1px solid #9ab6c4;width:580px;-moz-border-radius: 5px; -webkit-border-radius: 5px; -khtml-border-radius: 5px; border-radius: 5px;"><div style="background-color:#ffffff;border:6px solid #eaeff3;-moz-border-radius: 5px; -webkit-border-radius: 5px; -khtml-border-radius: 5px; border-radius: 5px;"><div style="padding-top:0px;padding-left:25px;padding-right:25px"><div style="text-align:left;font-size:16pt;color:#001f6c;height:22px;margin-top:10px;"><b>시간제 보육 예약 <span style="color:#013dc1"> 대기 중</span>입니다.</b></div><div style="text-align:right;font-size:11pt;color:#4d4b4c;padding-top:4px;width:99%;height:17px"><b>예상대기시간 : <span id="NetFunnel_Loading_Popup_TimeLeft" class="%H시간 %M분 %02S초^ ^false">2분  10초 </span></b></div><div id="Progress_Print" style="display:none;position:absolute;left:0;top:100px;width:100%;text-align:center;font-size:17px;color:gray">6 % (5/77) - 130.931468-2****** sec</div> <div style="padding-top: 6px; padding-bottom: 6px; height: 20px; visibility: visible;" id="NetFunnel_Loading_Popup_Progressbar"><div style="width: 100%; height: 100%; border-radius: 10px; overflow: hidden; position: relative; background-color: rgb(202, 202, 202);"><div style="width: 6.49351%; height: 100%; overflow: visible; position: relative; border-radius: 10px; background-color: rgb(79, 127, 249);"></div></div></div><div style="background-color:#ededed;padding-bottom:8px;overflow:hidden"><div style="padding:10px;"><div style="text-align:left;font-size:13pt;color:#4d4b4c;padding:5px;height:60%;">현재 앞에 <b><span style="color:#2a509b"><span id="NetFunnel_Loading_Popup_Count" class="다수">72</span></span></b> 명, 뒤에 <b><span style="color:#2a509b"><span id="NetFunnel_Loading_Popup_NextCnt" class="다수">26</span></span></b> 명의 대기자가 있습니다.<br><br><div style="text-align:left;font-size:13pt;color:#4d4b4c;height:10%;">현재 접속 사용자가 많아 대기 중이며, 잠시만 기다리시면 </div><div style="text-align:left;font-size:13pt;color:#4d4b4c;height:10%;">예약이 완료됩니다.</div><div style="text-align:left;font-size:12pt;color:#4d4b4c;height:10%;">*<b><span style="color: red;">시간당 인원이 초과</span>될 경우 예약이 불가할 수 있습니다.</b></div><div style="text-align:center;font-size:10pt;color:#2a509b;padding-top:15px;"><b>※ 재접속하시면 대기시간이 더 길어집니다. <span id="NetFunnel_Countdown_Stop" style="cursor:pointer">[중지]</span></b></div></div></div></div><div style="height:5px;"></div></div></div></div></div><div id="mpopup_bg" style="z-index: 32001; top: 0px; left: 0px; width: 100%; position: fixed; height: 100%; background-color: rgba(80, 80, 80, 0.3); margin: 0px; padding: 0px; border: 0px solid black; display: block;"><div style="width:100%; height:100%">&nbsp;</div></div><div id="pop_iframe" style="opacity: 0.5; z-index: 32000; top: 0px; left: 0px; width: 100%; position: fixed; border: 0px solid rgb(255, 255, 255); background-color: rgba(80, 80, 80, 0.3); height: 100%; display: block;"></div>
+</body></html>

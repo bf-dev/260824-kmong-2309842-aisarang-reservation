@@ -10,7 +10,7 @@ import re
 import threading
 import time
 
-from . import automation, booking, clock as clockmod, config, site
+from . import automation, booking, clock as clockmod, config, handover, site
 from .masking import register_secret
 from .reporter import Diagnostics
 
@@ -32,10 +32,14 @@ class Runner:
     """GUI 가 붙잡고 쓰는 실행기. 모든 진행은 status_cb 로 흘려보낸다."""
 
     def __init__(self, status_cb=lambda *_: None, log_cb=lambda *_: None,
-                 done_cb=lambda *_: None, diag: Diagnostics | None = None):
+                 done_cb=lambda *_: None, diag: Diagnostics | None = None,
+                 state_cb=lambda *_: None):
         self.status_cb = status_cb
         self.log_cb = log_cb
         self.done_cb = done_cb
+        # 인계 모드에서 화면 위쪽 상태판을 갱신하는 통로.
+        # {"mode","line","ready","queue","secondsToFire", ...} 를 흘려보낸다.
+        self.state_cb = state_cb
         self.diag = diag or Diagnostics()
         self.stop_event = threading.Event()
         self.driver = None
@@ -60,6 +64,13 @@ class Runner:
         except Exception:
             pass
         self.log(line)
+
+    def state(self, payload: dict) -> None:
+        """상태판 갱신. 실패해도 실행을 막지 않는다."""
+        try:
+            self.state_cb(dict(payload))
+        except Exception:
+            pass
 
     # -- 제어 ---------------------------------------------------------
     def is_running(self) -> bool:
@@ -129,6 +140,8 @@ class Runner:
         hours = int(settings.get("use_hours", 9) or 9)
         dry_run = bool(settings.get("dry_run"))
         preferred = _hours_from_slots(slots)
+        mode = config.normalize_run_mode(settings.get("run_mode"))
+        self.run_mode = mode
 
         self.status("서버 시각을 맞추는 중입니다...")
         sess = site.make_session()
@@ -158,9 +171,11 @@ class Runner:
 
         self.status(f"대상: {center.get('name')} / 이용일 {target_date} / {hours}시간"
                     + (f" / 시작 우선순위 {', '.join(slots)}" if slots else ""))
+        self.log(f"실행 방식: {config.RUN_MODE_LABELS[mode]}")
         self.log(f"[확인] 목표 도착: 정각 {lead * 1000:.0f}ms 전 / "
-                 f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사 / "
-                 f"준비 시작은 정각 {setup_seconds}초 전")
+                 f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사"
+                 + ("" if mode == config.MODE_HANDOVER
+                    else f" / 준비 시작은 정각 {setup_seconds}초 전"))
 
         self.status("크롬을 실행합니다...")
         self.driver = automation.build_driver(log=self.log)
@@ -171,6 +186,10 @@ class Runner:
 
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
+
+        if mode == config.MODE_HANDOVER:
+            return self._run_handover(settings, center, target_date, slots,
+                                      open_epoch, lead, dry_run)
 
         # 예약 화면은 공동인증서 세션에서만 열린다(실측). 아이디 로그인이면
         # 서버가 화면을 아예 안 그리므로 여기서 걸러 알려주고 기다린다.
@@ -275,6 +294,176 @@ class Runner:
         detail["clockCorrectionMs"] = round(self.clock.correction * 1000, 1)
         return self._finish(res.ok, res.message, center, target_date, slots, detail)
 
+    # -- 인계 모드 -----------------------------------------------------
+    #
+    # 고객 요청 원문 (2026-08-26, 그날 예약을 놓친 뒤):
+    #   "제가 아동선택부터 시간선택까지 모두 끝내놓으면 프로그램은 확인만
+    #    누르는 방식을 변경 요청드립니다."
+    #
+    # 그래서 이 경로에는 준비(검색/센터/아동/반/시간/칸/추가/체크/예약하기)가
+    # **없다**. 화면 이동도 아래 _handover_open_once() 한 번뿐이고, 그것도
+    # 고객이 이미 만들어 둔 화면 위에서는 하지 않는다.
+
+    # 발사 몇 초 전에 마지막 점검을 할지. 이 시간 안에 화면을 다시 읽고
+    # 조준까지 끝낸 뒤, 남은 시간을 정확히 재워서 쏜다.
+    PREFLIGHT_SECONDS = 1.5
+    # 준비가 안 됐다고 크게 알리기 시작하는 시점(정각 대비).
+    NAG_SECONDS = 90.0
+
+    def _run_handover(self, settings: dict, center: dict, target_date: str,
+                      slots: list, open_epoch: float, lead: float,
+                      dry_run: bool) -> dict:
+        self.status("인계 모드입니다. 크롬 창에서 아동 선택부터 [예약하기] 까지 "
+                    "직접 진행해 주세요. 프로그램은 확인창의 [확인] 만 누릅니다.")
+        self.log("이 모드에서 프로그램이 누르는 것은 예약 확인창의 [확인] 하나뿐입니다. "
+                 "화면 이동, 검색, 아동/반/시간 선택, [추가], 체크, [예약하기] 는 "
+                 "하지 않습니다.")
+
+        self._handover_open_once(center)
+
+        watcher = handover.Watcher(
+            self.driver, log=self.log,
+            on_state=lambda st: self._handover_state(st, open_epoch, lead))
+
+        # --- 정각까지: 계속 읽고, 계속 알려준다. 누르지 않는다.
+        nagged = False
+        while not self.stop_event.is_set():
+            fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+            preflight_at = fire_local - self.PREFLIGHT_SECONDS
+            if time.time() >= preflight_at:
+                break
+            watcher.wait_until(min(preflight_at, time.time() + 5.0),
+                               self.stop_event)
+            remain = open_epoch - self.clock.server_now()
+            if (not nagged) and remain <= self.NAG_SECONDS \
+                    and not watcher.state.ready() and not watcher.state.queue:
+                nagged = True
+                self.status(f"정각 {remain:.0f}초 전인데 예약 확인창이 아직 없습니다. "
+                            f"크롬 창에서 [예약하기] 까지 진행해 주세요.")
+                self.log("확인창이 없으면 [확인] 을 누르지 않습니다. 잘못 누르는 것보다 "
+                         "안 누르는 쪽이 안전합니다(취소는 센터 전화로만 됩니다).")
+            self._handover_touch_session(open_epoch)
+
+        if self.stop_event.is_set():
+            return self._finish(False, "사용자가 중지했습니다.", center, target_date,
+                                slots, {"reason": "stopped",
+                                        "handoverState": watcher.state.as_dict()})
+
+        # --- 마지막 점검. 발사 직전에 살아 있는 화면에서 다시 읽는다.
+        st = watcher.poll()
+        automation.capture(self.driver, self.diag, "handover_preflight")
+        self.log("발사 직전 점검: " + handover.describe(st))
+        if not st.ready():
+            msg = ("예약 확인창이 준비되지 않아 [확인] 을 누르지 않았습니다: "
+                   + "; ".join(st.blockers()))
+            self.status(msg)
+            self.log("이 상태에서 누르면 엉뚱한 예약이 될 수 있습니다. "
+                     "그래서 누르지 않았습니다.")
+            # 정각을 지나서라도 확인창이 열리면 쏜다(대기열에 잡혔을 수 있다).
+            res = handover.burst(
+                self.driver, self.clock, open_epoch, watcher,
+                retry_seconds=int(settings.get("retry_seconds", 20)),
+                retry_ms=int(settings.get("confirm_retry_ms", 90)),
+                log=self.log, diag=self.diag, stop_event=self.stop_event)
+            automation.capture(self.driver, self.diag, "handover_after")
+            detail = dict(res.detail)
+            detail["reason"] = res.reason
+            detail["preflight"] = st.as_dict()
+            if not res.ok and res.reason == "never_ready":
+                return self._finish(False, msg, center, target_date, slots, detail)
+            return self._finish(res.ok, res.message, center, target_date, slots,
+                                detail)
+
+        if dry_run:
+            meta = {"reason": "dry_run", "handoverState": st.as_dict()}
+            return self._finish(
+                True, "[연습 모드] 확인창을 확인했고 [확인] 은 누르지 않았습니다. "
+                      "실제 예약은 만들어지지 않았습니다.",
+                center, target_date, slots, meta)
+
+        fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+        clockmod.sleep_until_local(fire_local, self.stop_event)
+        if self.stop_event.is_set():
+            return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
+
+        self.status("지금 [확인] 을 누릅니다!")
+        res = handover.burst(
+            self.driver, self.clock, open_epoch, watcher,
+            retry_seconds=int(settings.get("retry_seconds", 20)),
+            retry_ms=int(settings.get("confirm_retry_ms", 90)),
+            log=self.log, diag=self.diag, stop_event=self.stop_event,
+            preflight=st)
+        automation.capture(self.driver, self.diag, "handover_after")
+
+        detail = dict(res.detail)
+        detail["reason"] = res.reason
+        detail["preflight"] = st.as_dict()
+        detail["clockCorrectionMs"] = round(self.clock.correction * 1000, 1)
+        return self._finish(res.ok, res.message, center, target_date, slots, detail)
+
+    def _handover_open_once(self, center: dict) -> None:
+        """예약 화면까지만 한 번 열어준다. 그 뒤로는 화면을 건드리지 않는다.
+
+        고객이 이미 손으로 만들어 둔 화면 위에서는 **열지 않는다.** 오늘
+        고객이 잃은 것이 바로 그것이라, 여기서 같은 실수를 반복하면 안 된다.
+        """
+        try:
+            st = handover.read_state(self.driver)
+        except Exception:  # noqa: BLE001
+            st = handover.LiveState(error="read_failed")
+        if st.modal or st.ticked > 0 or st.on_reserve_page:
+            self.log("이미 예약 화면이 열려 있어 그대로 둡니다. "
+                     "프로그램은 화면을 이동시키지 않습니다.")
+            return
+        try:
+            automation.open_reservation_page(self.driver, center, self.log, self.diag)
+            self.log(f"로그인 등급 확인: {automation.login_grade(self.driver)}")
+            if automation.page_says_cert_required(self.driver):
+                self.status("이 화면은 공동인증서 세션에서만 열립니다. "
+                            "크롬 창에서 공동인증서로 다시 로그인해 주세요.")
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"예약 화면을 열지 못했습니다(무시): {type(exc).__name__}: {exc}")
+        self.log("여기까지가 프로그램이 여는 마지막 화면입니다. "
+                 "이제부터는 크롬 창에서 직접 진행해 주세요.")
+
+    def _handover_state(self, st, open_epoch: float, lead: float) -> None:
+        """상태판 한 줄. 고객이 이 화면을 사진으로 찍어 보낸다."""
+        try:
+            fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+            secs = max(0.0, fire_local - time.time())
+        except Exception:
+            secs = 0.0
+        self.state({
+            "mode": config.MODE_HANDOVER,
+            "modeLabel": config.RUN_MODE_LABELS[config.MODE_HANDOVER],
+            "line": handover.describe(st),
+            "ready": st.ready(),
+            "modal": st.modal,
+            "ticked": st.ticked > 0,
+            "queue": st.queue,
+            "queueLine": st.queue_line() if st.queue else "",
+            "secondsToFire": secs,
+        })
+
+    # 인계 모드에서도 세션은 살려야 한다(세션 수명 60분 실측). 다만 대기 루프가
+    # 화면 폴링이라, 세션 유지는 시각을 재서 따로 부른다.
+    def _handover_touch_session(self, open_epoch: float) -> None:
+        last = getattr(self, "_last_touch", 0.0)
+        now = time.time()
+        if now - last < self.SESSION_TOUCH_SECONDS:
+            return
+        self._last_touch = now
+        if open_epoch - self.clock.server_now() <= config.RESYNC_QUIET_SECONDS:
+            return          # 정각 직전에는 어떤 것도 끼어들지 않는다
+        touched = automation.touch_session(self.driver, self.log)
+        if touched.get("ok"):
+            self.log("세션 유지 신호를 보냈습니다.")
+        self._drift_check(touched)
+        try:
+            automation.drain_network(self.driver)
+        except Exception:
+            pass
+
     # -- 로그인 --------------------------------------------------------
     def _login(self, settings: dict, cert_password: str) -> bool:
         mode = settings.get("login_mode", "manual")
@@ -292,12 +481,24 @@ class Runner:
         return automation.wait_for_manual_login(self.driver, self.log, self.stop_event)
 
     # -- 준비 재시도 ----------------------------------------------------
+    #
+    # 2026-08-26 에 고객이 예약을 놓친 원인이 바로 이 함수였다.
+    # [예약하기] 를 누른 뒤 확인창이 안 열리면(= 가상대기열에 섰다는 뜻)
+    # **검색 화면부터 준비를 통째로 다시** 했다. 그래서 매번 대기열 맨 뒤로
+    # 갔고, 앞에 선 사람이 72명 → 138명 → 177명 으로 불어났다.
+    # 대기열 레이어가 스스로 이렇게 적어 놓았는데도 그랬다:
+    #     ※ 재접속하시면 대기시간이 더 길어집니다.
+    #
+    # 그래서 규칙을 하나 세운다. **[예약하기] 를 한 번이라도 누른 뒤에는
+    # 준비를 다시 하지 않는다.** 기다리거나, 보고하고 멈춘다.
+    PRESSED_RESERVE = ("no_modal", "no_modal_queue", "not_armed")
+
     def _prepare_with_retries(self, center, target_date, preferred, hours,
                               settings, open_epoch, until=None):
-        """준비(1~8단계). 정각 직전까지 여유를 두고 몇 번이든 다시 해본다.
+        """준비(1~8단계). [예약하기] 를 누르기 전까지만 몇 번이든 다시 해본다.
 
-        여기서 실패하면 예약은 만들어지지 않는다. 그래서 마음껏 재시도해도
-        안전하다. 다만 정각을 넘겨 계속 붙잡고 있지는 않는다.
+        [예약하기] 전 단계에서의 실패는 예약을 만들지 않으므로 재시도해도
+        안전하다. 그 뒤의 실패는 다르다(위 주석 참고).
         """
         # 준비를 마쳐야 하는 시각. 최소 15초는 남기고 끝낸다.
         stop_at = until if until is not None else (open_epoch - 15)
@@ -312,12 +513,26 @@ class Runner:
                                    settings.get("child_name", ""),
                                    log=self.log, diag=self.diag)
             if last.ok:
+                # 대기열에 서게 되면 정각 직전까지 기다린다. 확인창은 순번이
+                # 와야 열리고, 우리 설계는 그 표를 미리 쥐어두는 것이 목적이다.
+                deadline_local = self.clock.local_time_for(open_epoch - 5)
                 opened = booking.open_modal(self.driver, last.prepared,
-                                            self.log, self.diag)
+                                            self.log, self.diag,
+                                            deadline_local=deadline_local)
                 if opened.ok:
                     return opened
                 last = opened
             self.log(f"준비 실패({last.reason}): {last.message}")
+
+            if last.reason in self.PRESSED_RESERVE:
+                # 여기서 준비를 다시 하면 오늘 아침 일이 그대로 반복된다.
+                self.status("[예약하기] 를 이미 눌렀으므로 준비를 다시 하지 않습니다. "
+                            "지금 상태 그대로 두고 확인창이 열리는지 지켜봅니다.")
+                self.log("처음부터 다시 하면 가상대기열 맨 뒤로 갑니다"
+                         "(2026-08-26 실측: 앞에 72명 → 138명 → 177명). "
+                         "그래서 다시 하지 않습니다.")
+                self._watch_for_late_modal(last, open_epoch)
+                return last
             # 다시 해도 결과가 바뀌지 않는 것들은 즉시 멈춘다.
             # child_mismatch: 고객이 적은 아동명이 목록에 없다. 다시 돌려봐야
             # 같은 결과이고, 그렇다고 다른 아동으로 예약하면 절대 안 된다.
@@ -332,6 +547,36 @@ class Runner:
             if self.stop_event.wait(wait):
                 break
         return last
+
+    def _watch_for_late_modal(self, last, open_epoch: float) -> None:
+        """[예약하기] 를 누른 뒤 늦게라도 확인창이 열리는지 지켜본다.
+
+        누르지 않는다. 읽기만 한다. 열리면 그 자리에서 조준까지 해서
+        `last` 를 성공으로 바꾼다.
+        """
+        deadline = open_epoch - 2
+        told = False
+        while not self.stop_event.is_set() and self.clock.server_now() < deadline:
+            info = booking.modal_info(self.driver)
+            if info.get("text"):
+                p = last.prepared
+                p.modal_open, p.modal_text = True, str(info["text"])
+                p.armed = booking.arm_confirm(self.driver, self.log)
+                if p.armed:
+                    self.status("확인창이 열렸습니다. 정각에 [확인] 을 누릅니다.")
+                    last.ok = True
+                    last.reason = "modal_armed"
+                    last.message = "예약 확인창을 열어두고 대기합니다."
+                    return
+            q = booking.queue_info(self.driver)
+            if q.get("queue"):
+                self.status(booking.queue_line(q) + " · 확인창을 기다립니다")
+            elif not told:
+                told = True
+                self.status("확인창이 열리지 않았고 대기열도 보이지 않습니다. "
+                            "크롬 창에서 [예약하기] 를 한 번 눌러주세요.")
+            if self.stop_event.wait(1.0):
+                return
 
     # -- 모달을 붙잡고 대기 --------------------------------------------
     HOLD_CHECK_SECONDS = 5.0
@@ -364,22 +609,24 @@ class Runner:
             except Exception as exc:  # noqa: BLE001
                 self.log(f"확인창 상태 확인 실패(무시): {type(exc).__name__}")
                 continue
-            self.log("확인창이 닫혔거나 체크가 풀렸습니다. 다시 세웁니다.")
+            q = booking.queue_info(self.driver)
+            if q.get("queue"):
+                # 대기열에 잡혀 있는 것이지 창이 죽은 게 아니다. 기다린다.
+                self.status(booking.queue_line(q) + " · 확인창을 기다립니다")
+                continue
+            self.log("확인창이 닫혔거나 체크가 풀렸습니다. 확인 경로만 다시 세웁니다.")
             self.status("확인창을 다시 세우는 중입니다...")
             if booking.redrive_confirm(self.driver, p, self.log):
                 self.log("확인창을 다시 열어두었습니다.")
                 continue
-            # 확인 경로만으로 못 살리면 준비부터 다시 한다(시간이 남아 있을 때만).
-            if fire_local - time.time() < 20:
-                self.log("남은 시간이 부족해 준비를 다시 하지 않습니다.")
-                return
-            again = self._prepare_with_retries(center, target_date, preferred,
-                                               hours, settings, open_epoch)
-            if again is not None and again.ok and again.prepared is not None:
-                p.__dict__.update(again.prepared.__dict__)
-                self.log("준비를 다시 마쳤습니다.")
-            else:
-                self.log("준비를 다시 하지 못했습니다. 남은 시간 동안 계속 시도합니다.")
+            # 여기서 준비를 처음부터 다시 하면 안 된다. [예약하기] 를 이미
+            # 눌렀으므로 대기열 맨 뒤로 가고, 사람이 만들어 둔 것도 날아간다
+            # (2026-08-26 실측: 앞에 72명 → 138명 → 177명).
+            self.status("확인창을 다시 열지 못했습니다. 준비를 처음부터 다시 하면 "
+                        "대기열 맨 뒤로 가므로 그렇게 하지 않습니다. "
+                        "크롬 창에서 [예약하기] 를 눌러 확인창을 열어주세요.")
+            self._watch_for_late_modal(
+                booking.StepResult(False, "", "no_modal", p), open_epoch)
 
     # -- 대기 중 세션 유지 --------------------------------------------
     # 세션 수명 60분 실측. 5분 주기는 넉넉하고, 서버 시각 재측정과 같은 주기라

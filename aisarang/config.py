@@ -14,7 +14,28 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
+
+# 실행 방식.
+#   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
+#             프로그램은 예약 확인창의 [확인] 만 정각에 누른다.
+#             2026-08-26 고객 요청으로 이것이 기본이 됐다. 그날 09시 직전의
+#             가상대기열 때문에 자동 준비가 확인창을 못 열었고, 재준비가
+#             고객이 만들어 둔 것을 반복해서 날렸다.
+#   auto      자동 모드. 검색부터 [예약하기] 까지 프로그램이 걷는다(옛 기본).
+MODE_HANDOVER = "handover"
+MODE_AUTO = "auto"
+RUN_MODES = (MODE_HANDOVER, MODE_AUTO)
+RUN_MODE_LABELS = {
+    MODE_HANDOVER: "인계 모드 ([확인] 만 누름)",
+    MODE_AUTO: "자동 모드 (처음부터 프로그램이 진행)",
+}
+
+
+def normalize_run_mode(value) -> str:
+    """옛 설정 파일과 오타를 흡수한다. 모르는 값은 인계 모드로 본다."""
+    v = str(value or "").strip().lower()
+    return v if v in RUN_MODES else MODE_HANDOVER
 
 # 서버 시각을 다시 맞추는 주기(초). 고객에게 "5분" 이라고 약속한 값이다.
 # 프로그램이 도는 동안 계속(오픈 전 대기 / 준비 240초 / 확인창 홀드) 이 주기로
@@ -82,6 +103,7 @@ DEFAULT_CENTER = {
 
 DEFAULT_SETTINGS = {
     "center": dict(DEFAULT_CENTER),
+    "run_mode": MODE_HANDOVER,   # handover | auto
     "login_mode": "manual",      # manual | cert
     "mbrid": "",
     "child_name": "",            # 시간제보육 아동 선택 화면의 아동명 (비우면 첫 번째)
@@ -155,6 +177,10 @@ def load_settings() -> dict:
                         data[k] = v
                 if not isinstance(data.get("center"), dict) or not data["center"].get("stcode"):
                     data["center"] = dict(DEFAULT_CENTER)
+    except Exception:
+        pass
+    try:
+        data["run_mode"] = normalize_run_mode(data.get("run_mode"))
     except Exception:
         pass
     return data
