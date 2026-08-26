@@ -1070,6 +1070,71 @@ ci/fixtures/real/netfunnel_waiting.html    2026-08-26 08:57 의 진짜 대기열
 `tests/test_handover.py::test_the_netfunnel_fixture_carries_no_personal_data`
 가 커밋된 결과물을 한 번 더 본다.
 
+## 배포 현황 (v1.0.8, 2026-08-26 01:10Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.8.zip
+  (29,231,071 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.8/`
+   = `aisarang-reservation.exe` + `_internal/` + `사용안내.txt`, 1,352 항목)
+  **빌드 바이트 sha256 = CI 가 찍은 값 = Caddy 로 실제 내려받은 바이트 sha256 =
+  `761a849f42ecb6fd07b097a02d62e78ff45a6204b8650187b4d3eb58c2021124`**
+  (게이트웨이 루프백으로 확인하면 안 된다. `--resolve works.insu.ng:443:127.0.0.1`)
+- 매니페스트: `version-aisarang.json` → 1.0.8 (`zipUrl` 만, `exeUrl` 없음)
+  **실제 게시된 매니페스트를 받아 제품의 `updater.choose_download` 를 돌린 결과:**
+  1.0.4 → zip, 1.0.5 → zip, 1.0.6 → zip, **1.0.7 → zip(1.0.8)**, 1.0.8 → None.
+  고객 PC 는 08-26 아침에 1.0.7 을 돌렸다. **프로그램을 켜두면 15분 안에 1.0.8 이
+  된다**(`CHECK_SECONDS = 900`). 1.0.4 는 옛 업데이터라 `exeUrl` 만 보므로
+  자동 갱신되지 않는다(의도한 것이다).
+- CI: GitHub Actions run **32916723591** (커밋 fd2d719), 전 단계 green.
+  unit **166** → 실물 캡처 회귀 24(진짜 크롬) → **인계 모드 15(진짜 크롬)** →
+  셀렉터 감사 → onedir 빌드 → PE 확인 → ZIP → 디펜더 정의 갱신 + 실제 스캔 3건 →
+  라이브 selftest → fixture selftest → GUI construct → ZIP 을 풀어서 그 exe 로
+  selftest → 시각 재측정(프로즌) → 진단 기록(프로즌) → **인계 모드(프로즌)** →
+  스크린샷 3장 → sha256.
+- 감사: `의존성 58개: 확인 56 / 영상복원본만 1 / 미확인 1`,
+  `제품 동작 검증 19개 중 19개 통과`.
+- 프로즌 exe 실측 (windows-latest, CI 로그):
+  ```
+  RESYNC n=1 offsetMs=-43.1 deltaMs=-44.0 uncertaintyMs=133.2 samples=12
+  RESYNC n=2 offsetMs=+1.5  deltaMs=+44.5 uncertaintyMs=77.8  samples=12
+  RESYNC n=3 offsetMs=+49.7 deltaMs=+48.2 uncertaintyMs=131.8 samples=12
+  RECTEST pages=4 requests=6 wanted=2 clicks=3 reserved=False skipped=0 → RECTEST OK
+  HANDOVERTEST page=modal_open.html ticked=True  ... ready=True  fired=True
+                 confirmId=layer-confirm-popup-confirm2
+  HANDOVERTEST page=modal_open.html ticked=False ... ready=False fired=False
+  HANDOVERTEST page=netfunnel_waiting.html ... queue=True ready=False fired=False
+                 queueAhead=72 queueBehind=26
+  HANDOVERTEST page=grid_selected_row_added.html ... modal=False ready=False fired=False
+  HANDOVERTEST fired=1/4 expected=1 → HANDOVERTEST OK
+  ```
+- 디펜더 실제 판정: `VERDICT v1.0.8-onedir: CLEAN`, `VERDICT v1.0.8-zip: CLEAN`.
+  러너는 `RealTimeProtectionEnabled: False` 라 실행 시점 동작 감시는 재현되지 않는다.
+  그 이상으로 말하지 말 것.
+- 스크린샷(진짜 윈도우 창, 세션 1, 896x717): `docs/gui-1.0.8-handover.png`
+  (**새 '1. 실행 방식' 카드 + 인계 상태판**: `인계 모드 ([확인] 만 누름) |
+  확인창 감지됨 | 선택표 체크 켜짐 | [확인] 까지 00:41`, 그리고 로그에
+  `대기열 실측(2026-08-26 08:57): 가상대기열 대기 중 (앞에 72명, 뒤에 26명, 예상 2분 10초)`),
+  `docs/gui-1.0.8.png`, `docs/gui-1.0.8-record.png`. 194 / 196 / 204 colours.
+- Artifacts: 이 서버에서 돌린 `--handovertest` 진단 1건(v1.0.8 표기)과
+  배포 기록 `aisarang-reservation-devnote` 1건이 `matched:true` 로 저장됐다
+  (id `b9cf41b1-8465-45c1-9b3e-d34b7e648aae`). `artifacts-check 2309842` 로 확인.
+
+### 이번 판에서 CI 가 한 번 섰다. 게시물이 아니라 로그 인코딩이었다.
+
+**run 32916034550 (eca77ee)** 프로즌 exe 의 `--handovertest` 는 **정확히 통과했다**
+(`fired=1/4`, `HANDOVERTEST OK`). 그런데 CI 가 찾던 요약 줄
+`HANDOVERTEST fired=1/4 (기대: 1)` 이 로그에 **없었다.** windows-latest 러너가
+exe 의 stdout 을 파일로 리디렉션하면 인코딩이 cp1252 가 되고, 한글이 든 줄은
+`UnicodeEncodeError` 를 내는데 `main._out()` 이 그것을 삼켜 **줄이 통째로 사라졌다.**
+같은 함정을 어제 `selector_audit.py` 에서 한 번 밟았는데(NOTES v1.0.7 절), 그때는
+스크립트에 `reconfigure` 를 넣어 고쳤다. 제품에는 그럴 수 없다(`--noconsole` 이라
+`sys.stdout` 이 None). 그래서 `_out` 에 **두 번째 시도**를 붙였다: 못 찍는 글자만
+대체하고 줄은 남긴다. 그리고 **CI 가 판정에 쓰는 줄은 전부 ASCII 로** 찍는다
+(`queueAhead=72 queueBehind=26 blockers=1 confirmId=...`). 한글 줄은 사람이 읽는
+용도로만 남긴다.
+
+> 다음 사람에게: 프로즌 exe 가 찍는 줄을 CI 가 `-match` 로 검사할 거라면
+> **그 줄에 한글을 넣지 마라.** 러너에서 조용히 사라진다.
+
 ## 배포 현황 (v1.0.7, 2026-08-25 10:40Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.7.zip
