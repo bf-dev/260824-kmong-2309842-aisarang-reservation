@@ -46,6 +46,37 @@ class Runner:
         self.clock = clockmod.ClockSync()
         self.keeper: clockmod.ClockKeeper | None = None
         self._thread: threading.Thread | None = None
+        # 이번 실행의 설정. 상태판이 조준 시각을 다시 계산할 때 쓴다.
+        self.settings: dict = {}
+
+    # -- 조준 ---------------------------------------------------------
+    def _arrival_aim(self, settings: dict) -> float:
+        """[확인] 요청을 정각 **뒤** 몇 초에 도착시킬지. 초 단위, 항상 양수.
+
+        v1.0.8 까지는 정각 300ms **전** 이 목표였고, 2026-08-27 09:00:00 에
+        서버가 그 한 발을 "아직 예약 가능한 시간이 아닙니다." 로 버렸다.
+        서버는 자기 시계로 정각 전에 닿은 요청을 거절한다.
+
+        기본은 자동이다. 그때그때 잰 시각 오차의 절반에 여유를 더한다
+        (`clock.safe_arrival_after`). 고객 설정에 arrival_after_ms 가 양수로
+        들어 있으면 그 값을 쓰되 범위 밖으로는 못 나간다.
+        매번 다시 계산하는 이유: 정각 90초 전까지 5분마다 시각을 다시 재고,
+        그때마다 오차 폭이 달라지기 때문이다.
+        """
+        try:
+            fixed = float(settings.get("arrival_after_ms", 0) or 0)
+        except Exception:
+            fixed = 0.0
+        if fixed > 0:
+            fixed = min(max(fixed, config.ARRIVAL_MIN_AFTER_MS),
+                        config.ARRIVAL_MAX_AFTER_MS)
+            return fixed / 1000.0
+        try:
+            safety = float(settings.get("arrival_safety_ms",
+                                        config.ARRIVAL_SAFETY_MS))
+        except Exception:
+            safety = config.ARRIVAL_SAFETY_MS
+        return self.clock.safe_arrival_after(safety / 1000.0)
 
     # -- 로그 ---------------------------------------------------------
     def log(self, line: str) -> None:
@@ -166,16 +197,19 @@ class Runner:
                 self.clock, int(settings.get("lead_days", config.OPEN_LEAD_DAYS)),
                 open_epoch=open_epoch)
 
-        lead = int(settings.get("arrival_lead_ms", 300)) / 1000.0
+        self.settings = settings
+        aim = self._arrival_aim(settings)
         setup_seconds = max(int(settings.get("setup_seconds", 240)), 60)
 
         self.status(f"대상: {center.get('name')} / 이용일 {target_date} / {hours}시간"
                     + (f" / 시작 우선순위 {', '.join(slots)}" if slots else ""))
         self.log(f"실행 방식: {config.RUN_MODE_LABELS[mode]}")
-        self.log(f"[확인] 목표 도착: 정각 {lead * 1000:.0f}ms 전 / "
+        self.log(f"[확인] 목표 도착: 정각 {aim * 1000:.0f}ms 뒤 / "
                  f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사"
                  + ("" if mode == config.MODE_HANDOVER
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
+        self.log("정각보다 먼저 도착한 요청은 서버가 그냥 버립니다"
+                 "(2026-08-27 09:00:00 실측). 그래서 늦는 쪽으로 조준합니다.")
 
         self.status("크롬을 실행합니다...")
         self.driver = automation.build_driver(log=self.log)
@@ -189,7 +223,7 @@ class Runner:
 
         if mode == config.MODE_HANDOVER:
             return self._run_handover(settings, center, target_date, slots,
-                                      open_epoch, lead, dry_run)
+                                      open_epoch, dry_run)
 
         # 예약 화면은 공동인증서 세션에서만 열린다(실측). 아이디 로그인이면
         # 서버가 화면을 아예 안 그리므로 여기서 걸러 알려주고 기다린다.
@@ -249,13 +283,18 @@ class Runner:
         # --- 대기: 모달을 붙잡고 있는다. 닫히거나 체크가 풀리면 다시 세운다. ---
         # 발사 시각은 홀드 중에도 다시 계산한다. 그 사이에 시각을 다시 쟀으면
         # 새 값으로 조준해야 하기 때문이다.
-        self._hold_modal(p, open_epoch - lead, center, target_date, preferred,
+        self._hold_modal(p, open_epoch + self._arrival_aim(settings),
+                         center, target_date, preferred,
                          hours, settings, open_epoch)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
 
         # --- 9단계: [확인] 만 정각에 쏜다. ---
-        fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+        aim = self._arrival_aim(settings)
+        fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
+        self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
+                 f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
+                 f"{int(settings.get('arrival_safety_ms', config.ARRIVAL_SAFETY_MS))}ms)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -311,8 +350,7 @@ class Runner:
     NAG_SECONDS = 90.0
 
     def _run_handover(self, settings: dict, center: dict, target_date: str,
-                      slots: list, open_epoch: float, lead: float,
-                      dry_run: bool) -> dict:
+                      slots: list, open_epoch: float, dry_run: bool) -> dict:
         self.status("인계 모드입니다. 크롬 창에서 아동 선택부터 [예약하기] 까지 "
                     "직접 진행해 주세요. 프로그램은 확인창의 [확인] 만 누릅니다.")
         self.log("이 모드에서 프로그램이 누르는 것은 예약 확인창의 [확인] 하나뿐입니다. "
@@ -323,12 +361,13 @@ class Runner:
 
         watcher = handover.Watcher(
             self.driver, log=self.log,
-            on_state=lambda st: self._handover_state(st, open_epoch, lead))
+            on_state=lambda st: self._handover_state(st, open_epoch))
 
         # --- 정각까지: 계속 읽고, 계속 알려준다. 누르지 않는다.
         nagged = False
         while not self.stop_event.is_set():
-            fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+            fire_local = self.clock.local_fire_for_arrival(
+                open_epoch + self._arrival_aim(settings))
             preflight_at = fire_local - self.PREFLIGHT_SECONDS
             if time.time() >= preflight_at:
                 break
@@ -364,7 +403,9 @@ class Runner:
                 self.driver, self.clock, open_epoch, watcher,
                 retry_seconds=int(settings.get("retry_seconds", 20)),
                 retry_ms=int(settings.get("confirm_retry_ms", 90)),
-                log=self.log, diag=self.diag, stop_event=self.stop_event)
+                log=self.log, diag=self.diag, stop_event=self.stop_event,
+                reopen_max=int(settings.get("reopen_max", 2)),
+                reopen_seconds=float(settings.get("reopen_seconds", 15)))
             automation.capture(self.driver, self.diag, "handover_after")
             detail = dict(res.detail)
             detail["reason"] = res.reason
@@ -381,7 +422,11 @@ class Runner:
                       "실제 예약은 만들어지지 않았습니다.",
                 center, target_date, slots, meta)
 
-        fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+        aim = self._arrival_aim(settings)
+        fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
+        self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
+                 f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
+                 f"{int(settings.get('arrival_safety_ms', config.ARRIVAL_SAFETY_MS))}ms)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -392,7 +437,9 @@ class Runner:
             retry_seconds=int(settings.get("retry_seconds", 20)),
             retry_ms=int(settings.get("confirm_retry_ms", 90)),
             log=self.log, diag=self.diag, stop_event=self.stop_event,
-            preflight=st)
+            preflight=st,
+            reopen_max=int(settings.get("reopen_max", 2)),
+            reopen_seconds=float(settings.get("reopen_seconds", 15)))
         automation.capture(self.driver, self.diag, "handover_after")
 
         detail = dict(res.detail)
@@ -426,10 +473,11 @@ class Runner:
         self.log("여기까지가 프로그램이 여는 마지막 화면입니다. "
                  "이제부터는 크롬 창에서 직접 진행해 주세요.")
 
-    def _handover_state(self, st, open_epoch: float, lead: float) -> None:
+    def _handover_state(self, st, open_epoch: float) -> None:
         """상태판 한 줄. 고객이 이 화면을 사진으로 찍어 보낸다."""
         try:
-            fire_local = self.clock.local_fire_for_arrival(open_epoch - lead)
+            fire_local = self.clock.local_fire_for_arrival(
+                open_epoch + self._arrival_aim(self.settings))
             secs = max(0.0, fire_local - time.time())
         except Exception:
             secs = 0.0

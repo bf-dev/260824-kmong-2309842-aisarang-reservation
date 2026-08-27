@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -89,6 +89,33 @@ OPEN_LEAD_DAYS = 14
 
 KST_OFFSET_SECONDS = 9 * 3600
 
+# --------------------------------------------------------------- 도착 조준 (v1.0.9)
+#
+# v1.0.8 까지는 [확인] 요청을 **정각보다 300ms 먼저** 도착시키는 것이 목표였다.
+# 2026-08-27 09:00:00, 인계 모드의 첫 실전 발사가 그 값 때문에 실패했다.
+#
+#   [09:00:00] [확인] 1발째 · 도착 추정 정각 -296ms
+#              · 서버: 알림 아직 예약 가능한 시간이 아닙니다. 확인 [too_early]
+#
+# 서버는 자기 시계로 09:00:00.000 **전에** 도착한 요청을 그냥 거절한다.
+# 즉 -300ms 조준은 확정 실패였다. 이제는 정각 **뒤**로 조준한다.
+#
+# 얼마나 뒤로? 반올림한 숫자가 아니라 그날 측정된 값에서 뽑는다.
+#   - 서버 시각 오프셋의 잔여 구간 폭 (clock.uncertainty). 2026-08-27 실측
+#     4회: 868.1 / 843.0 / 847.3 / 869.2 ms → 절반(= 한쪽 오차) 최대 434.6ms.
+#   - 그 위에 얹는 여유(ARRIVAL_SAFETY_MS 기본 250ms) 내역:
+#       왕복 흔들림 (994.6ms 최악 - 701.6ms 최소) / 2 = 146.5ms
+#       셀레니움→크롬→네트워크 발사 지연            ≈  50ms
+#       서버가 요청을 받고 Date 를 찍기까지의 시간   ≈  50ms
+#     → 합계 약 250ms
+#   2026-08-27 값으로 계산하면 434.6 + 250 = 약 685ms 뒤가 목표가 된다.
+#
+# 비대칭이 요점이다. 이르면 **확정 거절**(1/1 실측). 늦으면 '정원초과' 위험인데
+# 어떤 캡처에서도 한 번도 관측된 적이 없다. 그래서 늦는 쪽으로 틀린다.
+ARRIVAL_MIN_AFTER_MS = 350.0
+ARRIVAL_MAX_AFTER_MS = 1200.0
+ARRIVAL_SAFETY_MS = 250.0
+
 # 고객이 알려준 기본 센터 (2026-08-24, 고객 원문: "서초구 신반포 센터 기본값으로")
 # stcode 는 실제 사이트 검색 결과에서 확인한 값이다.
 DEFAULT_CENTER = {
@@ -115,19 +142,27 @@ DEFAULT_SETTINGS = {
     # 준비(검색~예약하기)를 정각 몇 초 전에 시작할지. 준비는 여유 있게 끝내고
     # 모달을 열어둔 채 기다린다. 정각에 쏘는 것은 [확인] 하나뿐이다.
     "setup_seconds": 240,
-    # [확인] 요청이 서버 09:00:00 보다 몇 ms 먼저 '도착'하게 할지.
-    # 조금 이르면 서버가 "예약시간전" 이라고 답하고 자리는 살아 있으므로
-    # 곧바로 다시 쏜다. 조금 늦으면 "정원초과" 라 되돌릴 수 없다.
-    # 그래서 기본값은 이른 쪽이다.
-    "arrival_lead_ms": 300,
+    # [확인] 요청이 서버 09:00:00 **뒤** 몇 ms 에 도착하게 할지.
+    # 0 이면 자동: 그때그때 측정된 시각 오차 + arrival_safety_ms.
+    # 근거와 산수는 위 ARRIVAL_* 상수 주석에 있다.
+    "arrival_after_ms": 0,
+    "arrival_safety_ms": int(ARRIVAL_SAFETY_MS),
     "retry_seconds": 20,         # 정각 이후 [확인] 재시도 지속 시간
     "confirm_retry_ms": 90,      # '예약시간전' 일 때 재발사 간격
+    # '예약시간전' 을 맞아 확인창이 닫혔을 때만, [예약하기] 를 다시 눌러
+    # 확인창을 되살리는 횟수 상한과 벽시계 마감(정각 기준 초).
+    # 다른 어떤 결과에서도 다시 누르지 않는다. handover.burst 참고.
+    "reopen_max": 2,
+    "reopen_seconds": 15,
     "dry_run": False,            # True 면 [확인] 직전에서 멈춘다
     "keep_browser_open": True,
 }
 
-# 옛 설정 파일 호환. v1.0.3 까지는 prefire_ms 였고 의미가 같다.
-_RENAMED = {"prefire_ms": "arrival_lead_ms"}
+# 옛 설정 파일의 죽은 키. **매핑하지 않는다.** v1.0.8 까지의
+# arrival_lead_ms(=정각 300ms 전 도착)는 2026-08-27 실전에서 확정 실패였고,
+# 고객 PC 의 settings.json 에 그 값이 그대로 남아 있다. 이름을 바꿔 두면
+# load_settings 가 모르는 키로 흘려버리므로 옛 값이 되살아나지 않는다.
+_OBSOLETE = ("prefire_ms", "arrival_lead_ms")
 
 
 def _appdata_dir() -> Path:
@@ -172,7 +207,8 @@ def load_settings() -> dict:
             saved = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
                 for k, v in saved.items():
-                    k = _RENAMED.get(k, k)
+                    if k in _OBSOLETE:
+                        continue
                     if k in data:
                         data[k] = v
                 if not isinstance(data.get("center"), dict) or not data["center"].get("stcode"):

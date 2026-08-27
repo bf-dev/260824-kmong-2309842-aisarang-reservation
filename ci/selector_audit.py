@@ -105,6 +105,8 @@ P_CENTERS = SITEMAP / "07-centers-seocho-idsession.html"
 P_RESERVE = SITEMAP / "07-reserve-605-idsession.html"
 # 2026-08-26 08:57 고객 PC 캡처의 진짜 가상대기열 레이어
 P_QUEUE = REAL / "netfunnel_waiting.html"
+# 2026-08-27 09:00:00 고객 PC 캡처의 진짜 '예약시간전' 알림
+P_TOO_EARLY = REAL / "too_early_alert.html"
 
 
 def exists(p: Probe, page: Path, script, *args):
@@ -309,10 +311,15 @@ def build_checks(p: Probe):
       var c=document.querySelectorAll('[id=layer-alert-popup-contents2]');
       return s.length ? {shells:s.length, contents:c.length} : null;""")
 
-    # 서버가 실제로 돌려주는 결과 **문구**. 고객이 모달에서 멈췄으므로
-    # InsertOcreqst.html 이 호출된 적이 없다 -> 캡처에 없다.
-    add("9", "서버 결과 문구(예약시간전 / 정원초과)", UNCONF,
-        "캡처 373건 어디에도 없음. 고객이 확인을 누르지 않아 InsertOcreqst.html 미호출")
+    # 서버가 실제로 돌려주는 결과 **문구**. 근거 등급이 둘로 갈렸다.
+    #   예약시간전: 2026-08-27 09:00:00 실물. InsertOcreqst.html 의 returnmsg 를
+    #               사이트가 alert2 로 찍은 것이 캡처에 그대로 남았다.
+    #   정원초과  : 아직 실물 없음. 우리가 늦게 도착한 적이 한 번도 없다.
+    add("9", "서버 결과 문구: 예약시간전 (아직 예약 가능한 시간이 아닙니다.)", CONFIRMED,
+        "2026-08-27 09:00:00 캡처 page_source/0002_handover_after.html "
+        "#layer-alert-popup-contents2 (= InsertOcreqst.html 의 returnmsg)")
+    add("9", "서버 결과 문구(정원초과)", UNCONF,
+        "아직 어떤 캡처에도 없음. 늦게 도착한 적이 한 번도 없기 때문")
 
     # ---------------- 대기열: 2026-08-26 실물. 확인창 자리에 뜬 것이 이것이다.
     probe("Q", "대기열 레이어 #NetFunnel_Loading_Popup", P_QUEUE, r"""
@@ -461,6 +468,55 @@ def product_checks(p: Probe) -> list:
     st = handover.read_state(d)
     add("체크가 꺼지면 같은 화면에서도 발사하지 않는다",
         st.ready() is False and st.ticked == 0, f"blockers={st.blockers()}")
+
+    # ---- 2026-08-27 09:00:00 의 그 화면. 서버 원문과 되살리기 문. -------------
+    d = p.load(P_TOO_EARLY).d
+    d.execute_script("var b=document.getElementById('rowSchChkNo0');"
+                     "if(b){b.checked=true;}")
+    notices = [str(t) for t in (p.js(booking._JS_READ_NOTICE) or [])]
+    hit = [n for n in notices if booking.TOO_EARLY_REAL in n]
+    add("서버 원문 '아직 예약 가능한 시간이 아닙니다.' 를 실물 알림에서 읽는다",
+        bool(hit) and booking.classify(hit[0]) == booking.R_TOO_EARLY,
+        f"notices={len(notices)} classify="
+        f"{booking.classify(hit[0]) if hit else 'no_text'}")
+
+    st = handover.read_state(d)
+    add("확인창이 소비된 그 화면에서는 발사 조건을 만족하지 않는다",
+        st.modal is False and st.ready() is False and st.ticked == 1,
+        f"modal={st.modal} ticked={st.ticked} queue={st.queue}")
+
+    d.execute_script(
+        "window.__fnSave = 0; window.fnSave = function(){ window.__fnSave++; };"
+        "window.__alertClose = 0; window.__confirmClick = 0;"
+        "document.querySelectorAll(\"[id^='layer-popup-close']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__alertClose++; }); });"
+        "document.querySelectorAll(\"[id='layer-confirm-popup-confirm2']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__confirmClick++; }); });")
+
+    class _Now:
+        def server_now(self):
+            return 1001.0
+
+    gate = handover._Reopen(_Now(), 1000.0, 2, 15.0)
+    gate.note_outcome(booking.R_TOO_EARLY)
+    allowed = gate.allowed(st)
+    if allowed:
+        gate.do(d, lambda *_: None)
+    got = d.execute_script(
+        "return {save: window.__fnSave, alert: window.__alertClose,"
+        "        confirm: window.__confirmClick};") or {}
+    add("'예약시간전' 뒤 되살리기가 [예약하기] 를 정확히 한 번 누른다",
+        allowed is True and got.get("save") == 1 and got.get("alert") == 1
+        and got.get("confirm") == 0,
+        f"allowed={allowed} fnSave={got.get('save')} "
+        f"alertClosed={got.get('alert')} confirmClicked={got.get('confirm')}")
+
+    gate2 = handover._Reopen(_Now(), 1000.0, 2, 15.0)
+    gate2.note_outcome(booking.R_FULL)
+    add("'정원초과' 뒤에는 되살리기 문이 열리지 않는다",
+        gate2.allowed(st) is False, gate2.why_not(st))
     return out
 
 

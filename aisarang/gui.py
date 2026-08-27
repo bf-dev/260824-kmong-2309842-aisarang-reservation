@@ -406,9 +406,11 @@ class App:
                          "확인창이 없으면 누르지 않습니다 (잘못 누르는 것보다 안전합니다).",
                  bg=CARD, fg=INK, font=("맑은 고딕", 10), anchor="w",
                  justify="left").grid(row=0, column=0, columnspan=4, sticky="w")
-        tk.Label(c, text="너무 이르면 사이트가 '예약시간전' 이라고 답합니다. 자리는 남아 있으므로 "
-                         "곧바로 다시 누릅니다.\n"
-                         "너무 늦으면 '정원초과' 입니다. 그때는 두들기지 않고 결과를 알려드립니다.",
+        tk.Label(c, text="정각보다 먼저 도착한 요청은 사이트가 그냥 버립니다"
+                         " ('아직 예약 가능한 시간이 아닙니다').\n"
+                         "그래서 9시 정각을 아주 조금 지나서 도착하도록 맞춥니다. "
+                         "그래도 이르면 확인창을 되살려 다시 누릅니다.\n"
+                         "'정원초과' 라면 자리가 나간 것이라 두들기지 않고 결과를 알려드립니다.",
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
                  justify="left").grid(row=1, column=0, columnspan=4, sticky="w",
                                       pady=(8, 0))
@@ -966,7 +968,8 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
                           "불가합니다. 8월 현재 예약 시간 포함하여 60시간을 "
                           "초과합니다. 예약하시겠습니까?")
             checks = {
-                "예약시간전": booking.classify("예약시간전입니다."),
+                # 실물 서버 원문(2026-08-27 09:00:00 캡처). 지어낸 글자가 아니다.
+                "예약시간전": booking.classify(booking.TOO_EARLY_REAL),
                 "정원초과": booking.classify("정원초과 되었습니다."),
                 "완료": booking.classify("예약이 완료되었습니다."),
                 "확인창본문": booking.classify(real_modal),

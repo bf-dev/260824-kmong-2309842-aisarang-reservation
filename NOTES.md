@@ -11,7 +11,7 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 130 passed (크롬 있으면 브라우저 19개 포함)
+.venv/bin/python -m pytest tests/ -q        # 201 passed (v1.0.9, 크롬 있으면 브라우저 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
@@ -21,9 +21,10 @@ python3 main.py --clocktest=1.2 --interval=20  # 시각 재측정이 정말 주�
 AISARANG_BASE_URL=http://127.0.0.1:18777 \
   python3 main.py --rectest                  # 진단 기록 모드 실행 (로컬 fixture 전용, v1.0.6)
 python3 ci/fixture_server.py 18777           # --rectest 가 붙을 로컬 서버 (/rec 화면)
-python3 main.py --handovertest               # 인계 모드를 실물 캡처에 대고 실행 (v1.0.8)
-                                             #   기대: fired=1/4, HANDOVERTEST OK
+python3 main.py --handovertest               # 인계 모드를 실물 캡처에 대고 실행 (v1.0.9)
+                                             #   기대: fired=1/5, HANDOVERTEST OK
 python3 ci/build_netfunnel_fixture.py <ZIP>  # 대기열 픽스처 재생성 (v1.0.8)
+python3 ci/build_too_early_fixture.py <ZIP>  # '예약시간전' 픽스처 재생성 (v1.0.9)
 ```
 
 빌드는 GitHub Actions `windows-latest` (`.github/workflows/build.yml`).
@@ -1070,7 +1071,268 @@ ci/fixtures/real/netfunnel_waiting.html    2026-08-26 08:57 의 진짜 대기열
 `tests/test_handover.py::test_the_netfunnel_fixture_carries_no_personal_data`
 가 커밋된 결과물을 한 번 더 본다.
 
-## 배포 현황 (v1.0.8, 2026-08-26 01:10Z) ← 지금 서빙 중
+## v1.0.9 (2026-08-27): the aim moved from before the hour to after it
+
+Written in English on purpose (house rule for engineer notes). The Korean strings
+quoted below are verbatim server/UI text and must not be translated.
+
+### What happened: the first real 09:00 firing of handover mode failed
+
+Customer evidence ZIP (their own PC, Windows 10 10.0.19045, frozen v1.0.8):
+`/home/bfdev/neoworks/apps/gateway/artifacts/private/05788f12-b025-48ba-bb01-7c45121013d8/1787788821324-aisarang-reservation-2309842-20260827-090021.zip`
+(a second ZIP `…-090512.zip` is the same run's shutdown dump, identical except the
+two upload lines at the tail).
+
+```
+[08:38:51] [확인] 목표 도착: 정각 300ms 전 / 편도 추정 364ms 만큼 미리 발사
+[08:59:24] 정각 90초 전 ... 마지막 값: 보정 -1319ms (오차 ±435ms, 최소왕복 740ms)
+[08:59:59] 발사 직전 점검: 확인창 감지됨 · 선택표 체크 켜짐
+[09:00:00] [확인] 1발째 · 도착 추정 정각 -296ms
+           · 서버: 알림 아직 예약 가능한 시간이 아닙니다. 확인 [too_early]
+[09:00:01] 선택표 체크 켜짐 · 확인창 없음 ([예약하기] 를 눌러주세요)
+[09:00:01] [확인] 을 누를 수 없는 상태입니다: 예약 확인창이 화면에 없습니다
+```
+
+Everything about the run was healthy: the customer had the confirm dialog open and
+held from 08:39:49, the tick was on, the preflight passed, and the shot went out at
+the intended instant. **We aimed at the wrong instant.** `arrival_lead_ms = 300`
+meant "arrive 300 ms BEFORE the hour", and the server discards anything that lands
+before its own 09:00:00.000. That was a guaranteed loss, not bad luck.
+
+### The site's own script, captured (this is now the reference)
+
+`page_source/0002_handover_after.html` in that ZIP contains the real inline JS.
+Three facts come straight out of it and they drive everything below.
+
+```js
+<a href="javascript:;" class="btn h50" id="timecareConfirm" onclick="fnSave();">예약하기</a>
+
+var fnSave = function () {
+    ...INFOQUALF row count check / frm.resYn check / first-time-use notice...
+    NetFunnel_Action({action_id: "mcis_0"}, function(ev,ret){ insertOcreqst(); });   // 대기열 진입
+}
+function insertOcreqst () {
+    if(!timeChk) { alert("이용시간을 선택해 주시기 바랍니다.") -> NetFunnel_Complete(); return; }
+    if(!dayChk)  { alert("이용정보를 선택해 주시기 바랍니다.") -> NetFunnel_Complete(); return; }
+    ...builds confirmText, incl. the 60-hour warning...
+    icmsLayerPopup.confirm2({title:"예약", contents: confirmText}, function(res) {
+        frm.resgb.value = "R"; fnLoddingStart();
+        customAjax.ajax({ type:"POST", url:"/icms/occasion/InsertOcreqst.html",
+            data: $('#pfrm').serializeArray(),
+            success: function(data){
+                frm.resYn.value = "N"; fnLoddingEnd();
+                if (data.returnval == "success") {
+                    alert2(data.returnmsg) -> NetFunnel_Complete(); location.href = "/?menuno=245";
+                } else {
+                    alert2(data.returnmsg) -> NetFunnel_Complete();     // no navigation
+                }
+            },
+            error: function(res){ frm.resYn.value = "N"; NetFunnel_Complete(); fnLoddingEnd(); }
+        });
+    });
+}
+```
+
+1. **The confirm dialog can only be opened by `fnSave()`.** There is no other entry
+   point. Once our 확인 click consumes it, the ONLY way back is re-pressing 예약하기.
+2. **`fnSave()` enters the NetFunnel queue immediately** (`NetFunnel_Action`), before
+   the dialog exists. That is exactly what wrecked 2026-08-26 (72 -> 138 -> 177).
+3. **A failed submit does not navigate.** Only `returnval == "success"` sends the
+   browser to `/?menuno=245`. So after a rejection the child/date/time/tick are all
+   still on the page: re-pressing is a re-click, not a re-preparation.
+
+There is also a fourth fact worth knowing, and it is a warning:
+**`frm.resYn.value` is never set to `"Y"` anywhere in this script.** The
+`if(frm.resYn.value == "Y") alert("처리중입니다.")` guard at the top of `fnSave` is
+dead code in practice. So **the site has no client-side duplicate-submit guard on
+this path.** See "why we do NOT burst-fire" below.
+
+### 1) The arrival target: -300 ms  ->  +685 ms (measured, not rounded)
+
+Old: `config.DEFAULT_SETTINGS["arrival_lead_ms"] = 300`, target = `open_epoch - 0.300`.
+New: `arrival_after_ms = 0` (auto), target = `open_epoch + clock.safe_arrival_after()`.
+
+```
+aim = clamp( uncertainty/2 + arrival_safety_ms , ARRIVAL_MIN_AFTER_MS , ARRIVAL_MAX_AFTER_MS )
+              350 ms                                                     1200 ms
+```
+
+`uncertainty` is the residual width of the offset interval the Date-header
+intersection leaves; half of it is our one-sided clock error. Measured on the
+customer's PC on 2026-08-27, four syncs: **868.1 / 843.0 / 847.3 / 869.2 ms**, so a
+one-sided error of **434.0 / 421.5 / 423.6 / 434.6 ms**. Worst = 434.6 ms.
+
+`arrival_safety_ms` defaults to 250 ms and is itself built from that day's numbers:
+
+| component | value | where it comes from |
+|---|---|---|
+| RTT jitter, one-way | 146.5 ms | (worst 994.6 - best 701.6) / 2, `clock_sync.json` |
+| Selenium -> Chrome -> wire dispatch | ~50 ms | budget, not separately measured |
+| server's pre-`Date`-stamp processing | ~50 ms | budget, not separately measured |
+| **total** | **~250 ms** | |
+
+So with 2026-08-27's own numbers: **434.6 + 250 = 684.6 ms after the hour**, versus
+the 300 ms *before* it that we shipped. A 985 ms swing. It is not a constant: on the
+CI runner (uncertainty ~133 ms) the same formula asks for 316.6 ms and gets clamped
+up to the 350 ms floor.
+
+**Why err late, explicitly.** The two failure directions are not symmetric:
+
+- Too early is a **certain** rejection. Proven 1/1 on the only real firing we have.
+  The server does not "maybe" accept an early request; it discards it.
+- Too late risks 정원초과. **Never once observed** in any capture (08-25 373 requests,
+  08-26, 08-27). We have never arrived late, so we have zero evidence that ~0.7 s of
+  lateness costs the slot.
+- And when the crowd is big enough for 0.7 s to matter, NetFunnel is on, which
+  serializes everyone anyway and makes sub-second aim irrelevant (08-26: 72 ahead).
+- Asymmetric recovery: too-early now has a bounded recovery (below). Too-late has
+  none, but too-late is also the direction with no observed cost.
+
+Note this is the *aim*, not the achieved arrival. The estimator's own error is what
+the margin is paying for.
+
+**A dead-setting trap, handled.** The customer's `%APPDATA%/AisarangReservation/settings.json`
+still contains `arrival_lead_ms: 300`. `config._OBSOLETE` drops that key (and
+`prefire_ms`) on load instead of renaming it, so the old value cannot come back.
+`tests/test_arrival.py::test_the_dead_setting_cannot_come_back_from_an_old_settings_file`
+pins that. **If you ever rename this setting again, do the same thing.**
+
+### 2) The too_early recovery (`handover._Reopen`)
+
+One shot used to be all we got. Now, and ONLY after a `too_early` classification,
+the program closes the result alert and re-presses 예약하기 once to re-open the
+confirm dialog, then fires again. Eight conditions, all required:
+
+1. the last fired shot classified exactly `too_early` (not full, not not_bookable,
+   not unknown, not fail, not ok)
+2. we actually fired at least once (a missing dialog with no prior shot is just
+   "the customer has not pressed 예약하기 yet" and we never press for them)
+3. the confirm dialog is currently absent (if it is open, just re-fire)
+4. still on the reserve page AND the slot row tick is still on
+5. no NetFunnel queue layer visible
+6. `open_epoch <= server_now() < open_epoch + reopen_seconds` (default 15 s)
+7. under the cap (`reopen_max`, default 2)
+8. not locked
+
+Locking is the important one. `_Reopen.lock()` is permanent and fires on: any
+non-`too_early` outcome, `#timecareConfirm` not found, and **a queue layer appearing
+after our re-press**. Point 8 + point 5 together are what keeps 2026-08-26 from
+repeating. After a re-press we wait the queue out, we never press again.
+
+Each re-press also requires a *fresh* `too_early`: `_Reopen.do()` clears `last_code`,
+so two presses need two rejections.
+
+The recovery presses exactly two things, both verified against the real captured
+markup: the alert's own close anchor (`[id^=layer-popup-close]`, which is what makes
+the site run `NetFunnel_Complete()` and hand the queue ticket back) and
+`#timecareConfirm`. `booking.close_result_alert` explicitly skips any shell whose id
+or class says confirm, so it can never click 확인 on the reservation dialog.
+
+`booking.repress_reserve_button` is deliberately **stricter** than `press_reserve`:
+no text-matching fallback, `#timecareConfirm` or nothing.
+
+### 3) Why we do NOT burst-fire several 확인 clicks
+
+Considered and rejected. RTT is ~740 ms, so 3 clicks 90 ms apart would all be in
+flight before the first answer returns. If two of them succeed we create **two real
+reservations**, and cancellation on this site is phone-only. And the captured script
+shows there is **no client-side duplicate guard** (`resYn` is never set to `"Y"`), so
+"the site will reject the second one" is not supported by evidence. We have no
+server-side dedupe evidence either way. Not shipped. Do not ship it later without a
+capture proving the server rejects a duplicate.
+
+### 4) The `too_early` wording is now evidence-backed. 정원초과 still is not.
+
+Real server text, first ever observed, from the site's own alert2 layer:
+
+```html
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+  <h5>알림</h5>
+  <p class="f_18" id="layer-alert-popup-contents2">아직 예약 가능한 시간이 아닙니다.</p>
+  <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+```
+
+This is `data.returnmsg` from `InsertOcreqst.html`. It is now `booking.TOO_EARLY_REAL`
+and every fixture and test uses that constant. `ci/fixtures/reserve_page.html` used to
+print our invented `'예약시간전'`, which made the classifier tests circular; it now
+prints the real string.
+
+**Watch this one-character gap. It is a live hazard:**
+
+```
+too_early     "아직 예약 가능한 시간이 아닙니다."      <- server returnmsg (real)
+not_bookable  "예약 가능 시간이 아닙니다."             <- site selectDay2() (real)
+```
+
+`가능한` vs `가능`. They do not substring-match each other, so ordering alone happens
+to work, but that is luck. `booking._RE_NOT_YET` now promotes any `아직 …시간이
+아닙니다` to `too_early` **before** the NOT_BOOKABLE list is consulted. Keep the word
+lists wide, keep that regex first.
+
+정원초과 remains **customer-report only**. Zero occurrences in every capture we have,
+because we have never arrived late. `ci/selector_audit.py` item 9 is now split into a
+CONFIRMED row (too_early) and an UNCONF row (정원초과). When a real 정원초과 lands,
+fix `FULL_WORDS` from the capture and move that row.
+
+### 5) What else the ZIP told us
+
+- **No NetFunnel queue was engaged today.** Whole-capture NetFunnel traffic was:
+  `opcode=5101` at page render (23:39:49Z, the env check), then after our POST an
+  `opcode=5004` complete carrying a key. There is **no `opcode=5002`** anywhere, i.e.
+  no queue ticket was ever issued, and `detail_handoverState.queue` is `false`.
+  That is why the aim mattered at all today: with a queue, position dominates.
+- **Exactly one `InsertOcreqst.html` POST** in the whole capture (index 296/300 of
+  `network_handover_after.json`), status 200. One click, one submit. No duplicate.
+- **`NetFunnel_Complete` ran at 09:00:04.2** (the 5004 cache-buster is
+  `1787788804211`), ~4 s after the POST, i.e. when the alert was closed. Confirms the
+  release path and is why the recovery closes the alert before re-pressing.
+- **The real arrival skew is NOT measurable from this capture.** Our -296 ms figure is
+  our own estimate. `clock.note_too_early` only learns when the estimate is >= 0
+  ("we thought we were late and the server says we were early"). At -296 ms the
+  server's `too_early` is exactly what we predicted, so it carries no information and
+  `detail_clockCorrectionMs` is `0.0`. A `too_early` at a POSITIVE estimated arrival
+  would be the measurement we still lack. With the new aim we may finally get one:
+  if it happens, the correction machinery is already wired.
+- `meta.json`: `serverOffsetMs -1319.3`, `oneWayMs 369.8`, `clockResyncs 3`,
+  `clockAgeSec 357`, `result "fail"`, `detail_reason "exhausted"`.
+- The confirm dialog body was the 60-hour voucher warning ending in `예약하시겠습니까?`,
+  matched by `modalHow=layer-confirm-popup2` / `confirmId=layer-confirm-popup-confirm2`.
+  The v1.0.7/1.0.8 selector work is confirmed correct on a live 09:00 screen.
+
+### 6) The ast test was widened deliberately, not deleted
+
+`test_handover_has_no_way_to_touch_the_page_except_the_final_confirm` is gone and
+replaced by two tests:
+
+- `test_handover_touches_the_page_only_through_three_named_calls` walks `handover.py`
+  with `ast`, collects every `booking.<attr>` reference, subtracts a read-only
+  whitelist, and asserts the remainder is **exactly**
+  `{fire_confirm, repress_reserve_button, close_result_alert}`. A fourth page-touching
+  call breaks the build.
+- `test_the_reserve_button_is_reachable_only_from_the_too_early_gate` asserts
+  `repress_reserve_button` and `close_result_alert` are called only from `_Reopen.do`,
+  that `fire_confirm` is called only from `fire`, and that inside `burst` there is
+  exactly one `.do(` call and exactly one `.allowed(` guard.
+
+The old FORBIDDEN token list is still applied on top (no `.click(`, no `driver.get(`,
+no `booking.press_`, no `booking.prepare`, ...).
+
+### New fixture
+
+`ci/fixtures/real/too_early_alert.html`, built by `ci/build_too_early_fixture.py`
+from that ZIP: the sanitised `grid_selected_row_added.html` base with its **empty**
+alert shell swapped for the **filled** one from the 09:00 capture, forced visible.
+Same PII-shape gate as the netfunnel builder. The page carries the real 예약하기
+button with its real `onclick="fnSave();"`; the site's own scripts are stripped from
+fixtures (they would call NetFunnel and ajax), so tests install a counter on
+`window.fnSave` and count that the real button's real handler name was invoked once.
+
+```bash
+python ci/build_too_early_fixture.py [ZIP]     # regenerate
+python main.py --handovertest                  # expects: fired=1/5, HANDOVERTEST OK
+```
+
+## 배포 현황 (v1.0.8, 2026-08-26 01:10Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.8.zip
   (29,231,071 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.8/`

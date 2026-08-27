@@ -2,7 +2,12 @@
 """4·5단계(날짜 표 → 추가 → 체크 → 예약하기 → 확인)의 판정과 불변식.
 
 근거는 고객이 보내준 인증서 세션 화면녹화(docs/site-map/recording/)와
-고객이 알려준 서버 응답 두 가지("예약시간전" / "정원초과") 이다.
+서버 응답이다. 응답 문구의 근거 등급이 서로 다르다:
+
+  예약시간전  **실물**. 2026-08-27 09:00:00 고객 PC 캡처에서 서버가 실제로
+              돌려준 원문 "아직 예약 가능한 시간이 아닙니다."
+              (`booking.TOO_EARLY_REAL`, InsertOcreqst.html 의 returnmsg)
+  정원초과    아직 고객 진술뿐이다. 어떤 캡처에도 한 건도 없다.
 """
 import os
 import sys
@@ -15,9 +20,28 @@ from aisarang import booking
 # ---------------------------------------------------------------- 응답 분류
 
 def test_too_early_is_not_a_failure():
+    # 실물 원문이 먼저다. 나머지는 표기 흔들림을 넓게 열어둔 것이다.
+    assert booking.TOO_EARLY_REAL == "아직 예약 가능한 시간이 아닙니다."
+    assert booking.classify(booking.TOO_EARLY_REAL) == booking.R_TOO_EARLY
+    assert booking.classify("알림 아직 예약 가능한 시간이 아닙니다. 확인") \
+        == booking.R_TOO_EARLY
     assert booking.classify("예약시간전입니다.") == booking.R_TOO_EARLY
     assert booking.classify("아직 예약시간이 아닙니다.") == booking.R_TOO_EARLY
     assert booking.result_is_retryable(booking.R_TOO_EARLY)
+
+
+def test_the_real_wording_is_one_character_from_the_sites_own_refusal():
+    """실물 두 문구가 '한' 한 글자 차이다. 여기가 섞이면 자리를 버린다.
+
+        예약시간전  "아직 예약 가능한 시간이 아닙니다."   서버 returnmsg (실물)
+        칸 거절     "예약 가능 시간이 아닙니다."          selectDay2() (실물)
+
+    앞의 것은 다시 쏘면 되는 상태, 뒤의 것은 다시 쏴봐야 소용없는 상태다.
+    """
+    assert booking.classify("예약 가능 시간이 아닙니다.") == booking.R_NOT_BOOKABLE
+    assert not booking.result_is_retryable(booking.R_NOT_BOOKABLE)
+    # 사이트가 언젠가 '아직' 을 붙인 채 '가능' 으로 써도 틀리지 않는다.
+    assert booking.classify("아직 예약 가능 시간이 아닙니다.") == booking.R_TOO_EARLY
 
 
 def test_full_is_terminal():

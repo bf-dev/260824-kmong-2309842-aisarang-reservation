@@ -11,6 +11,11 @@
   ci/fixtures/real/netfunnel_waiting.html
       2026-08-26 08:57 고객 PC 캡처의 **진짜 가상대기열 레이어**
       (`ci/build_netfunnel_fixture.py`). 그날 확인창 자리에 뜬 것이 이것이다.
+  ci/fixtures/real/too_early_alert.html
+      2026-08-27 09:00:00 고객 PC 캡처의 **진짜 '예약시간전' 알림**
+      (`ci/build_too_early_fixture.py`). [확인] 한 발이 확인창을 소비하고
+      그 자리에 뜬 것이 이것이고, 문구는 InsertOcreqst.html 의 returnmsg
+      원문("아직 예약 가능한 시간이 아닙니다.") 이다.
 
 이 파일이 못박는 것은 두 가지뿐이고, 둘 다 브리프의 요구다.
   1. 사람이 만들어 둔 설정 위에서는 **실제로 발사한다**
@@ -36,8 +41,10 @@ from aisarang import automation, booking, config, handover  # noqa: E402
 REAL_DIR = os.path.join(ROOT, "ci", "fixtures", "real")
 
 pytestmark = pytest.mark.skipif(
-    not os.path.isfile(os.path.join(REAL_DIR, "netfunnel_waiting.html")),
-    reason="실물 캡처 픽스처가 없습니다 (python ci/build_netfunnel_fixture.py)",
+    not all(os.path.isfile(os.path.join(REAL_DIR, n))
+            for n in ("netfunnel_waiting.html", "too_early_alert.html")),
+    reason="실물 캡처 픽스처가 없습니다 (python ci/build_netfunnel_fixture.py, "
+           "python ci/build_too_early_fixture.py)",
 )
 
 
@@ -205,6 +212,103 @@ def test_the_capture_says_a_reload_makes_the_wait_longer(site):
     assert "현재 앞에 72 명" in body.replace("  ", " "), body
 
 
+# ------------------------------- 2026-08-27 09:00 의 그 화면 (실물 캡처, 진짜 크롬)
+
+def test_the_real_too_early_alert_is_read_and_classified(site):
+    """그날 서버가 실제로 돌려준 문구를, 그날의 실제 마크업에서 읽는다.
+
+    v1.0.8 까지 우리 분류기 시험은 순환논증이었다. 픽스처가 우리가 지어낸
+    '예약시간전' 을 찍고 우리가 그것을 알아맞혔다. 이제 기준은
+    InsertOcreqst.html 의 returnmsg 원문이다.
+    """
+    d = site("too_early_alert.html", tick=True)
+
+    shown = d.execute_script(
+        "var out=[];"
+        "document.querySelectorAll(\"[id='layer-alert-popup2']\").forEach(function(e){"
+        "  if (e.getBoundingClientRect().height > 0)"
+        "    out.push((e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim());"
+        "});"
+        "return out;")
+    assert len(shown) == 1, shown
+    assert booking.TOO_EARLY_REAL in shown[0], shown[0]
+
+    # 우리 판정기가 읽는 경로(read_notices)로도 같은 글자가 나와야 한다.
+    notices = booking.read_notices(d)
+    hit = [n for n in notices if booking.TOO_EARLY_REAL in n]
+    assert hit, notices[:5]
+    assert booking.classify(hit[0]) == booking.R_TOO_EARLY, hit[0]
+
+    # 그리고 이 화면은 '쏠 수 없는' 화면이다: 확인창이 소비돼 사라졌다.
+    st = handover.read_state(d)
+    assert st.modal is False and st.ready() is False
+    assert st.on_reserve_page is True and st.ticked == 1, st.as_dict()
+    assert st.queue is False
+
+
+def test_the_real_too_early_wording_is_not_the_sites_own_refusal():
+    """실물 두 문구가 한 글자 차이다. 섞이면 재시도할 자리를 버리게 된다.
+
+        예약시간전  "아직 예약 가능**한** 시간이 아닙니다."  (서버 returnmsg)
+        칸 거절     "예약 가능 시간이 아닙니다."             (selectDay2)
+    """
+    assert booking.classify(booking.TOO_EARLY_REAL) == booking.R_TOO_EARLY
+    assert booking.classify("예약 가능 시간이 아닙니다.") == booking.R_NOT_BOOKABLE
+    # '아직' 이 붙으면 어느 표기든 '아직 안 열렸다' 로 읽는다.
+    assert booking.classify("아직 예약 가능 시간이 아닙니다.") == booking.R_TOO_EARLY
+    assert booking.result_is_retryable(booking.classify(booking.TOO_EARLY_REAL))
+
+
+def test_recovery_closes_the_real_alert_and_presses_the_real_reserve_button(site):
+    """되살리기가 실물 마크업 위에서 정확히 두 개만 누른다는 것을 못박는다.
+
+    누르는 것: 알림의 [확인](#layer-popup-close2) 하나, [예약하기]
+    (#timecareConfirm, onclick=fnSave()) 하나. 그게 전부다.
+    예약 확인창의 [확인](-confirm2)은 **한 번도 눌리지 않는다.**
+
+    사이트의 진짜 fnSave 는 픽스처에서 제거돼 있다(넷퍼널과 ajax 를 부른다).
+    그 자리에 계수기를 놓아 '진짜 버튼의 진짜 onclick 이 불렸는가' 만 센다.
+    """
+    d = site("too_early_alert.html", tick=True)
+    d.execute_script(
+        "window.__fnSave = 0; window.fnSave = function(){ window.__fnSave++; };"
+        "window.__alertClose = 0; window.__confirmClick = 0;"
+        "document.querySelectorAll(\"[id^='layer-popup-close']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__alertClose++; }); });"
+        "document.querySelectorAll(\"[id='layer-confirm-popup-confirm2']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__confirmClick++; }); });")
+
+    gate = handover._Reopen(_FakeClock(OPEN + 1.0), OPEN, 2, 15.0)
+    gate.note_outcome(booking.R_TOO_EARLY)
+    st = handover.read_state(d)
+    assert gate.allowed(st) is True, gate.why_not(st)
+    assert gate.do(d, lambda *_: None) is True
+
+    got = d.execute_script(
+        "return {save: window.__fnSave, alert: window.__alertClose,"
+        "        confirm: window.__confirmClick};")
+    assert got["save"] == 1, got          # [예약하기] 정확히 한 번
+    assert got["alert"] == 1, got         # 알림 닫기 정확히 한 번
+    assert got["confirm"] == 0, got       # 확인창은 건드리지 않았다
+    assert gate.used == 1 and gate.locked is False
+
+
+def test_close_result_alert_never_touches_the_confirm_dialog(site):
+    """확인창이 떠 있는 화면에서 알림 닫기를 불러도 아무것도 누르지 않는다."""
+    d = site("modal_open.html", tick=True)
+    d.execute_script(
+        "window.__confirmClick = 0;"
+        "document.querySelectorAll(\"[id='layer-confirm-popup-confirm2']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__confirmClick++; }); });")
+    assert booking.close_result_alert(d) == ""
+    assert d.execute_script("return window.__confirmClick;") == 0
+    # 확인창은 그대로 살아 있다.
+    assert handover.read_state(d).ready() is True
+
+
 # --------------------------------------------------- booking 쪽 대기열 판정기
 
 def test_booking_queue_reader_agrees_with_the_handover_reader(site):
@@ -281,18 +385,100 @@ def _code_without_docs(path: str) -> str:
     return ast.unparse(tree)
 
 
-def test_handover_has_no_way_to_touch_the_page_except_the_final_confirm():
-    """소스에 누를 수 있는 코드가 한 줄도 없다는 것을 못박는다.
+# v1.0.9 에서 이 목록이 딱 한 칸 넓어졌다. **의도적으로.**
+#
+# 2026-08-27 09:00:00, [확인] 한 발이 정각 296ms 전에 도착했고 서버가
+# "아직 예약 가능한 시간이 아닙니다." 로 버렸다. 그 클릭에 확인창이 소비돼
+# 사라졌고, v1.0.8 에는 거기서 할 수 있는 일이 없었다. 자리는 살아 있는데
+# 쏠 창이 없었다. 사이트 스크립트 실물상 확인창을 여는 길은 fnSave() 하나뿐이라
+# (booking.py 의 v1.0.9 주석에 원문이 있다), 되살리려면 [예약하기] 를 다시
+# 눌러야 한다.
+#
+# 그래서 이 테스트는 "누를 수 있는 코드가 없다" 를 못박는 것을 그만두고,
+# **정확히 이 셋만 있다** 를 못박는다. 넷째가 생기면 여기서 깨진다.
+PAGE_TOUCHING = {
+    "fire_confirm",            # 유일한 발사 경로
+    "repress_reserve_button",  # '예약시간전' 뒤에만, _Reopen.do 안에서만
+    "close_result_alert",      # 되살리기 직전 결과 알림 닫기
+}
 
-    누가 "확인창이 닫혔으니 [예약하기] 한 번만 다시 눌러주자" 를 넣으면 이
-    테스트가 깨진다. 그 한 번이 2026-08-26 에 고객의 대기열 순번을
-    72명 → 138명 → 177명 으로 밀어냈다.
+# handover.py 가 booking 에서 가져다 쓰는 것 중 화면을 건드리지 않는 것들.
+READ_ONLY_BOOKING = {
+    "_JS_ARM", "read_outcome", "classify", "StepResult",
+    "R_OK", "R_FULL", "R_NOT_BOOKABLE", "R_TOO_EARLY", "R_UNKNOWN", "R_FAIL",
+    "TOO_EARLY_REAL",
+}
+
+
+def _booking_attrs_used(path: str) -> dict:
+    """handover.py 가 부르는 booking.<이름> 을 전부 모은다: 이름 -> 감싼 함수들."""
+    import ast
+
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    owner = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.walk(node):
+                owner.setdefault(id(child), node.name)
+    used = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        if not (isinstance(node.value, ast.Name) and node.value.id == "booking"):
+            continue
+        used.setdefault(node.attr, set()).add(owner.get(id(node), "<module>"))
+    return used
+
+
+def test_handover_touches_the_page_only_through_three_named_calls():
+    """이 모드가 화면을 건드리는 길이 정확히 셋뿐이라는 것을 못박는다.
+
+    v1.0.8 까지 이 테스트는 "누를 수 있는 코드가 한 줄도 없다" 였다. v1.0.9 는
+    '예약시간전' 응답에 한해 [예약하기] 재클릭을 허용하므로, 같은 강도를
+    유지하려면 목록을 지우는 게 아니라 **화이트리스트로 바꿔야** 한다.
+    넷째 경로가 생기면 여기서 깨진다.
     """
     body = _code_without_docs(HANDOVER_SRC)
     for token in FORBIDDEN:
         assert token not in body, f"인계 모드에 {token} 이 들어왔습니다"
-    # 유일하게 허용된 발사 경로.
-    assert "booking.fire_confirm(driver)" in body
+
+    used = _booking_attrs_used(HANDOVER_SRC)
+    touching = set(used) - READ_ONLY_BOOKING
+    assert touching == PAGE_TOUCHING, (
+        f"화면을 건드리는 booking 호출이 달라졌습니다: {sorted(touching)}")
+
+
+def test_the_reserve_button_is_reachable_only_from_the_too_early_gate():
+    """[예약하기] 재클릭은 `_Reopen.do` 한 곳에서만 나올 수 있다.
+
+    다른 함수가 그것을 부르기 시작하면(예: 확인창이 없을 때 그냥 눌러버리기)
+    2026-08-26 의 72명 → 138명 → 177명 이 그대로 돌아온다.
+    """
+    used = _booking_attrs_used(HANDOVER_SRC)
+    assert used["repress_reserve_button"] == {"do"}, used["repress_reserve_button"]
+    assert used["close_result_alert"] == {"do"}, used["close_result_alert"]
+    assert used["fire_confirm"] == {"fire"}, used["fire_confirm"]
+
+    # `do` 는 _Reopen 의 메서드이고, burst 안에서 `allowed()` 를 통과한
+    # 자리에서만 불린다.
+    import ast
+
+    tree = ast.parse(open(HANDOVER_SRC, encoding="utf-8").read())
+    klass = next(n for n in tree.body
+                 if isinstance(n, ast.ClassDef) and n.name == "_Reopen")
+    assert "do" in {m.name for m in klass.body
+                    if isinstance(m, ast.FunctionDef)}
+
+    burst = next(n for n in tree.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "burst")
+    calls = [n for n in ast.walk(burst)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and n.func.attr == "do"]
+    assert len(calls) == 1, "burst 안에서 되살리기는 정확히 한 자리에서만 불린다"
+    guards = [n for n in ast.walk(burst)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr == "allowed"]
+    assert len(guards) == 1, "되살리기 문은 정확히 한 번만 열린다"
 
 
 def test_handover_state_script_only_reads():
@@ -395,9 +581,10 @@ def test_describe_lines_are_readable_korean():
         assert re.search(r"[가-힣]", line)
 
 
-def test_the_netfunnel_fixture_carries_no_personal_data():
+@pytest.mark.parametrize("name", ["netfunnel_waiting.html", "too_early_alert.html"])
+def test_the_captured_fixtures_carry_no_personal_data(name):
     """픽스처는 커밋된다."""
-    body = open(os.path.join(REAL_DIR, "netfunnel_waiting.html"),
+    body = open(os.path.join(REAL_DIR, name),
                 encoding="utf-8", errors="replace").read()
     allowed = {"100000000000000001", "200101-3000000", "t***@example.com",
                "010-0000-0000", "010", "0000", "000", "00", "00000", "0",
@@ -408,3 +595,265 @@ def test_the_netfunnel_fixture_carries_no_personal_data():
         for hit in re.findall(pat, body):
             text = hit if isinstance(hit, str) else "".join(hit)
             assert text in allowed, (pat, text[:24])
+
+
+# ------------------------------------ '예약시간전' 되살리기 (v1.0.9, 실전 실패의 결과)
+#
+# 2026-08-27 09:00:00 고객 PC 진단 ZIP `…-20260827-090021.zip`:
+#
+#   [09:00:00] [확인] 1발째 · 도착 추정 정각 -296ms
+#              · 서버: 알림 아직 예약 가능한 시간이 아닙니다. 확인 [too_early]
+#   [09:00:01] 선택표 체크 켜짐 · 확인창 없음 ([예약하기] 를 눌러주세요)
+#
+# 한 발이 전부였다. 확인창이 클릭에 소비됐기 때문이다. 이제 그 응답에 한해
+# [예약하기] 를 다시 눌러 창을 되살린다. 아래가 그 문의 자물쇠 전부다.
+
+class _FakeClock:
+    """server_now 만 필요한 자리에 쓰는 가짜 시계."""
+
+    def __init__(self, now: float, step: float = 0.0):
+        self._now = float(now)
+        self._step = float(step)
+
+    def server_now(self) -> float:
+        now = self._now
+        self._now += self._step
+        return now
+
+    def arrival_for_local_fire(self, local_epoch: float) -> float:
+        return self._now
+
+    def note_too_early(self, *_a, **_kw) -> float:
+        return 0.0
+
+
+OPEN = 1000.0
+
+
+def _closed(**kw) -> "handover.LiveState":
+    """[확인] 을 쏜 직후의 화면: 확인창은 사라졌고 선택표 체크는 그대로다."""
+    base = dict(modal=False, confirm=False, armed=False,
+                rows=1, ticked=1, on_reserve_page=True, queue=False)
+    base.update(kw)
+    return handover.LiveState(**base)
+
+
+def _gate(code=booking.R_TOO_EARLY, now=OPEN + 2.0, max_times=2, seconds=15.0):
+    g = handover._Reopen(_FakeClock(now), OPEN, max_times, seconds)
+    if code is not None:
+        g.note_outcome(code)
+    return g
+
+
+def test_reopen_opens_only_for_a_too_early_answer():
+    assert _gate().allowed(_closed()) is True
+
+
+@pytest.mark.parametrize("code", [booking.R_FULL, booking.R_NOT_BOOKABLE,
+                                  booking.R_UNKNOWN, booking.R_FAIL,
+                                  booking.R_OK])
+def test_reopen_refuses_every_other_answer(code):
+    """정원초과 / 칸 거절 / 미분류 / 실패 / 성공. 어느 것도 되살리지 않는다.
+
+    특히 정원초과는 자리가 나간 것이라 다시 눌러도 소용이 없고, 미분류는
+    무슨 일이 일어났는지 모르는 상태라 손대면 안 된다.
+    """
+    assert _gate(code=code).allowed(_closed()) is False
+
+
+def test_reopen_refuses_when_nothing_was_ever_fired():
+    """아직 한 발도 안 쐈는데 확인창이 없는 것은 그냥 '고객이 아직 안 눌렀다' 다."""
+    assert _gate(code=None).allowed(_closed()) is False
+
+
+def test_reopen_never_fires_while_the_queue_layer_is_up():
+    """가상대기열 위에서는 절대 누르지 않는다. 그게 이 모드가 생긴 이유다."""
+    assert _gate().allowed(_closed(queue=True, ticked=1)) is False
+
+
+def test_reopen_locks_forever_once_a_queue_shows_up():
+    """되살린 뒤 대기열이 뜨면 기다린다. 다시 누르면 맨 뒤로 간다."""
+    g = _gate()
+    g.lock("가상대기열에 섰습니다(다시 누르면 맨 뒤로 갑니다)")
+    g.note_outcome(booking.R_TOO_EARLY)
+    assert g.allowed(_closed()) is False
+    assert "대기열" in g.why_not(_closed())
+
+
+def test_reopen_refuses_when_the_dialog_is_still_open():
+    """창이 살아 있으면 되살릴 이유가 없다. 그냥 다시 쏘면 된다."""
+    assert _gate().allowed(_closed(modal=True, confirm=True, armed=True)) is False
+
+
+def test_reopen_refuses_when_the_prepared_screen_is_gone():
+    """선택표 체크가 풀렸거나 예약 화면을 벗어났으면 누르지 않는다."""
+    assert _gate().allowed(_closed(ticked=0)) is False
+    assert _gate().allowed(_closed(on_reserve_page=False)) is False
+
+
+def test_reopen_respects_the_wall_clock_window():
+    """정각 전에는 안 누르고, 마감(reopen_seconds)이 지나도 안 누른다."""
+    assert _gate(now=OPEN - 0.5).allowed(_closed()) is False
+    assert _gate(now=OPEN + 14.9, seconds=15.0).allowed(_closed()) is True
+    assert _gate(now=OPEN + 15.1, seconds=15.0).allowed(_closed()) is False
+
+
+def test_reopen_is_hard_capped():
+    """상한을 넘겨서 누르지 않는다. 0 이면 아예 안 누른다."""
+    g = _gate(max_times=2)
+    g.used = 2
+    assert g.allowed(_closed()) is False
+    assert _gate(max_times=0).allowed(_closed()) is False
+
+
+def test_reopen_needs_a_fresh_too_early_for_each_press(monkeypatch):
+    """한 번 되살린 뒤에는 새 '예약시간전' 이 있어야 또 누를 수 있다."""
+    monkeypatch.setattr(booking, "close_result_alert", lambda *a, **k: "")
+    monkeypatch.setattr(booking, "repress_reserve_button", lambda *a, **k: True)
+    g = _gate(max_times=2)
+    assert g.do(object(), lambda *_: None) is True
+    assert g.allowed(_closed()) is False        # 아직 새 답을 못 들었다
+    g.note_outcome(booking.R_TOO_EARLY)
+    assert g.allowed(_closed()) is True
+
+
+def test_reopen_locks_when_the_reserve_button_is_gone(monkeypatch):
+    monkeypatch.setattr(booking, "close_result_alert", lambda *a, **k: "")
+    monkeypatch.setattr(booking, "repress_reserve_button", lambda *a, **k: False)
+    g = _gate()
+    assert g.do(object(), lambda *_: None) is False
+    g.note_outcome(booking.R_TOO_EARLY)
+    assert g.allowed(_closed()) is False
+
+
+# --------------------------------------------------- burst 전체 흐름
+
+class _ScriptedWatcher:
+    """poll() 이 미리 정해둔 상태를 차례로 돌려준다. 마지막 것은 계속 유지."""
+
+    def __init__(self, states):
+        self._states = list(states)
+        self.state = self._states[0]
+
+    def poll(self):
+        self.state = self._states[0]
+        if len(self._states) > 1:
+            self._states.pop(0)
+        return self.state
+
+
+def _ready(**kw):
+    base = dict(modal=True, modal_text="예약하시겠습니까?", confirm=True,
+                armed=True, rows=1, ticked=1, on_reserve_page=True)
+    base.update(kw)
+    return handover.LiveState(**base)
+
+
+def _run_burst(monkeypatch, states, outcomes, **kw):
+    calls = {"fire": 0, "repress": 0, "close": 0}
+
+    def fake_fire(_driver):
+        calls["fire"] += 1
+        return True
+
+    def fake_outcome(_driver, timeout=0.0):
+        return outcomes[min(calls["fire"], len(outcomes)) - 1]
+
+    def fake_repress(_driver, log=lambda *_: None):
+        calls["repress"] += 1
+        return True
+
+    def fake_close(_driver, log=lambda *_: None):
+        calls["close"] += 1
+        return booking.TOO_EARLY_REAL
+
+    monkeypatch.setattr(handover, "fire", fake_fire)
+    monkeypatch.setattr(booking, "read_outcome", fake_outcome)
+    monkeypatch.setattr(booking, "repress_reserve_button", fake_repress)
+    monkeypatch.setattr(booking, "close_result_alert", fake_close)
+
+    opts = dict(retry_seconds=3, retry_ms=20, reopen_max=2, reopen_seconds=3.0)
+    opts.update(kw)
+    res = handover.burst(object(), _FakeClock(OPEN + 0.5, step=0.12), OPEN,
+                         _ScriptedWatcher(states), log=lambda *_: None, **opts)
+    return res, calls
+
+
+def test_burst_recovers_from_a_real_too_early_and_wins_the_second_shot(monkeypatch):
+    """2026-08-27 그대로: 첫 발이 '예약시간전' → 창 되살리기 → 두 번째 발 성공.
+
+    문구는 지어낸 것이 아니라 그날 서버가 실제로 돌려준 원문이다.
+    """
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_ready(), _closed(), _ready()],
+        outcomes=[(booking.R_TOO_EARLY, booking.TOO_EARLY_REAL),
+                  (booking.R_OK, "예약이 완료되었습니다.")])
+    assert res.ok is True and res.reason == "reserved"
+    assert calls["fire"] == 2, calls
+    assert calls["repress"] == 1, calls
+    assert calls["close"] == 1, "되살리기 전에 결과 알림을 닫는다"
+    assert res.detail["reopen"]["used"] == 1
+    assert res.detail["confirmAttempts"] == 2
+
+
+def test_burst_never_represses_after_a_capacity_answer(monkeypatch):
+    """'정원초과' 는 자리가 나간 것이다. 두들기지 않는다."""
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_ready(), _closed(), _closed()],
+        outcomes=[(booking.R_FULL, "정원초과입니다.")])
+    assert res.ok is False and res.reason == "full"
+    assert calls["fire"] == 1 and calls["repress"] == 0, calls
+
+
+def test_burst_never_represses_after_an_unrecognised_answer(monkeypatch):
+    """무슨 일이 일어났는지 모르면 손대지 않는다."""
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_ready(), _closed(), _closed(), _closed()],
+        outcomes=[(booking.R_UNKNOWN, "??")])
+    assert calls["repress"] == 0, calls
+    assert res.detail["reopen"]["locked"] is True
+
+
+def test_burst_waits_out_a_queue_that_appears_after_the_repress(monkeypatch):
+    """되살렸더니 대기열이 떴다. 기다린다. 절대 다시 누르지 않는다."""
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_ready(), _closed(), _closed(queue=True)],
+        outcomes=[(booking.R_TOO_EARLY, booking.TOO_EARLY_REAL)])
+    assert calls["fire"] == 1
+    assert calls["repress"] == 1, calls
+    assert res.detail["reopen"]["locked"] is True
+    assert "대기열" in res.detail["reopen"]["lockReason"]
+
+
+def test_burst_stops_at_the_repress_cap(monkeypatch):
+    """계속 '예약시간전' 이어도 **되살리기**는 상한까지만 한다.
+
+    상한이 걸리는 것은 [예약하기] 재클릭 쪽이다. 그 뒤에 고객이 손으로 창을
+    다시 열어주면 그 창에는 여전히 쏜다(그게 이 모드의 본래 일이다).
+    아래 마지막 _ready() 가 그 경우이고, 되살리기 수는 그대로 2 다.
+    """
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_ready(), _closed(), _ready(), _closed(), _ready(),
+                _closed(), _ready(), _closed()],
+        outcomes=[(booking.R_TOO_EARLY, booking.TOO_EARLY_REAL)] * 6,
+        reopen_max=2)
+    assert calls["repress"] == 2, calls
+    assert calls["close"] == 2, calls
+    assert calls["fire"] == 4, calls
+    assert res.detail["reopen"]["used"] == 2
+    assert res.ok is False
+
+
+def test_burst_never_represses_without_a_shot(monkeypatch):
+    """확인창이 처음부터 없었으면(고객이 아직 안 눌렀다) 우리가 누르지 않는다."""
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_closed(), _closed(), _closed()],
+        outcomes=[(booking.R_OK, "")])
+    assert calls["fire"] == 0 and calls["repress"] == 0, calls
+    assert res.reason == "never_ready"

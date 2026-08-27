@@ -364,8 +364,10 @@ def test_the_server_answer_is_read_from_the_alert2_shell(site):
     확인창과 마찬가지로 이 껍데기도 페이지에 **두 벌**이고 jQuery `#id` 는
     앞의 한 벌만 건드리므로, 우리 쪽은 id 를 믿지 말고 보이는 것을 읽어야 한다.
 
-    문구는 서버 원문이 아니라 자리표시자다. 진짜 원문(예약시간전/정원초과)은
-    아직 캡처에 없다. 여기서 못 박는 것은 '결과가 도착하는 자리' 다.
+    아래 성공 문구는 자리표시자다(성공 원문은 아직 캡처에 없다). 실패 쪽
+    원문은 2026-08-27 에 실물로 잡혔고, 같은 자리에 같은 방식으로 도착한다
+    (tests/test_handover.py 의 too_early_alert.html 참고).
+    여기서 못 박는 것은 '결과가 도착하는 자리' 다.
     """
     d = site("modal_open.html")
     shells = d.execute_script(
@@ -410,16 +412,30 @@ def test_site_side_rejections_are_not_retried():
         assert not booking.result_is_retryable(code), text
 
 
-def test_customer_reported_words_still_classify():
-    """고객이 적어준 두 문구는 아직 서버 실물로 확인되지 않았다.
+def test_the_too_early_wording_is_now_evidence_backed_but_full_is_not():
+    """두 문구의 근거 등급이 2026-08-27 에 갈렸다. 그 상태를 못박아 둔다.
 
-    2026-08-25 캡처(요청 373건)에 '예약시간전' / '정원초과' 는 한 건도 없다.
-    고객이 확인창에서 멈춰 InsertOcreqst.html 이 호출된 적이 없기 때문이다.
-    그래서 표기 흔들림을 넓게 열어 둔 채로 유지한다. 이 테스트는 그 상태를
-    기록해 두는 것이지, 서버 문구를 증명하는 것이 아니다.
+    예약시간전 — **실물**. 그날 09:00:00 에 InsertOcreqst.html 이 실제로
+        돌려준 returnmsg 를 사이트가 alert2 로 찍었고, 그 화면이
+        `page_source/0002_handover_after.html` 에 그대로 남았다:
+
+            <p class="f_18" id="layer-alert-popup-contents2">
+              아직 예약 가능한 시간이 아닙니다.</p>
+
+        v1.0.8 까지 이 자리의 시험은 순환논증이었다(우리 픽스처가 우리가
+        지어낸 '예약시간전' 을 찍고 우리가 그것을 맞혔다). 이제 아니다.
+
+    정원초과 — **아직 실물 없음**. 08-25 / 08-26 / 08-27 어떤 캡처에도 한
+        건도 없다. 우리가 정각보다 늦게 도착한 적이 한 번도 없기 때문이다.
+        그래서 표기 흔들림을 넓게 열어 둔 채로 유지한다. 실물을 보면
+        FULL_WORDS 부터 고쳐라.
     """
-    assert booking.classify("예약시간전입니다.") == booking.R_TOO_EARLY
+    assert booking.TOO_EARLY_REAL == "아직 예약 가능한 시간이 아닙니다."
+    assert booking.classify(booking.TOO_EARLY_REAL) == booking.R_TOO_EARLY
     assert booking.result_is_retryable(booking.R_TOO_EARLY)
+    # 넓게 열어둔 옛 표기도 계속 잡힌다.
+    assert booking.classify("예약시간전입니다.") == booking.R_TOO_EARLY
+
     assert booking.classify("정원초과 되었습니다.") == booking.R_FULL
     assert not booking.result_is_retryable(booking.R_FULL)
 

@@ -42,6 +42,54 @@ def _out(line: str = "") -> None:
         pass
 
 
+def _reopen_probe(drv) -> dict:
+    """'예약시간전' 화면에서 되살리기가 무엇을 누르는지 프로즌 exe 로 확인한다.
+
+    2026-08-27 09:00:00 캡처의 실물 알림 마크업(too_early_alert.html) 위에서:
+      - 서버 원문이 우리 판정기로 too_early 로 읽히는가
+      - 되살리기 문(`_Reopen`)이 열리는가
+      - 눌리는 것이 [예약하기] 하나와 알림 [확인] 하나뿐인가
+        (예약 확인창의 [확인] 은 **0회** 여야 한다)
+
+    사이트의 진짜 fnSave 는 픽스처에서 제거돼 있다(넷퍼널과 ajax 를 부른다).
+    그 자리에 계수기를 놓아 진짜 버튼의 진짜 onclick 이 불렸는지만 센다.
+    """
+    from aisarang import booking, handover
+
+    drv.execute_script(
+        "window.__fnSave = 0; window.fnSave = function(){ window.__fnSave++; };"
+        "window.__alertClose = 0; window.__confirmClick = 0;"
+        "document.querySelectorAll(\"[id^='layer-popup-close']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__alertClose++; }); });"
+        "document.querySelectorAll(\"[id='layer-confirm-popup-confirm2']\").forEach("
+        "  function(a){ a.addEventListener('click', function(){"
+        "    window.__confirmClick++; }); });")
+
+    notices = booking.read_notices(drv)
+    hit = [n for n in notices if booking.TOO_EARLY_REAL in n]
+    classified = booking.classify(hit[0]) if hit else "no_text"
+
+    class _Now:
+        def server_now(self):
+            return 1001.0
+
+    gate = handover._Reopen(_Now(), 1000.0, 2, 15.0)
+    gate.note_outcome(booking.R_TOO_EARLY)
+    st = handover.read_state(drv)
+    allowed = gate.allowed(st)
+    if allowed:
+        gate.do(drv, lambda *_: None)
+    got = drv.execute_script(
+        "return {save: window.__fnSave, alert: window.__alertClose,"
+        "        confirm: window.__confirmClick};") or {}
+    return {"classified": classified, "allowed": bool(allowed),
+            "fnSave": int(got.get("save") or 0),
+            "alertClosed": int(got.get("alert") or 0),
+            "confirmClicked": int(got.get("confirm") or 0),
+            "text": (hit[0][:120] if hit else "")}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv if argv is not None else sys.argv[1:])
     diag = Diagnostics()
@@ -261,6 +309,17 @@ def main(argv: list[str] | None = None) -> int:
                 visit("modal_open.html", False)             # 체크 꺼짐 → 발사 금지
                 visit("netfunnel_waiting.html", True)       # 대기열 → 발사 금지
                 visit("grid_selected_row_added.html", True)  # 확인창 없음 → 발사 금지
+                # 2026-08-27 09:00:00 의 그 화면. [확인] 한 발이 확인창을
+                # 소비하고 그 자리에 '예약시간전' 알림이 떴다. 여기서도 쏘지
+                # 않는다(쏠 창이 없다). 대신 서버 원문이 그대로 읽히고
+                # too_early 로 분류되는지, 되살리기 문이 열리는지를 본다.
+                visit("too_early_alert.html", True)
+                too_early = _reopen_probe(drv)
+                _out(f"HANDOVERTEST   tooEarlyText={too_early['classified']} "
+                     f"reopenAllowed={too_early['allowed']} "
+                     f"fnSave={too_early['fnSave']} "
+                     f"alertClosed={too_early['alertClosed']} "
+                     f"confirmClicked={too_early['confirmClicked']}")
             finally:
                 try:
                     drv.quit()
@@ -279,12 +338,19 @@ def main(argv: list[str] | None = None) -> int:
                   and by[("modal_open.html", False)][1] is False
                   and by[("netfunnel_waiting.html", True)][0].queue is True
                   and by[("netfunnel_waiting.html", True)][1] is False
-                  and by[("grid_selected_row_added.html", True)][1] is False)
+                  and by[("grid_selected_row_added.html", True)][1] is False
+                  and by[("too_early_alert.html", True)][1] is False
+                  and too_early["classified"] == "too_early"
+                  and too_early["allowed"] is True
+                  and too_early["fnSave"] == 1
+                  and too_early["alertClosed"] == 1
+                  and too_early["confirmClicked"] == 0)
             fired_total = sum(1 for _n, _t2, _s, f in rows if f)
-            _out(f"HANDOVERTEST fired={fired_total}/4 expected=1")
+            _out(f"HANDOVERTEST fired={fired_total}/5 expected=1")
             diag.add_json("handovertest.json", {
                 "rows": [{"page": n, "ticked": t, "state": s.as_dict(),
-                          "fired": f} for n, t, s, f in rows]})
+                          "fired": f} for n, t, s, f in rows],
+                "tooEarly": too_early})
             diag.upload("인계 모드 점검 " + ("성공" if ok else "실패"),
                         {"mode": "handovertest",
                          "result": "success" if ok else "fail",

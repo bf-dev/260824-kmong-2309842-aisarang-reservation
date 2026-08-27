@@ -32,12 +32,29 @@ v1.0.7 은 정각 240초 전에 검색부터 [예약하기] 까지 스스로 걸
 자동 모드와 완전히 같다.
 
 하지 않는 일: 화면 이동, 검색, 센터 열기, 아동/반/시간 선택, 칸 클릭,
-[추가], 체크박스, [예약하기]. **이 파일에는 그 코드가 존재하지 않는다.**
+[추가], 체크박스. **이 파일에는 그 코드가 존재하지 않는다.**
 `tests/test_handover.py::test_handover_has_no_way_to_touch_the_page_except_the_final_confirm`
 가 소스에 `.click(` / `.submit(` / `send_keys` / `ActionChains` /
-`dispatchEvent` / `driver.get` 이 없다는 것을 못박는다. 누가 "한 번만
-눌러주자" 를 넣으면 테스트가 깨진다. 유일한 발사 경로는
-`booking.fire_confirm()` 한 줄이다.
+`dispatchEvent` / `driver.get` 이 없다는 것을 못박는다.
+
+v1.0.9 에서 이 목록이 딱 한 칸 넓어졌다 (2026-08-27 실전 실패의 결과)
+------------------------------------------------------------------
+[예약하기] 를 다시 누르는 길이 하나 생겼다. **'예약시간전' 응답 뒤에만.**
+그날 09:00:00 에 우리는 정각 296ms 전에 도착했고, 서버는 그 한 발을
+"아직 예약 가능한 시간이 아닙니다." 로 버렸다. 확인창은 그 클릭에 소비돼
+사라졌고, v1.0.8 에는 거기서 할 수 있는 일이 없었다. 자리는 살아 있는데
+쏠 창이 없었다.
+
+사이트 스크립트 실물이 확인창을 여는 길은 `fnSave()` 하나뿐임을 보여준다
+(booking.py 의 v1.0.9 주석에 원문이 있다). 그래서 되살리는 방법은
+[예약하기] 재클릭밖에 없고, 그 클릭은 곧 가상대기열 진입이다. 그래서
+`_Reopen` 이 여덟 개 조건을 전부 통과할 때만 열린다. 특히 대기열을 한 번이라도
+보면 **영구히 잠긴다**. 테스트는 이제 "누를 수 있는 코드가 없다" 가 아니라
+"[예약하기] 와 결과 알림 닫기, 그 둘 말고는 없다" 를 못박는다.
+
+이 파일에서 페이지를 건드리는 booking 함수는 정확히 셋뿐이다.
+`fire_confirm` (발사), `repress_reserve_button` (되살리기),
+`close_result_alert` (되살리기 직전 알림 닫기).
 
 안전 불변식이 달라졌다 (제일 중요한 변경)
 ------------------------------------------------------------------
@@ -495,10 +512,103 @@ class HandoverShot:
 OUTCOME_TIMEOUT = 1.6
 
 
+class _Reopen:
+    """'예약시간전' 을 맞았을 때만 확인창을 되살리는 문(v1.0.9).
+
+    2026-08-27 09:00:00 에 배운 것: 확인창은 [확인] 한 번에 소비된다. 서버가
+    "아직 예약 가능한 시간이 아닙니다." 로 답한 뒤에는 확인창이 사라지고,
+    v1.0.8 은 그 자리에서 할 수 있는 일이 없었다. 한 발이 전부였다.
+
+    그런데 그 응답만은 특별하다. **자리는 아직 살아 있고 우리가 이르기만 했다.**
+    이때에 한해 [예약하기] 를 다시 눌러 확인창을 되살리는 것이 허용된다.
+
+    허용 조건은 전부 참이어야 한다. 하나라도 아니면 누르지 않는다.
+      1. 방금 우리가 쏜 한 발의 분류가 정확히 `too_early` 다.
+         (정원초과 / 칸 거절 / 미분류 / 아무것도 안 쏜 상태 → 금지)
+      2. 실제로 한 발 이상 쐈다.
+      3. 확인창이 지금 화면에 없다(있으면 그냥 다시 쏘면 된다).
+      4. 아직 예약 화면 위에 있고 선택표 체크가 그대로 켜져 있다.
+      5. 가상대기열 레이어가 떠 있지 않다.
+      6. 정각을 지났고, 마감(reopen_seconds) 전이다.
+      7. 남은 횟수가 있다.
+      8. 잠기지 않았다. 한 번이라도 대기열을 보면 영구히 잠근다.
+
+    8번이 이 판의 핵심이다. [예약하기] 는 곧 `NetFunnel_Action`, 즉 대기열
+    진입이다(실물 스크립트). 대기열이 떴다면 다시 누르는 것은 순번을 맨 뒤로
+    보내는 짓이고, 2026-08-26 에 그것이 72명 → 138명 → 177명을 만들었다.
+    """
+
+    def __init__(self, clock, open_epoch: float, max_times: int, seconds: float):
+        self.clock = clock
+        self.open_epoch = open_epoch
+        self.max_times = max(int(max_times), 0)
+        self.seconds = max(float(seconds), 0.0)
+        self.used = 0
+        self.locked = False
+        self.lock_reason = ""
+        self.pressed = False
+        self.last_code = ""
+
+    def lock(self, why: str) -> None:
+        if not self.locked:
+            self.locked = True
+            self.lock_reason = why
+
+    def note_outcome(self, code: str) -> None:
+        self.last_code = code or ""
+        if code and code != booking.R_TOO_EARLY:
+            self.lock(f"결과가 {code} 입니다")
+
+    def allowed(self, st: LiveState) -> bool:
+        if self.locked or self.used >= self.max_times:
+            return False
+        if self.last_code != booking.R_TOO_EARLY:
+            return False
+        if st.queue or st.modal:
+            return False
+        if not st.on_reserve_page or st.ticked <= 0:
+            return False
+        now = self.clock.server_now()
+        return self.open_epoch <= now < self.open_epoch + self.seconds
+
+    def why_not(self, st: LiveState) -> str:
+        if self.locked:
+            return self.lock_reason or "다시 누르지 않기로 잠겼습니다"
+        if self.used >= self.max_times:
+            return f"확인창 되살리기를 {self.max_times}번 다 썼습니다"
+        if self.last_code != booking.R_TOO_EARLY:
+            return "'예약시간전' 응답이 아닙니다"
+        if st.queue:
+            return "가상대기열이 떠 있습니다"
+        if not st.on_reserve_page or st.ticked <= 0:
+            return "예약 화면/선택표 체크가 그대로가 아닙니다"
+        return "되살리기 마감 시각을 지났습니다"
+
+    def do(self, driver, log) -> bool:
+        """알림을 닫고 [예약하기] 를 정확히 한 번 다시 누른다."""
+        self.used += 1
+        self.last_code = ""          # 다음 되살리기는 새 '예약시간전' 이 있어야 한다
+        booking.close_result_alert(driver, log)
+        ok = booking.repress_reserve_button(driver, log)
+        self.pressed = True
+        if not ok:
+            self.lock("[예약하기] 를 찾지 못했습니다")
+            return False
+        log(f"확인창 되살리기 {self.used}/{self.max_times}회차. "
+            f"대기열이 뜨면 그대로 기다리고 다시 누르지 않습니다.")
+        return True
+
+    def as_dict(self) -> dict:
+        return {"used": self.used, "max": self.max_times,
+                "locked": self.locked, "lockReason": self.lock_reason,
+                "pressedReserveAgain": self.pressed}
+
+
 def burst(driver, clock, open_epoch: float, watcher: Watcher,
           retry_seconds: int = 20, retry_ms: int = 90,
           log=lambda *_: None, diag=None, stop_event=None,
-          preflight: "LiveState | None" = None) -> booking.StepResult:
+          preflight: "LiveState | None" = None,
+          reopen_max: int = 2, reopen_seconds: float = 15.0) -> booking.StepResult:
     """정각에 [확인] 을 쏘고, 필요하면 다시 쏜다. 그 외에는 아무것도 누르지 않는다.
 
     자동 모드의 `booking.confirm_burst` 와 판정은 같다.
@@ -507,11 +617,11 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
       정원초과   → 그 칸은 나갔다. 두들기지 않고 멈춘다.
       칸 거절    → 사이트가 그 칸 자체를 막았다. 멈춘다.
 
-    다른 점이 하나 있고, 그것이 이 모드의 존재 이유다.
-    확인창이 닫혀 버리면 자동 모드는 [예약하기] 를 다시 눌러 창을 되살린다.
-    **여기서는 절대 그러지 않는다.** [예약하기] 는 가상대기열 진입이라,
+    확인창이 닫혀 버렸을 때가 다르다. 자동 모드는 무조건 [예약하기] 를 다시
+    눌러 창을 되살린다. 여기서는 **서버가 '예약시간전' 이라고 답했을 때에만**
+    그렇게 한다(`_Reopen` 참고). [예약하기] 는 가상대기열 진입이라, 아무 때나
     다시 누르면 순번이 맨 뒤로 간다(2026-08-26 실측: 72명 → 138명 → 177명).
-    대신 사람에게 알리고, 창이 다시 열리는지 계속 읽기만 한다.
+    되살릴 수 없는 상황이면 사람에게 알리고, 창이 다시 열리는지 읽기만 한다.
 
     `preflight` 는 발사 직전(수십 ms 전)에 이미 다시 읽어둔 상태다. 첫 발은
     그것을 그대로 쓴다. 첫 발만은 화면을 한 번 더 읽느라 조준 시각을 늦출 수
@@ -523,6 +633,7 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
     corrected = False
     told_closed = False
     pending = preflight
+    reopen = _Reopen(clock, open_epoch, reopen_max, reopen_seconds)
 
     while clock.server_now() < deadline:
         if stop_event is not None and stop_event.is_set():
@@ -535,13 +646,22 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         if not st.ready():
             if st.queue:
                 # 정각을 넘겨 대기열에 잡혀 있을 수도 있다. 기다리는 게 맞다.
+                # 우리가 되살리려고 누른 뒤에 뜬 것이라면 여기서 영구히 잠근다.
+                if reopen.pressed:
+                    reopen.lock("가상대기열에 섰습니다(다시 누르면 맨 뒤로 갑니다)")
+                time.sleep(max(retry_ms, 50) / 1000.0)
+                continue
+            if reopen.allowed(st):
+                told_closed = False
+                reopen.do(driver, log)
                 time.sleep(max(retry_ms, 50) / 1000.0)
                 continue
             if not told_closed:
                 told_closed = True
                 log("[확인] 을 누를 수 없는 상태입니다: " + "; ".join(st.blockers()))
                 log("이 모드는 [예약하기] 를 대신 누르지 않습니다(대기열 맨 뒤로 "
-                    "갑니다). 크롬 창에서 확인창을 다시 열어주시면 곧바로 누릅니다.")
+                    f"갑니다: {reopen.why_not(st)}). 크롬 창에서 확인창을 다시 "
+                    "열어주시면 곧바로 누릅니다.")
             time.sleep(max(retry_ms, 50) / 1000.0)
             continue
         told_closed = False
@@ -562,12 +682,14 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         code, text = booking.read_outcome(driver, timeout=OUTCOME_TIMEOUT)
         shot.code, shot.text = code, text
         shots.append(shot)
+        reopen.note_outcome(code)
         log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
             f"· 서버: {text or '(문구 없음)'} [{code}]")
 
         detail = {"shots": [s.as_dict() for s in shots],
                   "confirmAttempts": attempt,
                   "confirmArrivalOffsetMs": round(shot.arrival_offset_ms, 1),
+                  "reopen": reopen.as_dict(),
                   "handoverState": st.as_dict()}
 
         if code == booking.R_OK:
@@ -599,4 +721,5 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         False, msg, "exhausted" if shots else "never_ready", None,
         {"shots": [s.as_dict() for s in shots], "confirmAttempts": attempt,
          "confirmArrivalOffsetMs": round(last.arrival_offset_ms, 1),
+         "reopen": reopen.as_dict(),
          "handoverState": watcher.state.as_dict()})

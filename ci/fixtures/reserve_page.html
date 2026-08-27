@@ -189,7 +189,14 @@ document.getElementById('ok').onclick = function () {
   window.__fired = fired;
   document.getElementById('layer').classList.remove('open');
   var a = ANSWERS[i];
-  if (a === 'too_early') show('예약시간전');
+  // 서버 원문 그대로다. 2026-08-27 09:00:00 고객 PC 캡처의
+  // page_source/0002_handover_after.html 의 #layer-alert-popup-contents2 =
+  // InsertOcreqst.html 이 returnval!=success 일 때 돌려준 returnmsg.
+  // v1.0.8 까지 여기에는 우리가 지어낸 '예약시간전' 이 들어 있었고, 그래서
+  // 분류기 시험이 순환논증이었다. 지어낸 글자를 다시 넣지 마라.
+  if (a === 'too_early') show('아직 예약 가능한 시간이 아닙니다.');
+  // '정원초과' 는 아직 서버 실물을 한 번도 못 봤다(우리가 늦게 도착한 적이 없다).
+  // 이 문구는 고객 진술이고, 실물을 보면 여기부터 고쳐라.
   else if (a === 'full') show('정원초과');
   else show('예약이 완료되었습니다.');
 };

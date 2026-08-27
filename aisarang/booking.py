@@ -43,18 +43,48 @@ from dataclasses import dataclass, field
 
 # 근거의 등급이 다르다는 것을 분명히 해 둔다.
 #
-#   [고객 진술만] "예약시간전" / "정원초과"
-#       고객이 글로 적어준 두 단어다. 2026-08-25 고객 진단 캡처
-#       (요청 373건, 페이지 14장)를 전부 뒤졌지만 **한 건도 없다**.
-#       고객이 확인창에서 멈춰 InsertOcreqst.html 이 호출된 적이 없기
-#       때문이다. 아직 서버 실물로 확인되지 않았으므로 표기 흔들림을
-#       넓게 열어 둔다.
+#   [실물 확인 · 2026-08-27 09:00:00] 예약시간전
+#       인계 모드의 첫 실전 발사에서 서버가 실제로 돌려준 문구다. 고객 PC 의
+#       진단 ZIP `…-20260827-090021.zip` 에 그대로 남아 있다.
+#
+#           run.log   [확인] 1발째 · 도착 추정 정각 -296ms
+#                     · 서버: 알림 아직 예약 가능한 시간이 아닙니다. 확인 [too_early]
+#           page_source/0002_handover_after.html
+#                     <p class="f_18" id="layer-alert-popup-contents2">
+#                       아직 예약 가능한 시간이 아닙니다.</p>
+#
+#       경로도 실물로 확인됐다. InsertOcreqst.html 이 returnval != "success"
+#       로 답하면 사이트가 `icmsLayerPopup.alert2({contents: data.returnmsg})`
+#       로 그 문구를 그대로 찍는다. 즉 **이것이 서버 원문(returnmsg)** 이다.
+#       v1.0.8 까지 우리 CI 픽스처는 우리가 지어낸 '예약시간전' 을 찍고 있었고,
+#       그래서 이 분류기의 시험은 순환논증이었다. 이제 아니다.
+#
+#   [아직 실물 없음] 정원초과
+#       고객이 글로 적어준 단어다. 2026-08-25 / 08-26 / 08-27 캡처를 전부
+#       뒤졌지만 한 건도 없다(우리가 한 번도 늦게 도착한 적이 없다).
+#       표기 흔들림을 넓게 열어 둔 채로 둔다.
 #
 #   [실물 확인] NOT_BOOKABLE_WORDS 는 OccasionTimeMainSlPL.html 응답의
 #       사이트 자바스크립트에서 그대로 옮긴 문구다.
-TOO_EARLY_WORDS = ("예약시간전", "예약 시간 전", "예약시간 전",
+
+# 서버 원문 그대로. 픽스처와 테스트는 이 상수를 쓴다(지어낸 글자를 쓰지 않는다).
+TOO_EARLY_REAL = "아직 예약 가능한 시간이 아닙니다."
+
+TOO_EARLY_WORDS = ("아직 예약 가능한 시간이 아닙니다",   # 실물 (2026-08-27)
+                   "예약 가능한 시간이 아닙니다",
+                   "예약시간전", "예약 시간 전", "예약시간 전",
                    "예약시간이 아닙니다",
                    "아직 예약", "예약시작", "예약이 시작되지")
+
+# '아직' 이 붙으면 '이 칸은 안 된다' 가 아니라 '아직 안 열렸다' 다.
+# 실물 두 문구가 한 글자 차이라서(아래) 이 판정을 NOT_BOOKABLE 보다 먼저 본다.
+#   예약시간전    "아직 예약 가능**한** 시간이 아닙니다."   ← 서버 returnmsg
+#   칸 거절       "예약 가능 시간이 아닙니다."              ← 사이트 selectDay2()
+# 두 문자열은 서로 부분일치하지 않지만, 사이트가 언젠가 '아직' 을 붙인 채
+# '가능한' 을 '가능' 으로 쓰면 순서만으로 갈리게 된다. 그때도 틀리지 않게
+# '아직' 을 명시적인 신호로 승격시킨다.
+_RE_NOT_YET = re.compile(r"아직\s*(?:예약|신청)?[^.。]{0,12}"
+                         r"(?:시간이\s*아닙니다|시작되지\s*않았|시작 전)")
 
 FULL_WORDS = ("정원초과", "정원 초과", "정원이 초과", "정원이 마감",
               "마감되었습니다", "잔여 정원", "정원이 없습니다")
@@ -119,8 +149,10 @@ def classify(text: str) -> str:
       0. **질문은 결과가 아니다.** 확인창 본문이 결과로 분류되면 안 된다.
       1. 완료 문구가 있으면 그것이 최종이다.
       2. '정원초과' 안에 '초과' 가 있으므로 일반 실패보다 먼저 본다.
-      3. 사이트가 스스로 막는 문구는 재시도 대상이 아니다(R_NOT_BOOKABLE).
-      4. '예약시간전' 만 재시도 대상이다.
+      3. **'아직 …' 은 아직 안 열린 것이다.** 사이트가 칸을 거절하는 문구와
+         한 글자 차이라 여기서 먼저 갈라준다(_RE_NOT_YET 주석 참고).
+      4. 사이트가 스스로 막는 문구는 재시도 대상이 아니다(R_NOT_BOOKABLE).
+      5. '예약시간전' 만 재시도 대상이다.
     """
     t = (text or "").replace(" ", " ")
     if not t.strip():
@@ -134,6 +166,8 @@ def classify(text: str) -> str:
     for w in FULL_WORDS:
         if w in t:
             return R_FULL
+    if _RE_NOT_YET.search(t):
+        return R_TOO_EARLY
     for w in NOT_BOOKABLE_WORDS:
         if w in t:
             return R_NOT_BOOKABLE
@@ -1567,6 +1601,99 @@ def press_reserve(driver, log=lambda *_: None) -> bool:
         how = "글자"
     log(f"[{hit}] 를 눌렀습니다 ({how})."
         if hit else "[예약하기] 버튼을 찾지 못했습니다.")
+    return bool(hit)
+
+
+# ------------------------------------------- '예약시간전' 복구용 두 조각 (v1.0.9)
+#
+# 2026-08-27 캡처의 사이트 자바스크립트 실물이 이 두 함수의 근거다.
+#
+#   <a ... id="timecareConfirm" onclick="fnSave();">예약하기</a>
+#
+#   var fnSave = function () {
+#       ... INFOQUALF 행 검사 / resYn 검사 ...
+#       NetFunnel_Action({action_id: "mcis_0"}, function(ev,ret){ insertOcreqst(); });
+#   }
+#   function insertOcreqst () {
+#       ...
+#       icmsLayerPopup.confirm2({title:"예약", contents: confirmText}, function(res){
+#           customAjax.ajax({type:"POST", url:"/icms/occasion/InsertOcreqst.html", ...
+#               success: function(data){
+#                   if (data.returnval == "success") { alert2(returnmsg) → NetFunnel_Complete(); location="/?menuno=245"; }
+#                   else                             { alert2(returnmsg) → NetFunnel_Complete(); }
+#   }
+#
+# 여기서 읽어야 하는 사실 셋:
+#   1. 확인창을 여는 길은 fnSave() 하나뿐이다. 즉 확인창이 소비되고 나면
+#      [예약하기] 를 다시 누르는 것 말고 되살릴 방법이 **없다**.
+#   2. fnSave() 는 곧바로 NetFunnel_Action, 즉 **가상대기열 진입**이다.
+#      2026-08-26 에 순번을 72 → 138 → 177 로 밀어낸 것이 이 호출이다.
+#   3. 실패 응답일 때 페이지는 이동하지 않는다(성공일 때만 /?menuno=245).
+#      그래서 선택표/아동/시간은 그대로 살아 있고, 다시 누르는 것은
+#      '처음부터 다시 준비' 가 아니라 말 그대로 **재클릭 한 번**이다.
+#      다만 대기열 표는 alert2 를 닫을 때 NetFunnel_Complete() 로 반납되므로,
+#      다시 누르기 전에 그 알림을 닫아 주는 편이 깨끗하다.
+
+# 알림 레이어만 닫는다. 예약 확인창(type-confirm*)은 **절대** 건드리지 않는다.
+# 실물 마크업: <div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+#                <p class="f_18" id="layer-alert-popup-contents2">…</p>
+#                <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+_JS_CLOSE_ALERT = r"""
+function txt(e){ return ((e.innerText || e.textContent || '').replace(/\s+/g,' ')).trim(); }
+function vis(e){
+  if (!e) return false;
+  var r = e.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  var s = window.getComputedStyle(e);
+  return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+}
+var shells = document.querySelectorAll("[id^='layer-alert-popup'],[class*='type-alert']");
+for (var i = 0; i < shells.length; i++) {
+  var e = shells[i];
+  var id = String(e.id || '');
+  var cls = String(e.className || '');
+  var isAlert = (id.indexOf('layer-alert-popup') === 0) || (cls.indexOf('type-alert') >= 0);
+  if (!isAlert) continue;
+  if (id.indexOf('confirm') >= 0 || cls.indexOf('type-confirm') >= 0) continue;
+  if (!vis(e)) continue;
+  var body = '';
+  var p = e.querySelector("[id^='layer-alert-popup-contents']");
+  if (p) body = txt(p);
+  var btns = e.querySelectorAll("a,button");
+  for (var k = 0; k < btns.length; k++) {
+    if (!vis(btns[k])) continue;
+    var lb = txt(btns[k]);
+    if (lb.indexOf('확인') < 0 && lb.indexOf('닫기') < 0) continue;
+    btns[k].click();
+    return body || lb;
+  }
+}
+return null;
+"""
+
+
+def close_result_alert(driver, log=lambda *_: None) -> str:
+    """서버 결과 알림 레이어를 닫는다. 예약 확인창은 건드리지 않는다.
+
+    닫아야 사이트의 `alert2` 콜백이 돌고 그 안에서 `NetFunnel_Complete()` 가
+    대기열 표를 반납한다(실물 스크립트). 이 클릭은 예약을 만들 수 없다.
+    """
+    body = _js(driver, _JS_CLOSE_ALERT, default=None)
+    if body:
+        log(f"결과 알림을 닫았습니다: {str(body)[:60]}")
+    return str(body or "")
+
+
+def repress_reserve_button(driver, log=lambda *_: None) -> bool:
+    """이미 준비된 화면에서 [예약하기] 를 정확히 한 번 다시 누른다.
+
+    `press_reserve` 와 달리 **글자로 찾는 대체 경로가 없다.** onclick=fnSave()
+    가 걸린 `#timecareConfirm` 그 하나만 누른다. 화면이 우리가 아는 그 화면이
+    아니면 그냥 실패로 돌아온다(엉뚱한 버튼을 누르느니 아무것도 안 한다).
+    """
+    hit = _js(driver, _JS_CLICK_BY_ID, "timecareConfirm", default=None)
+    log("[예약하기] 를 다시 눌러 확인창을 되살립니다 (#timecareConfirm)."
+        if hit else "[예약하기](#timecareConfirm) 를 찾지 못했습니다.")
     return bool(hit)
 
 

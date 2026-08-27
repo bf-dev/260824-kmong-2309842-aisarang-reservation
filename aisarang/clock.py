@@ -14,7 +14,7 @@ RFC 7231 `Date:` 헤더를 붙인다. 이 헤더는 초 단위라 그대로 쓰�
 서버의 '초가 바뀌는 순간'을 여러 각도에서 협공하는 셈이다.
 
 t_mid 는 요청 직전/직후 로컬시각의 중점이다(왕복 지연이 대칭이라고 가정).
-비대칭 지연은 그대로 오차로 남으므로, 마지막에 arrival_lead_ms 로 여유를 준다.
+비대칭 지연은 그대로 오차로 남으므로, 마지막에 safe_arrival_after 여유가 흡수한다.
 
 **한 번 재고 끝내지 않는다 (v1.0.6).** 고객은 전날 오후에 프로그램을 켜두고
 다음 날 09시를 기다리기도 한다(실제 로그: 14:35 에 시작해서 09:00 발사).
@@ -68,7 +68,7 @@ class ClockSync:
         것은 '로컬에서 쏘는 시각'이 아니라 '서버에 도착하는 시각'이다.
         도착시각 = 로컬발사시각 + 편도지연 이므로, 편도지연만큼 미리 쏴야 한다.
         측정 가능한 것은 왕복(rtt)뿐이라 대칭을 가정해 절반으로 잡는다.
-        비대칭이면 그만큼 오차가 남고, 그 오차는 arrival_lead_ms 여유가 흡수한다.
+        비대칭이면 그만큼 오차가 남고, 그 오차는 safe_arrival_after 여유가 흡수한다.
         """
         if self.rtt_best == float("inf"):
             return 0.0
@@ -88,6 +88,34 @@ class ClockSync:
     def arrival_for_local_fire(self, local_epoch: float) -> float:
         """로컬 시계로 이 시각에 쏘면 서버 기준 언제 도착하는가(추정)."""
         return local_epoch + self.offset + self.one_way - self.correction
+
+    def safe_arrival_after(self, safety: float = None) -> float:
+        """정각 **뒤** 몇 초에 도착하도록 조준할지. 초 단위, 항상 양수.
+
+        2026-08-27 09:00:00 에 v1.0.8 은 정각 300ms **전** 도착을 노렸고,
+        서버는 "아직 예약 가능한 시간이 아닙니다." 로 그 한 발을 버렸다.
+        서버는 자기 시계로 정각 전에 닿은 요청을 무조건 거절한다. 그러니
+        조준점은 정각 뒤여야 하고, 얼마나 뒤인지는 **그 순간 측정된 오차**로
+        정한다. 반올림한 상수를 쓰지 않는 이유가 이것이다.
+
+            뒤로 미룰 양 = (오프셋 잔여구간 폭 / 2) + safety
+
+        앞쪽 항은 우리가 서버 시각을 얼마나 모르는지 그 자체다(구간 교집합의
+        한쪽 오차). 2026-08-27 실측 네 번: 434.0 / 421.5 / 423.6 / 434.6 ms.
+        뒤쪽 항은 왕복 흔들림(146.5ms) + 발사 경로 지연(약 50ms) + 서버가
+        Date 를 찍기까지의 시간(약 50ms) 이다. 기본 250ms.
+
+        측정에 실패해 구간이 무한대면 최대값으로 간다. 모를수록 늦게 쏜다.
+        """
+        if safety is None:
+            safety = config.ARRIVAL_SAFETY_MS / 1000.0
+        half = self.uncertainty / 2.0
+        if (not self.synced) or half != half or half == float("inf"):
+            half = config.ARRIVAL_MAX_AFTER_MS / 1000.0
+        want = half + max(float(safety), 0.0)
+        lo = config.ARRIVAL_MIN_AFTER_MS / 1000.0
+        hi = config.ARRIVAL_MAX_AFTER_MS / 1000.0
+        return min(max(want, lo), hi)
 
     def note_too_early(self, est_arrival_offset: float,
                        margin: float = 0.03) -> float:
