@@ -1332,6 +1332,49 @@ python ci/build_too_early_fixture.py [ZIP]     # regenerate
 python main.py --handovertest                  # expects: fired=1/5, HANDOVERTEST OK
 ```
 
+## 배포 현황 (v1.0.9, 2026-08-27 00:52Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.9.zip
+  (29,240,054 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.9/`)
+  **빌드 바이트 sha256 = CI 가 찍은 값 = Caddy 로 실제 내려받은 바이트 sha256 =
+  `60f96c5f11b2c3ad6d6eef8bbf431cc05cbc2c7110eea9208a7969959f84f279`**
+  (게이트웨이 루프백으로 확인하면 안 된다. `--resolve works.insu.ng:443:127.0.0.1`)
+- 매니페스트: `version-aisarang.json` → 1.0.9 (`zipUrl` 만, `exeUrl` 없음)
+  **실제 게시된 매니페스트를 받아 제품의 `updater.choose_download` 를 돌린 결과:**
+  1.0.4 → zip, 1.0.5 → zip, 1.0.6 → zip, 1.0.7 → zip, **1.0.8 → zip(1.0.9)**,
+  1.0.9 → None. 고객 PC 는 08-27 아침에 1.0.8 을 돌렸다. 켜두면 15분 안에 1.0.9 가
+  된다(`CHECK_SECONDS = 900`).
+- CI: GitHub Actions run **33027433255** (커밋 c8edcad), 전 단계 green.
+  unit **201** → 실물 캡처 회귀 24(진짜 크롬) → **인계 모드 42(진짜 크롬)** →
+  셀렉터 감사 → onedir 빌드 → PE 확인 → ZIP → 디펜더 정의 갱신 + 실제 스캔 3건 →
+  fixture selftest → GUI construct → ZIP 을 풀어서 그 exe 로 selftest →
+  시각 재측정(프로즌) → 진단 기록(프로즌) → **인계 모드(프로즌)** → 스크린샷 3장 → sha256.
+  (라이브 selftest 는 러너에서 childcare.go.kr 이 안 닿아 skip. 늘 그렇다.)
+- 감사: `의존성 59개: 확인 57 / 영상복원본만 1 / 미확인 1`,
+  `제품 동작 검증 23개 중 23개 통과`. v1.0.8 대비 +1 의존성(예약시간전 실물 문구가
+  UNCONF → CONFIRMED 로 갈라져 나왔다), +4 제품 검증(전부 too_early 화면).
+- 프로즌 exe 실측 (windows-latest, CI 로그):
+  ```
+  RESYNC n=1 offsetMs=-24.4 deltaMs=-37.8 uncertaintyMs=133.0 samples=12
+  RESYNC n=2 offsetMs=+21.7 deltaMs=+46.2 uncertaintyMs=77.1  samples=12
+  RESYNC n=3 offsetMs=-25.8 deltaMs=-47.5 uncertaintyMs=57.9  samples=12
+  HANDOVERTEST   tooEarlyText=too_early reopenAllowed=True fnSave=1
+                 alertClosed=1 confirmClicked=0
+  HANDOVERTEST fired=1/5 expected=1 → HANDOVERTEST OK
+  ```
+  마지막 줄이 이번 판의 핵심 증거다. 실물 '예약시간전' 화면에서 되살리기가
+  [예약하기] 를 **정확히 한 번**, 알림 닫기를 **정확히 한 번** 누르고, 예약
+  확인창의 [확인] 은 **0회** 눌렀다.
+- 디펜더 실제 판정: `VERDICT v1.0.9-onedir: CLEAN`, `VERDICT v1.0.9-zip: CLEAN`.
+  러너는 `RealTimeProtectionEnabled: False` 라 실행 시점 동작 감시는 재현되지 않는다.
+  그 이상으로 말하지 말 것.
+- 스크린샷(진짜 윈도우 창, 세션 1): `docs/gui-1.0.9-handover.png`,
+  `docs/gui-1.0.9.png`, `docs/gui-1.0.9-record.png`. 응답 판정기 줄에
+  `'예약시간전': 'too_early'` 가 **실물 원문으로** 찍혀 있다.
+- Artifacts: 이 서버에서 돌린 `--handovertest` 진단 1건과 배포 기록
+  `aisarang-reservation-devnote` 1건이 `matched:true` 로 저장됐다
+  (devnote id `1b8e248f-e4b0-45fa-ba19-61d8514eff35`).
+
 ## 배포 현황 (v1.0.8, 2026-08-26 01:10Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.8.zip
