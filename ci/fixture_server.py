@@ -9,11 +9,20 @@ GitHub Actions 러너에서는 childcare.go.kr 로 나가는 연결이 막힌다
 
 http.server 는 응답마다 RFC 형식의 Date 헤더를 스스로 붙이므로 시각 동기화
 경로도 흉내가 아니라 진짜로 동작한다.
+
+v1.0.10 부터는 진짜 사이트가 붙이는 **밀리초 서버시각 쿠키**도 같이 붙인다.
+
+    Set-Cookie: egovLatestServerTime=<epoch ms>; path=/; secure;SameSite=None;Secure;
+
+실측(2026-09-01, childcare.go.kr HEAD)이 이 모양이고, 이제 clock.sync 가
+Date 헤더가 아니라 이 값을 쓴다. 여기서 안 붙이면 프로즌 exe 검증이 **출하되는
+경로가 아니라 예전 폴백 경로**를 돌게 된다. 그러면 확인한 것이 확인한 게 아니다.
 """
 from __future__ import annotations
 
 import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -262,6 +271,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)          # Date 헤더가 여기서 자동으로 붙는다
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        # 진짜 사이트(eGovFrame)가 붙이는 밀리초 서버시각. 위 머리말 참고.
+        # 요청이 들어온 순간을 찍는다는 점까지 같게 맞춘다.
+        self.send_header(
+            "Set-Cookie",
+            f"egovLatestServerTime={int(time.time() * 1000)}; "
+            f"path=/; secure;SameSite=None;Secure;")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)

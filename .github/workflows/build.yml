@@ -193,6 +193,11 @@ jobs:
             $n = ([regex]::Matches((Get-Content $log -Raw), "RESYNC n=")).Count
             "re-measurement log lines: $n"
             if ($n -lt 3) { throw "expected at least 3 re-measurements, got $n" }
+            # v1.0.10: 출하되는 경로는 밀리초 서버시각이다. Date 헤더 폴백으로
+            # 조용히 되돌아가면 시각 오차가 다시 수백 ms 로 벌어진다.
+            $ms = ([regex]::Matches((Get-Content $log -Raw), "resolution=ms")).Count
+            "millisecond-clock re-measurements: $ms"
+            if ($ms -lt 3) { throw "the shipped path is the ms server clock, got $ms" }
           } finally {
             Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           }

@@ -165,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             for row in c.history:
                 _out(f"RESYNC n={row['n']} at={row['at']:.3f} "
                      f"offsetMs={row['offsetMs']:+.1f} deltaMs={row['deltaMs']:+.1f} "
-                     f"uncertaintyMs={row['uncertaintyMs']} samples={row['samples']}")
+                     f"uncertaintyMs={row['uncertaintyMs']} samples={row['samples']} "
+                     f"resolution={row.get('resolution', 'date')}")
             n = c.resyncs
             diag.add_json("clocktest.json",
                           {"intervalSeconds": interval, "minutes": minutes,
