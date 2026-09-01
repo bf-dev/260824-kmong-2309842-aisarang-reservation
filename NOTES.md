@@ -2010,6 +2010,256 @@ modal: True / "…예약하시겠습니까? 확인 취소" / ready: True
 burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 ```
 
+## INVESTIGATION (2026-09-02): the customer's N-Chrome-windows proposal. Verdict UNSAFE, not shipped.
+
+Written in English-first house style; Korean strings are verbatim server/UI text.
+Nothing was shipped and nothing was submitted. This is offline analysis of the four
+live-run captures plus a passive GET of the site's own static NetFunnel client.
+**No live probing of the booking flow happened. InsertOcreqst was never touched.**
+
+The customer asked (verbatim): "혹시 프로그램으로 크롬창을 여러개 띄워서 미세한
+간격으로 여러번 각각 확인창 클릭하는것도 가능할까요? 그러면 성공 확률을
+높일수있을것같아서요". Then, on 2026-09-02 08:31 KST, they went ahead and drove two
+Chrome windows to the confirm dialog by hand and photographed both.
+
+New evidence in the repo: `docs/site-map/20-netfunnel-pcms-20260902.js` (109,509 B,
+STCLab NetFunnel client 2.3.15, fetched from
+`https://www.childcare.go.kr/cms/gen/js/netfunnel-pcms.js`) and
+`21-netfunnel-skin-20260902.js`. Read the EditZone at the top of the pcms file first;
+it is the site's own configuration and it answers most of question 1.
+
+### Q0 (new, and it is the hard blocker): which window does v1.0.10 click?
+
+**The first one, always, and it can never be any other one.** Not the focused window,
+not the one with a dialog. This is not a preference, it is a structural property.
+
+```
+$ grep -rn "window_handles\|switch_to.window\|switch_to.new_window\|current_window_handle" \
+      aisarang/ main.py tests/ ci/
+exit=1   (no matches anywhere in the product)
+```
+
+Every page touch in the program goes through `driver.execute_script(...)`
+(`handover.read_state` line 363, `booking._js` line 960, `booking._JS_FIRE` line 858).
+Per the W3C WebDriver spec that runs in the session's **current browsing context**,
+which is bound once when `webdriver.Chrome()` returns in `automation.build_driver` and
+is never re-pointed. It does not follow the user's focus and it does not scan.
+
+Consequences, all of them bad for a multi-window design:
+
+- Customer prepares the dialog in window 2, program is bound to window 1:
+  `read_state` returns `modal=False`, the log prints "확인창 없음 ([예약하기] 를
+  눌러주세요)", and **the program never fires at all**. The customer is looking at an
+  armed dialog on screen while the program says it has nothing to press.
+- Customer closes window 1: `booking._js` swallows the `NoSuchWindowException`
+  (`except Exception: return default`) and `fire_confirm` returns `False`. There is no
+  fallback to another window. Silent total loss.
+- The arming itself is per-document: `window.__aisarang_modal` / `__aisarang_ok` /
+  `__aisarang_fire` are JS globals installed in that one page. They cannot reach a
+  sibling window.
+
+So even if the rest of the idea were sound, **N-window firing is unimplementable in
+v1.0.10 without new window-handle code**, and that code does not exist. Telling the
+customer to run a single window today was exactly right.
+
+### Q1: NetFunnel ticket scope. It is per source IP. NOT per account, NOT per session.
+
+Confidence: high on "not per account", medium-high on "per IP".
+
+**Not per account.** The site's config disables user data entirely:
+
+```js
+NetFunnel.TS_USER_DATA_KEYS = [];   // netfunnel-pcms.js EditZone
+```
+
+`getUserdata()` therefore returns `""`, and `getTidChkEnterProc` only appends
+`&user_data=` when it is non-empty. Every captured ticket URL confirms it, on all four
+days, e.g. 09-01 `network_handover_after.json` id `54164.733`:
+
+```
+https://nf.childcare.go.kr:8443/ts.wseq?opcode=5101&nfid=0
+    &prefix=NetFunnel.gRtype=5101;&sid=service_1&aid=mcis_0&js=yes&1788219739841
+```
+
+`opcode`, `nfid`, `prefix`, `sid`, `aid`, `js`, cachebuster. No account, no session, no
+child, nothing. And the request is a cross-origin **JSONP `<script src>`**
+(`TsClient.prototype._sendRequest` = `document.createElement("script")`), to a
+different host, so the only thing that rides along is whatever cookie is scoped to
+`.childcare.go.kr`. From `cookies_handover_after.json` (09-01):
+
+| cookie | domain as reported | goes to nf.childcare.go.kr? |
+|---|---|---|
+| `JSESSIONID` | `www.childcare.go.kr` (host-only) | no |
+| `NetFunnel_ID` | `www.childcare.go.kr` (host-only) | no |
+| `uid` | `www.childcare.go.kr` (host-only) | no |
+| `bandisnclgnso` | `.childcare.go.kr` (domain) | yes |
+
+Host-only vs domain is readable directly: Selenium prints the leading dot only for
+domain cookies, and only `bandisnclgnso` has one. `TS_COOKIE_DOMAIN = ''` in the
+EditZone is why `NetFunnel_ID` is host-only. So the ticket server sees **no session
+and no account identifier**. It cannot key on either.
+
+**Per IP.** The deployed client carries a complete code path for IP-keyed tickets:
+
+```js
+NetFunnel.kTsIpBlock         = 302;
+NetFunnel.kTsErrorInvalidIp  = 517;
+NetFunnel.TS_IP_ERROR_RETRY     = true;   // Retry(Re-Issue) Where IP Validation Error
+NetFunnel.TS_IPBLOCK_WAIT_COUNT = 200;    // Server IP Block 가상대기창 반복 횟수
+NetFunnel.TS_IPBLOCK_WAIT_TIME  = 10000;  // Server IP Block 가상대기시간
+```
+
+and handles both (pcms.pretty.js 2522 for `kTsIpBlock`, 2576 for `kTsErrorInvalidIp`
+which re-issues after 100 ms). A return code that means "this key was presented from
+the wrong IP" only exists if the appliance stores a client IP against each key. That
+is the client's only notion of client identity, and it is the server's too.
+
+**What that means for N windows: they are N entries in one line, all charged to one
+IP. But they do not necessarily push each other back.** The 2026-08-26 incident was
+re-queueing *into a live 300-person queue at 09:00*. Tickets taken at 08:31-08:41 land
+in an empty queue and all return success immediately. Proven 4/4 days,
+`sessionStorage_handover_preflight.json`:
+
+```
+NetFunnel_ID = 5002:200:key=<226 hex>&nwait=0&nnext=0&tps=0.000000&ttl=0&...
+                    ^^^ kSuccess         ^^^^^^^ nobody ahead
+```
+
+So "the windows contend and push each other back" is **not** supported for
+early-armed windows. I could not make that case honestly, and I am not going to
+pretend otherwise. Note also `NetFunnel.MP_USE = false`, so the client-side macro
+detector (`NetFunnel.MProtect`, std-dev of request intervals, `MP_DEVLIMIT = 20 ms`)
+is switched off and is not a hazard either.
+
+**The real IP hazard is `kTsIpBlock`, and it is asymmetric.** N un-completed tickets
+from one IP followed by N `InsertOcreqst` POSTs from that IP inside a few hundred ms
+at exactly 09:00:00 is the signature a traffic-shaping appliance exists to catch. If
+it fires, `TS_IPBLOCK_WAIT_COUNT=200 × TS_IPBLOCK_WAIT_TIME=10000ms` parks the client
+in a repeated 10 s virtual wait, i.e. up to ~33 minutes, and it hits **every window at
+once** because they share the IP. That converts a one-shot loss into a whole-morning
+loss. Whether the appliance actually has a per-IP rule configured for
+`service_1/mcis_0` is **not determinable offline**. Unquantified, real, one-sided.
+
+Per-tab bookkeeping is fine, for the record: `Storage(2)` is sessionStorage, which is
+per browsing context, and `setComplete` reads sessionStorage before the cookie, so two
+windows do not clobber each other's key even though `setItem` also mirrors it into the
+one shared `NetFunnel_ID` cookie. That is the one part of the idea that works.
+
+### Q2: can two near-simultaneous submits both land? CANNOT BE DETERMINED SAFELY.
+
+And the evidence points the wrong way. Four findings, in order of weight:
+
+1. **There is no evidence anywhere that the submit path rejects a same-account
+   duplicate.** The brief's "proven twice" refers to the two 선예약 rejections
+   (08-28 and 09-01), and v1.0.10 §1 already re-read those as *another user took the
+   slot*. Sweeping every ZIP for outcome text finds exactly three events, no others:
+
+   ```
+   $ for z in *2309842*.zip; do unzip -p "$z" run.log | grep -a "선예약\|예약되었습니다"; done
+   08-28  +686ms  알림 1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.  [unknown]
+   08-31  +793ms  알림 1건 예약 중 1건 예약되었습니다.                              [ok]
+   09-01  +686ms  알림 1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.  [unknown]
+   ```
+
+   So we have **zero** captures of the server refusing a duplicate from this account.
+   The write-path duplicate guard is unobserved, not confirmed.
+
+2. **The only duplicate check we can actually see lives on a different endpoint, at a
+   different step.** `page_source/0002_handover_after.html` line 2148, inside the
+   **추가** (add-row) handler, not inside `insertOcreqst`:
+
+   ```js
+   customAjax.ajax({ type:"POST", url:"/icms/occasion/SelectDupleTime.html",
+       data:{ resdt, chilinnb, resbgntm, resendtm, stcode },
+       success:function(data){ if (data.returnValue == "N") { ...append row... }
+                               else { alert("해당 아동은 이미 예약되어 있습니다."); } } });
+   ```
+
+   It is a UI pre-check run minutes before 09:00. `insertOcreqst` does not call it.
+
+3. **The submit itself has no guard of any kind.** From the same file, line 2517:
+   the confirm callback clears `field1/2/3` to `""` and POSTs
+   `$('#pfrm').serializeArray()` straight to `/icms/occasion/InsertOcreqst.html`.
+   No nonce, no idempotency token, no CSRF value in the form (the pfrm hidden fields
+   are all business data: `chilinnb`, `resdtArray`, `resbgntmArray`, `stcode`, ...).
+   `frm.resYn` is set only to `"N"`, so the `"처리중입니다"` guard is dead, as already
+   recorded in v1.0.9. **Two windows produce byte-identical POST bodies with identical
+   cookies. The server cannot tell them apart except by arrival time.**
+
+4. **Capacity is 2, so there is not even a single-seat collision to save us.** The
+   target day opens at `<i class="count" title="이용가능">2</i>` on every hour (v1.0.10
+   §1 table). Two of our own submits both find a free seat. The customer's booking is
+   an 8-hour block (`restimeArray = 09 : 00 ~ 17 : 00 (8시간)`, `rtmArray = 8`), so a
+   double landing takes **both** seats on hours 09-16 and bills 16 hours against a
+   60-hour monthly voucher, on a site where cancellation is phone-only.
+
+The server's message template `N건 예약 중 M건 …` shows it loops the submitted rows
+and evaluates a prior-reservation condition per row: a read-then-write, which is the
+exact shape that races at ~100 ms. Whether it sits inside a transaction with a
+uniqueness constraint is invisible from the client, and the only way to find out is to
+submit twice for real. **That is the forbidden action. This stays undetermined.**
+
+### Q3: concurrent sessions. The photo is real but it does not prove what it looks like.
+
+The customer's two windows are two windows of **one Chrome profile**, so they share one
+host-only `JSESSIONID` cookie. There is only **one** server-side session. The site never
+had to decide anything about concurrent logins, so "the site did not kick the older
+session" is not evidence that it tolerates two sessions.
+
+And reaching the dialog costs the server almost nothing: `insertOcreqst` builds
+`confirmText` locally and calls `icmsLayerPopup.confirm2(...)`, a pure client-side DOM
+layer. The only server work upstream of it is the NetFunnel ticket. So "two armed
+dialogs" means "one session, two documents, two tickets" and nothing more.
+
+The genuinely untested configuration is **N separate Chrome profiles**, which is what
+you would actually need for N independent sessions, and that is where a
+single-session-per-user policy would bite. Untested, and not worth testing given Q2.
+
+### Q4: what the customer would have to do
+
+Handover mode requires a human through 예약하기 per window: login, child, class, hours,
+grid cell, 추가, tick, 예약하기. The customer already did two windows in ~10 minutes by
+hand, so 2-3 is realistic and 5+ is not. The program cannot prepare the later ones
+itself: pressing 예약하기 IS `NetFunnel_Action`, and doing that near 09:00 is the
+2026-08-26 incident. Prepared early it is fine, but "early" is exactly the part a human
+is already doing.
+
+### Verdict: UNSAFE. Do not ship. Do not encourage the customer to run two windows.
+
+Not HARMFUL: I could not show early-armed windows push each other back, and 4/4 days of
+`nwait=0` at ~08:40 says they do not.
+
+UNSAFE because of Q2, and the benefit does not pay for it. The days themselves say the
+sub-second stagger is not the lever:
+
+| day | estimated arrival | outcome |
+|---|---|---|
+| 08-27 | **-296 ms** | too_early, certain reject |
+| 08-28 | +686 ms | 선예약, lost |
+| 08-31 | **+793 ms** | **won** |
+| 09-01 | +686 ms | 선예약, lost (319 people queued at 09:00:10) |
+
+The *later* shot won and the two *earlier* shots lost. Inside the +686..+793 ms band
+the outcome is uncorrelated with our offset; what changed was the size of the crowd.
+Spreading N shots over a few hundred ms buys coverage of a region we already know is
+not where the decision is made, while adding an unbounded duplicate-booking risk and
+an unquantified IP-block risk. That is a bad trade.
+
+### If it is ever revisited, the order is fixed
+
+1. Land a real `InsertOcreqst` response body. v1.0.10 persists it
+   (`xhr_bodies_<label>.json`) but no 09:00 run has produced one yet. The `returnval` /
+   `returnmsg` pair for a normal loss is the first thing to read.
+2. Only then, one single-submit experiment on a **non-contested** day (a date already
+   open, plenty of seats) to see the same-account duplicate response, if any. Owner
+   decision required, because it books a real slot.
+3. Only then, window-handle targeting. Never before.
+
+The waitlist lever (`selectDay2` sets `wait_gb="Y"` on a cell reading `"0"` and
+registers 예약대기 via `reswaitdt`/`reswaitbgntm`/`reswaitendtm`) remains the better
+unexplored option for a lost day, and it changes what the customer receives, so it is
+the owner's call.
+
 ## 아직 굳히지 못한 것 (다음 사람이 볼 것)
 
 1. ~~진짜 마크업은 절반만 확보했다~~ → **2026-08-25 저녁에 닫혔다.**
