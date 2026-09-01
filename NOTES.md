@@ -11,7 +11,7 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 201 passed (v1.0.9, 크롬 있으면 브라우저 포함)
+.venv/bin/python -m pytest tests/ -q        # 227 passed (v1.0.10, 크롬 있으면 브라우저 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
@@ -22,9 +22,10 @@ AISARANG_BASE_URL=http://127.0.0.1:18777 \
   python3 main.py --rectest                  # 진단 기록 모드 실행 (로컬 fixture 전용, v1.0.6)
 python3 ci/fixture_server.py 18777           # --rectest 가 붙을 로컬 서버 (/rec 화면)
 python3 main.py --handovertest               # 인계 모드를 실물 캡처에 대고 실행 (v1.0.9)
-                                             #   기대: fired=1/5, HANDOVERTEST OK
+                                             #   기대: fired=1/6, HANDOVERTEST OK
 python3 ci/build_netfunnel_fixture.py <ZIP>  # 대기열 픽스처 재생성 (v1.0.8)
 python3 ci/build_too_early_fixture.py <ZIP>  # '예약시간전' 픽스처 재생성 (v1.0.9)
+python3 ci/build_taken_fixture.py <ZIP>     # '선예약'(자리 뺏김) 픽스처 재생성 (v1.0.10)
 ```
 
 빌드는 GitHub Actions `windows-latest` (`.github/workflows/build.yml`).
@@ -1332,7 +1333,316 @@ python ci/build_too_early_fixture.py [ZIP]     # regenerate
 python main.py --handovertest                  # expects: fired=1/5, HANDOVERTEST OK
 ```
 
-## 배포 현황 (v1.0.9, 2026-08-27 00:52Z) ← 지금 서빙 중
+## v1.0.10 (2026-09-01): 늦는 것도 지는 것이었다
+
+Written in English-first house style; the Korean strings quoted below are verbatim
+server/UI text and must not be translated.
+
+### What happened: 2026-09-01 09:00:00, aimed +685ms, lost the slot
+
+```
+[08:59:59] 조준 확정: 도착 목표 정각 +685ms (시각 오차 ±435ms + 여유 250ms)
+[09:00:02] [확인] 1발째 · 도착 추정 정각 +686ms
+           · 서버: 알림 1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다. 확인 [unknown]
+[09:00:10] 사이트가 가상대기열을 띄웠습니다 ... (앞에 319명, 뒤에 1명, 예상 1분 10초)
+```
+
+`…-20260901-090020.zip`, v1.0.9 frozen, targetDate 20260915, serverOffsetMs -655.6.
+
+### 1) What "선예약" actually means: PROVEN "someone else got it"
+
+The verdict is **(a) proven "someone else got it"**, and it is NOT a duplicate of a
+booking the customer already held. The proof does not rest on reading the Korean.
+
+**The response body is NOT in the capture.** `requests/0000.json` and
+`requests/0001.json` hold only the two public `site.py` lookups
+(`NurseryMapSidoList` / `NurseryMapGuGunList`). `network_*.json` records url +
+status + mime only, never bodies. So the `InsertOcreqst.html` JSON (`54164.737`,
+`application/json`, 200) is gone. There is no numeric result code to read on any of
+the four days. That gap is exactly what TASK 5 below closes.
+
+**The page's own JS does not name the branches either.** From
+`page_source/0002_handover_after.html`, `insertOcreqst()` does:
+
+```js
+success: function(data){
+    if (data.returnval == "success") { alert2(data.returnmsg); location.href="/?menuno=245"; }
+    else                             { alert2(data.returnmsg); }   // no navigation
+}
+```
+
+`returnval` is a two-way flag and `returnmsg` is server-composed prose. The client
+has **no** outcome vocabulary at all; there are no sibling branches to read. Anyone
+looking for the mapping in the page JS will not find it. Stop looking.
+
+**What does settle it is the site's own capacity counter.** `selectDay2()` reads the
+day x hour cell text as remaining seats:
+
+```js
+var tValue = $("#tm_" + tt + "_" + row).text();
+if (tValue == "X")      { alert("예약 가능 시간이 아닙니다."); return; }
+else if (tValue == "0") { wait_gb = "Y"; ... }      // 0 = no seat, waitlist only
+else                    { ... }                      // >0 = that many seats free
+```
+
+and the markup carries it plainly: `<i class="count" title="이용가능">2</i>`.
+Extracted from the captures:
+
+| capture | date row | 09 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 09-01 08:59 preflight | **20260915** (target) | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
+| 09-01 08:59 preflight | 20260914 (won 08-31) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| 08-31 08:59 preflight | **20260914** (target) | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
+
+Four facts, and together they close it:
+
+1. **Capacity is 2 per hour**, and a freshly opened day starts at 2/2 free. Every
+   capture agrees.
+2. At 08:59 on 09-01 the target day 20260915 showed **2 free on every hour**. Nothing
+   was pre-claimed.
+3. **Nobody, including our customer, can hold a booking for 20260915 before
+   09:00:00.000.** Proven 1/1 on 2026-08-27: a submit landing at -296ms got
+   `아직 예약 가능한 시간이 아닙니다.` The server discards everything before the hour.
+   The customer also did not book by hand that day.
+4. Therefore the only reservations that can exist for that slot at 09:00:00.686 are
+   ones **other users** created inside those 686 ms. That is what 선예약 refers to.
+
+Corroboration, same capture: 20260914 (which we won at +793ms on 08-31) reads 0 on
+hours 09-16 and **1** on hour 17. Our booking took one of the two seats on 09-16;
+somebody else took the other. Both seats of a fresh day are gone within a day. And on
+09-01 there were **319 people** in the NetFunnel queue at 09:00:10 for 2 seats.
+
+**So the aiming asymmetry does invert.** We had reasoned "early is a certain loss,
+late is probably fine because we have never seen a capacity rejection". We had never
+seen one because we were reading it as `unknown`. +686ms is not good enough on a
+contested day. Both directions lose now; early still loses *certainly*, so the aim
+stays positive but must be much smaller.
+
+Honest limit: this is a temporal-impossibility + capacity argument, not a result
+code. With v1.0.10 persisting the body (TASK 5), the next occurrence gives the code.
+
+### 2) The clock: ±435ms -> ±76ms, and it is a measurement, not a shaved constant
+
+The formula is untouched:
+
+```
+aim = clamp( uncertainty/2 + ARRIVAL_SAFETY_MS , 350 , 1200 )      ARRIVAL_SAFETY_MS = 250
+```
+
+`ARRIVAL_SAFETY_MS` is still **250**. Nothing was shaved. The dominant term
+(`uncertainty/2`, 435ms on 09-01) got smaller because the measurement got better.
+
+**The find: childcare.go.kr publishes a millisecond server clock.** It runs on
+eGovFrame, whose session filter stamps every dynamic response:
+
+```
+Date: Tue, 01 Sep 2026 00:15:08 GMT
+Set-Cookie: ... egovExpireSessionTime=1788225308489; ... egovLatestServerTime=1788221708489; ...
+```
+
+`1788221708489` = 00:15:08.489, the same second the `Date` header names, to the ms.
+That kills the 1-second quantisation outright. `clock._parse_server_ms`.
+
+**It is stamped at request ENTRY, not at response generation.** Measured on three
+endpoints whose rendering cost differs by 6x, `cookie - t0` is constant:
+
+| endpoint | rtt | cookie - t0 | t1 - cookie |
+|---|---|---|---|
+| `/icms/occasion/SelectTotalTime.html` | 150ms | **128ms** | 23ms |
+| `/?menuno=245` | 369ms | **128ms** | 241ms |
+| `/?menuno=1` | 980ms | **127ms** | 854ms |
+
+That matters twice over. First, the cookie time IS the arrival instant we are trying
+to aim at. Second, the 780-1060ms "rtt" v1.0.9 measured on `/?menuno=1` was almost
+entirely **JSP rendering after arrival**, not network. So we can probe a cheap
+endpoint and get a far tighter interval for free.
+
+`config.CLOCK_PROBE_PATH = "/icms/occasion/SelectTotalTime.html"`: read-only, same
+`/icms/occasion/` app tier as the submit, ms cookie, 150ms rtt.
+**`InsertOcreqst.html` has the same properties and must NEVER be probed.** A test
+asserts the string does not appear in `clock.py`.
+
+Per-sample interval, which is the whole change:
+
+```
+Date header   offset ∈ [S - t1, S + 1 - t0]     width = 1s + rtt
+ms cookie     offset ∈ [S - t1, S     - t0]     width = rtt
+```
+
+Measured live from this server, 3 runs each, old shipped config vs new shipped config:
+
+```
+v1.0.9   Date + /?menuno=1,   12 samples : 1075.4 / 1092.9 / 1113.3 ms  (half ±537-557ms)
+v1.0.10  ms   + probe path,   40 samples :  123.4 /  268.5 /  270.9 ms  (half ± 62-135ms)
+                                            mean 1093.9 -> 220.9 ms  = 4.95x tighter
+```
+
+(The customer's own line measured 869ms on the old path; this host is off-shore so
+its absolute numbers are worse than theirs in both columns. The ratio is the point.)
+
+Sanity: the two estimators are consistent. New offset +39.2 ±61.7 sits inside old
+-367.6 ±537.7. The old midpoint was biased ~400ms low because it assumed symmetric
+legs on a page whose response leg is 854ms; that bias was partly cancelled by
+`one_way = rtt/2` being over-estimated by a similar amount. Luck, not design. Gone now.
+
+Cross-checked that it is one clock, not per-node clocks. Four endpoints, same window:
+
+```
+/icms/occasion/SelectTotalTime.html  [ -22.6, +250.3]  unc 272.9ms
+/?menuno=245                         [-214.2, +125.7]  unc 339.9ms
+/?menuno=1                           [-805.7, +125.6]  unc 931.2ms
+/icms/nursery/NurseryMapSidoList     [ -56.1, +125.6]  unc 181.7ms
+all 6 pairs overlap; all share hi ~ +125.6ms  (= min request leg, identical everywhere)
+```
+
+**Resulting aim.** With half-uncertainty 62-135ms, `want = half + 250` = 312-385ms,
+so it lands on or just above the 350ms floor. Measured on this host: **+378ms**
+(vs +685ms on 09-01). On the customer's faster Korean line the uncertainty should be
+tighter still and it will sit on the 350ms floor.
+
+**End-to-end validation, real arrivals, harmless HEAD requests.** `measure_arrival`
+now reads the ms cookie back, so we finally measure the ACTUAL arrival instead of
+estimating it. Aiming at the shipped +378ms, 8 shots:
+
+```
+실제 도착 +628 +441 +406 +430 +442 +384 +415 +416 ms
+오차      +250  +63  +28  +52  +64   +6  +37  +38 ms      (mean +67, worst +250)
+정각 전에 도착한 발: 0/8
+```
+
+Every shot landed after the boundary, mean overshoot +67ms (the request leg exceeds
+`rtt/2` slightly; absorbed by the safety margin, and it errs in the direction that is
+merely a race rather than a certain rejection). The one +250ms outlier had a 533ms
+rtt spike; that is precisely what `ARRIVAL_SAFETY_MS` is paying for.
+
+**Why the floor stays 350.** It is far above the residual half-uncertainty
+(62-135ms), so the clamp is honest, and arriving before the hour is still the only
+*certain* loss. Do not lower it without a new capture. A test pins that the aim is
+always positive and always exceeds the residual one-sided error.
+
+Also changed, same reason: `note_drift_sample` takes the ms stamp when available
+(window shrinks from 1s+rtt to rtt), and `automation.touch_session` now hits the
+probe path and reads `egovLatestServerTime` out of `document.cookie` (the cookie is
+not HttpOnly). Same session-keeping effect, 6x cheaper, ms-resolution drift check.
+
+### 3) The classifier learned 선예약
+
+`booking.TAKEN_REAL` is the verbatim captured string and `booking.R_TAKEN = "taken"`
+is a code distinct from `R_FULL`, because the evidence grades differ (선예약: 2 real
+observations; 정원초과: zero, ever).
+
+```
+_RE_TAKEN = re.compile(r"선예약[^.。]{0,16}예약되지\s*않")     # counts vary, skeleton does not
+```
+
+Checked after `OK_WORDS`/`FULL_WORDS` and before `NOT_BOOKABLE`/`FAIL`. Keeping OK
+first preserves the invariant that a real success is never read as a loss: the 08-31
+success `1건 예약 중 1건 예약되었습니다.` and the 09-01 loss
+`1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.` share a prefix.
+
+The fixture is `ci/fixtures/real/taken_alert.html`, generated by
+`ci/build_taken_fixture.py` straight out of the customer's ZIP (same PII-shape gate as
+the other builders). A test re-reads the string out of that file and compares it to
+`TAKEN_REAL`, so an invented wording cannot creep back in.
+
+`R_TAKEN` is non-retryable everywhere and the reopen gate locks on it, same as
+`R_FULL`. It is deliberately **not** wired into `runner`'s "try the next preferred
+hour" fallback: that path calls `_prepare_with_retries`, which re-presses 예약하기 and
+re-enters the queue. That is the 2026-08-26 disaster.
+
+**On 정원초과: I believe it is dead vocabulary the site never sends.** Now that 선예약
+is proven to be this site's lost-race response, the customer's written "정원초과" reads
+as their paraphrase of what happened, not a quoted string. Zero occurrences across
+08-25, 08-26, 08-27, 08-28, 08-31, 09-01. **I did not delete it** (keeping it costs
+nothing and catches the day it really arrives) but `selector_audit` item 9 still
+carries it as UNCONF with that reasoning written in.
+
+### 4) The queue: we were never in it, and cannot get an earlier ticket than we have
+
+Answer: **queue position gates entry to `fnSave()`, not the submit.** Holding an
+earlier ticket is not an available lever, because we already hold the best one.
+
+`sessionStorage_handover_preflight.json`, **all four days**:
+
+```
+NetFunnel_ID = 5002:200:key=<226 hex>&nwait=0&nnext=0&tps=0.000000&ttl=0&...
+```
+
+A ticket was already held before the shot, with `nwait=0`, on every single day
+including the success. And it is the same ticket that carried the submit: on 09-01
+the preflight key `6016A84CD6E2721BE2D3537F2A18E792…` is byte-identical to the key in
+the `opcode=5004` (NetFunnel_Complete) issued right after our POST at 00:00:09.418Z.
+Same on 08-28 and 08-27.
+
+Why: the customer presses 예약하기 around 08:40. `fnSave()` calls `NetFunnel_Action`
+FIRST, gets a ticket (uncontested at 08:40, so `nwait=0`), and only then opens the
+confirm dialog we hold. So the handover design already walks past the 09:00 queue
+twenty minutes early. That is a property worth protecting.
+
+The 319-person queue at 09:00:10 was a **new** ticket taken **after** our POST:
+`InsertOcreqst` is request index 136 in the after-dump, the `5002` entries start at
+index 139, after the 5004 released ours. Decoding the key tails (they are hex-encoded
+ASCII) gives `,1,1,319,0` / `,0,1,309,0` / `,10,1,305,0`, matching the log's
+319 -> 309 -> 305. It is the crowd arriving at 09:00, not us.
+
+Conclusion: milliseconds ARE the lever here, not queue position. **No re-queueing or
+retry behaviour was implemented.** `--handovertest` now includes the 선예약 screen and
+asserts `fnSave=0 alertClosed=0 confirmClicked=0`, and CI fails if that changes.
+
+Noted while reading `selectDay2`, NOT implemented: a cell reading `"0"` sets
+`wait_gb="Y"` and the site registers a **예약대기 (waitlist)** via
+`reswaitdt`/`reswaitbgntm`/`reswaitendtm` instead of a reservation. That is a real
+second lever for days we lose the race, but it changes what the customer receives, so
+it needs the owner's call first.
+
+### 5) Diagnostics: the 300-entry truncation that made me report a wrong conclusion
+
+`_network_digest` returned `rows[-300:]`. On 09-01 the after-dump's earliest entry is
+id `54164.420`, i.e. **419 earlier requests were silently gone**, and the queue
+ticket issuance sat inside them. I reported "no queue ticket was ever issued". The
+ticket was in `sessionStorage` the whole time.
+
+- `config.NET_RING_MAX` 3000 -> **12000**, `config.NET_DIGEST_LIMIT` 300 -> **1500**.
+- Trimming now drops the **middle**, not the head (`_trim_middle`), and records
+  `{"kind":"elided","droppedEntries":N}` so a gap is never silent again.
+- Rows matching `_NET_KEEP_ALWAYS` (`InsertOcreqst`, `ts.wseq`, `/icms/occasion/`, …)
+  are kept wherever they sit.
+
+**And the bodies are persisted now.** `automation._JS_NET_RECORDER` is installed via
+`Page.addScriptToEvaluateOnNewDocument` in `build_driver` and records request body,
+response body, response headers, status, and t0/t1 for `InsertOcreqst` /
+`/icms/occasion/` / `ts.wseq`. `capture()` writes it as `xhr_bodies_<label>.json`.
+
+It is built so it cannot break the customer's page, in this priority order:
+it never replaces a handler (`addEventListener('loadend')`, not `onreadystatechange`),
+never consumes a response (`r.clone()` for fetch), always calls the original
+(`_open/_send/_fetch.apply`), every branch is inside try/catch (10 try / 10 catch, 2
+then / 2 catch, asserted by test), redacts `pass|pwd|password|aResult|cert`, and caps
+at 40 rows / 20,000 chars with middle-elision.
+
+Verified in a real headless Chrome against a local server (never the live site):
+the page's own `onreadystatechange` still receives the JSON, and we recorded
+`"returnval":"fail"`, the 선예약 `returnmsg`, `resdt=20260915` in the request, the
+password replaced by `[REDACTED]`, and the response `date` header. That last one is a
+bonus: `getAllResponseHeaders()` exposes `Date` on a same-origin XHR, so the next
+09:00 gives us the submit's real arrival second, which we have never had.
+
+### Tests
+
+227 passed (was 201). New: `tests/test_diagnostics.py` (11), plus additions to
+`test_clock.py`, `test_handover.py`, `test_updater.py`.
+`ci/selector_audit.py`: 60 dependencies, 58 confirmed / 1 recon-only /
+1 unconfirmed (정원초과), 26/26 product checks pass.
+`--handovertest` -> `fired=1/6`, `--selftest` OK, `--arrivaltest` as quoted above.
+
+### The trap this release walks straight into: 1.0.9 -> 1.0.10
+
+`"1.0.10" < "1.0.9"` as strings. `updater.version_tuple` splits on `.` and compares
+ints, so it is correct, and `test_one_point_ten_is_newer_than_one_point_nine` now
+pins exactly this case. If you ever swap that for a string compare, every customer
+freezes on their current build forever.
+
+## 배포 현황 (v1.0.9, 2026-08-27 00:52Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.9.zip
   (29,240,054 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.9/`)

@@ -971,6 +971,8 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
                 # 실물 서버 원문(2026-08-27 09:00:00 캡처). 지어낸 글자가 아니다.
                 "예약시간전": booking.classify(booking.TOO_EARLY_REAL),
                 "정원초과": booking.classify("정원초과 되었습니다."),
+                # 실물 서버 원문(2026-08-28 / 2026-09-01 캡처). 자리를 뺏긴 응답.
+                "선예약": booking.classify(booking.TAKEN_REAL),
                 "완료": booking.classify("예약이 완료되었습니다."),
                 "확인창본문": booking.classify(real_modal),
                 "칸거절": booking.classify("예약 가능 시간이 아닙니다."),
@@ -978,6 +980,8 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
             app.log(f"응답 판정기: {checks}")
             grader_ok = (checks["예약시간전"] == booking.R_TOO_EARLY
                          and checks["정원초과"] == booking.R_FULL
+                         and checks["선예약"] == booking.R_TAKEN
+                         and not booking.result_is_retryable(booking.R_TAKEN)
                          and checks["완료"] == booking.R_OK
                          # 확인창 문구는 결과가 아니다(실패로 읽으면 안 된다)
                          and checks["확인창본문"] != booking.R_FAIL

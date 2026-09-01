@@ -698,6 +698,13 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         if code == booking.R_FULL:
             return booking.StepResult(False, text or "정원이 초과되었습니다.",
                                       "full", None, detail)
+        if code == booking.R_TAKEN:
+            # 선예약: 686ms 안에 다른 사람이 그 자리를 가져갔다(2026-09-01 실측).
+            # 다시 쏴도 자리는 돌아오지 않는다. reopen 은 too_early 에서만
+            # 열리므로 여기서 이미 잠겨 있고, 우리는 그냥 멈춘다.
+            return booking.StepResult(
+                False, text or "이미 다른 이용자가 예약한 자리입니다.",
+                "taken", None, detail)
         if code == booking.R_NOT_BOOKABLE:
             return booking.StepResult(False, text or "예약할 수 없는 시간대입니다.",
                                       "not_bookable", None, detail)

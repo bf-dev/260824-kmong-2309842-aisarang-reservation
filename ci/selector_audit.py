@@ -107,6 +107,8 @@ P_RESERVE = SITEMAP / "07-reserve-605-idsession.html"
 P_QUEUE = REAL / "netfunnel_waiting.html"
 # 2026-08-27 09:00:00 고객 PC 캡처의 진짜 '예약시간전' 알림
 P_TOO_EARLY = REAL / "too_early_alert.html"
+# 2026-09-01 09:00:00 고객 PC 캡처의 진짜 '선예약' 알림 (자리를 뺏긴 응답)
+P_TAKEN = REAL / "taken_alert.html"
 
 
 def exists(p: Probe, page: Path, script, *args):
@@ -314,12 +316,22 @@ def build_checks(p: Probe):
     # 서버가 실제로 돌려주는 결과 **문구**. 근거 등급이 둘로 갈렸다.
     #   예약시간전: 2026-08-27 09:00:00 실물. InsertOcreqst.html 의 returnmsg 를
     #               사이트가 alert2 로 찍은 것이 캡처에 그대로 남았다.
-    #   정원초과  : 아직 실물 없음. 우리가 늦게 도착한 적이 한 번도 없다.
+    #   선예약    : 2026-08-28 / 2026-09-01 실물 2회. 자리를 뺏긴 응답.
+    #   정원초과  : 아직 실물 없음. 위 선예약이 이 사이트의 '자리 없음' 응답인
+    #               것이 밝혀졌으므로, 사이트가 아예 안 쓰는 문구일 가능성이 높다.
     add("9", "서버 결과 문구: 예약시간전 (아직 예약 가능한 시간이 아닙니다.)", CONFIRMED,
         "2026-08-27 09:00:00 캡처 page_source/0002_handover_after.html "
         "#layer-alert-popup-contents2 (= InsertOcreqst.html 의 returnmsg)")
+    probe("9", "서버 결과 문구: 선예약 (자리를 뺏김)", P_TAKEN, r"""
+      var e=document.querySelectorAll('[id=layer-alert-popup-contents2]');
+      for (var i=0;i<e.length;i++) {
+        var t=(e[i].innerText||e[i].textContent||'').trim();
+        if (t) return {text: t};
+      }
+      return null;""")
     add("9", "서버 결과 문구(정원초과)", UNCONF,
-        "아직 어떤 캡처에도 없음. 늦게 도착한 적이 한 번도 없기 때문")
+        "2026-08-25 ~ 2026-09-01 어떤 캡처에도 없음. 자리 없음은 '선예약' 으로 "
+        "온다는 것이 확인됐으므로 사이트가 안 쓰는 문구로 보인다(지우지는 않음)")
 
     # ---------------- 대기열: 2026-08-26 실물. 확인창 자리에 뜬 것이 이것이다.
     probe("Q", "대기열 레이어 #NetFunnel_Loading_Popup", P_QUEUE, r"""
@@ -517,6 +529,20 @@ def product_checks(p: Probe) -> list:
     gate2.note_outcome(booking.R_FULL)
     add("'정원초과' 뒤에는 되살리기 문이 열리지 않는다",
         gate2.allowed(st) is False, gate2.why_not(st))
+
+    gate3 = handover._Reopen(_Now(), 1000.0, 2, 15.0)
+    gate3.note_outcome(booking.R_TAKEN)
+    add("'선예약' 뒤에도 되살리기 문이 열리지 않는다 (대기열 재진입 금지)",
+        gate3.allowed(st) is False and gate3.locked is True, gate3.why_not(st))
+
+    add("'선예약' 실물 문구가 R_TAKEN 으로 분류된다",
+        booking.classify(booking.TAKEN_REAL) == booking.R_TAKEN
+        and not booking.result_is_retryable(booking.R_TAKEN),
+        f"{booking.TAKEN_REAL} -> {booking.classify(booking.TAKEN_REAL)}")
+
+    add("2026-08-31 성공 문구는 그대로 성공이다 (선예약 규칙에 안 걸린다)",
+        booking.classify("1건 예약 중 1건 예약되었습니다.") == booking.R_OK,
+        "1건 예약 중 1건 예약되었습니다.")
     return out
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.10"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -37,6 +37,17 @@ def normalize_run_mode(value) -> str:
     v = str(value or "").strip().lower()
     return v if v in RUN_MODES else MODE_HANDOVER
 
+# ------------------------------------------------------------ 서버 시각 측정
+# 시각 측정용 프로브 경로. **읽기 전용이어야 하고, 예약 경로면 절대 안 된다.**
+# 조건 세 가지를 다 만족하는 것으로 골랐다(2026-09-01 실측, HEAD).
+#   1) egovLatestServerTime 쿠키(밀리초 서버시각)를 붙인다 → 1초 양자화가 사라진다
+#   2) 왕복이 짧다 → 구간이 좁다.  실측 150ms (`/?menuno=1` 은 980ms)
+#   3) 예약 서버와 같은 앱 계층(/icms/occasion/) 이라 같은 시계를 본다
+# InsertOcreqst.html 도 같은 성질이지만 **예약 등록 경로라 절대 두들기지 않는다.**
+CLOCK_PROBE_PATH = "/icms/occasion/SelectTotalTime.html"
+# 한 번 잴 때 쏘는 샘플 수. 왕복이 150ms 라 40발이 약 8초다(옛 12발은 12초였다).
+CLOCK_SAMPLES = 40
+
 # 서버 시각을 다시 맞추는 주기(초). 고객에게 "5분" 이라고 약속한 값이다.
 # 프로그램이 도는 동안 계속(오픈 전 대기 / 준비 240초 / 확인창 홀드) 이 주기로
 # 다시 측정한다. 근거와 예외(정각 직전 정지)는 clock.ClockKeeper 머리말 참고.
@@ -56,6 +67,14 @@ PACKAGE_KIND = "onedir"
 # Kmong 고객 식별자. 로그/진단/업로드 경로 전부에 이 값이 찍힌다.
 CUSTOMER_ID = "2309842"
 ORDER_ID = "7566483"
+
+# ------------------------------------------------------------------ 진단 용량
+# v1.0.9 는 네트워크 요약을 **마지막 300건**만 남겼다. 2026-09-01 캡처에서
+# 09시 한참 전에 발급된 가상대기열 티켓(opcode=5002)이 그 잘림에 통째로
+# 날아갔고, 그 결과 "대기열 티켓이 없었다" 는 틀린 결론을 보고했다.
+# ZIP 이 94KB 밖에 안 되니 아낄 이유가 없다.
+NET_RING_MAX = 12000        # 크롬 CDP 메시지 링버퍼 (was 3000)
+NET_DIGEST_LIMIT = 1500     # ZIP 에 남기는 요청/응답 줄 수 (was 300)
 
 # 진단 업로드 (사내 표준 Artifacts API)
 WORKS_API = "https://works.insu.ng/works/api"
@@ -112,6 +131,12 @@ KST_OFFSET_SECONDS = 9 * 3600
 #
 # 비대칭이 요점이다. 이르면 **확정 거절**(1/1 실측). 늦으면 '정원초과' 위험인데
 # 어떤 캡처에서도 한 번도 관측된 적이 없다. 그래서 늦는 쪽으로 틀린다.
+# v1.0.10 (2026-09-01): 상수는 **하나도 깎지 않았다.** 대신 앞쪽 항(시각 오차)을
+# 실제로 줄였다. eGov 세션 필터가 붙여주는 egovLatestServerTime 쿠키가 밀리초
+# 서버시각이라, Date 헤더의 1초 양자화가 통째로 사라진다(clock._parse_server_ms).
+# 이 서버에서 실측한 잔여 구간 폭: 869ms → 152ms (한쪽 오차 434ms → 76ms).
+# 같은 공식에 넣으면 76 + 250 = 326ms 이고 아래 하한 350ms 로 올라간다.
+# 즉 조준점이 685ms → 350ms 로 내려온다. 공식은 그대로다.
 ARRIVAL_MIN_AFTER_MS = 350.0
 ARRIVAL_MAX_AFTER_MS = 1200.0
 ARRIVAL_SAFETY_MS = 250.0

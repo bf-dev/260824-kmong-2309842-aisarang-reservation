@@ -25,6 +25,7 @@ config.RESYNC_SECONDS(=5분)마다 처음과 똑같은 방식으로 다시 잰�
 from __future__ import annotations
 
 import email.utils
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -49,6 +50,10 @@ class ClockSync:
     correction_notes: list = field(default_factory=list)
     # 재측정 이력. 몇 번 다시 쟀고 마지막이 언제였는지 로그/진단에 남는다.
     resyncs: int = 0
+    # 마지막 측정이 밀리초 서버시각을 썼는지("ms") Date 헤더로 떨어졌는지("date").
+    resolution: str = "date"
+    # 모순 때문에 버린 샘플 수(_intersect 참고).
+    dropped: int = 0
     last_sync_local: float = 0.0
     history: list = field(default_factory=list)
     drift_notes: list = field(default_factory=list)
@@ -168,6 +173,8 @@ class ClockSync:
             self.lo, self.hi = fresh.lo, fresh.hi
             self.samples = fresh.samples
             self.rtt_best = fresh.rtt_best
+            self.resolution = fresh.resolution
+            self.dropped = fresh.dropped
             self.detail = fresh.detail
             self.errors = fresh.errors
             self.synced = True
@@ -181,6 +188,7 @@ class ClockSync:
                                      if self.uncertainty != float("inf") else None),
                    "rttBestMs": (round(self.rtt_best * 1000, 1)
                                  if self.rtt_best != float("inf") else None),
+                   "resolution": self.resolution,
                    "samples": self.samples}
             self.history.append(row)
             if len(self.history) > 400:
@@ -193,27 +201,30 @@ class ClockSync:
             return float("inf")
         return max(0.0, time.time() - self.last_sync_local)
 
-    def note_drift_sample(self, server_epoch: float, t0: float, t1: float) -> dict:
-        """샘플 한 개(세션 유지 응답의 Date 헤더)로 어긋남만 확인한다.
+    def note_drift_sample(self, server_epoch: float, t0: float, t1: float,
+                          resolution: str = "date") -> dict:
+        """샘플 한 개(세션 유지 응답)로 어긋남만 확인한다.
 
-        **이 한 발로 오프셋을 움직이지 않는다.** Date 헤더는 초 단위라 한 발의
-        구간은 최소 1초 폭이고, 왕복이 튀면 더 넓어진다. 그걸 그대로 반영하면
-        잘 좁혀둔 값이 노이즈에 끌려다닌다. 그래서 판정만 한다:
+        **이 한 발로 오프셋을 움직이지 않는다.** 한 발의 구간은 넓고, 그걸
+        그대로 반영하면 잘 좁혀둔 값이 노이즈에 끌려다닌다. 그래서 판정만 한다:
 
           · 지금 오프셋이 이 샘플의 구간 안에 있으면 → 이상 없음
           · 벗어나 있으면 → 시계가 실제로 벌어진 것이므로 '즉시 다시 재라' 고 알린다
 
-        권위는 언제나 12발짜리 구간 교집합(sync)이다.
+        구간 폭은 해상도에 따라 다르다.
+          resolution="ms"    egovLatestServerTime(밀리초) → 폭 = 왕복
+          resolution="date"  Date 헤더(초)                → 폭 = 1초 + 왕복
+
+        권위는 언제나 여러 발짜리 구간 교집합(sync)이다.
         """
         rtt = max(0.0, t1 - t0)
         if rtt > 5.0 or rtt <= 0.0 or not self.synced:
             return {"usable": False, "reason": "rtt_out_of_range",
                     "rttMs": round(rtt * 1000, 1)}
-        t_mid = t0 + rtt / 2.0
-        half = rtt / 2.0
-        lo = (server_epoch - t_mid) - half
-        hi = (server_epoch + 1.0 - t_mid) + half
-        margin = 0.05                       # 초 경계 판정의 여유
+        span = 0.0 if resolution == "ms" else 1.0
+        lo = server_epoch - t1
+        hi = (server_epoch + span) - t0
+        margin = 0.05                       # 경계 판정의 여유
         offset = self.offset
         if offset < lo - margin:
             deviation = offset - (lo - margin)
@@ -226,6 +237,7 @@ class ClockSync:
                 "deviationMs": round(deviation * 1000, 1),
                 "offsetMs": round(offset * 1000, 1),
                 "rttMs": round(rtt * 1000, 1),
+                "resolution": resolution,
                 "windowMs": [round(lo * 1000, 1), round(hi * 1000, 1)]}
         with self._lock:
             self.drift_notes.append(note)
@@ -236,11 +248,12 @@ class ClockSync:
     def describe(self) -> str:
         if not self.synced:
             return "서버 시각 동기화 실패 (PC 시계 사용)"
+        how = "밀리초 서버시각" if self.resolution == "ms" else "Date 헤더(초)"
         return (
             f"서버 시각 동기화 완료: 보정 {self.offset * 1000:+.0f}ms "
             f"(오차 ±{self.uncertainty * 1000 / 2:.0f}ms, 샘플 {self.samples}개, "
             f"최소왕복 {self.rtt_best * 1000:.0f}ms, "
-            f"편도 추정 {self.one_way * 1000:.0f}ms)"
+            f"편도 추정 {self.one_way * 1000:.0f}ms, {how})"
         )
 
 
@@ -254,22 +267,95 @@ def _parse_date_header(value: str) -> float | None:
         return None
 
 
-def sync(session=None, samples: int = 12, url: str | None = None,
+# childcare.go.kr 은 전자정부프레임워크(eGovFrame) 위에 올라가 있고, 그 세션
+# 필터가 모든 동적 응답에 아래 쿠키를 **밀리초 단위로** 붙인다.
+#
+#   Set-Cookie: egovLatestServerTime=1788221708489; path=/; secure; ...
+#
+# 실측(2026-09-01, 이 서버에서 HEAD 로 확인):
+#   Date: Tue, 01 Sep 2026 00:15:08 GMT   ↔   egovLatestServerTime=...708489
+# 두 값이 같은 초를 가리키고, 쿠키 쪽은 .489 까지 말해준다. 이 값 하나로
+# Date 헤더의 1초 양자화가 통째로 사라진다.
+#
+# 이 쿠키는 요청이 **들어온 직후**(렌더링 전) 찍힌다. 근거: 렌더링 비용이
+# 완전히 다른 세 경로에서 (쿠키시각 - 발사시각) 이 사실상 같았다.
+#   /icms/occasion/SelectTotalTime.html  왕복 150ms · 쿠키-t0 128ms · t1-쿠키 23ms
+#   /?menuno=245                         왕복 369ms · 쿠키-t0 128ms · t1-쿠키 241ms
+#   /?menuno=1                           왕복 980ms · 쿠키-t0 127ms · t1-쿠키 854ms
+# 즉 쿠키 시각 ≒ **서버가 요청을 받은 순간**이고, 왕복의 나머지는 전부 그
+# 뒤의 JSP 렌더링이다. 우리가 맞춰야 하는 것도 '서버가 요청을 받는 순간'이라
+# 이 쿠키가 정확히 우리가 원하는 시계다.
+_RE_EGOV_TIME = re.compile(r"egovLatestServerTime=(\d{10,16})")
+
+
+def _parse_server_ms(headers) -> float | None:
+    """응답 헤더에서 밀리초 서버시각(초 단위 float)을 뽑는다. 없으면 None."""
+    try:
+        raw = headers.get("Set-Cookie") or ""
+    except Exception:
+        return None
+    m = _RE_EGOV_TIME.search(raw)
+    if not m:
+        return None
+    try:
+        v = int(m.group(1)) / 1000.0
+    except Exception:
+        return None
+    # 말이 안 되는 값(2001년 이전 / 2100년 이후)은 버린다.
+    if v < 1_000_000_000.0 or v > 4_100_000_000.0:
+        return None
+    return v
+
+
+def _intersect(rows: list) -> tuple:
+    """샘플 구간들을 교집합한다. 모순이면 왕복이 가장 나쁜 것부터 버린다.
+
+    v1.0.9 까지는 교집합이 비면 **그 샘플 하나로 재시작**했다. 튀는 샘플
+    한 발이 앞의 좋은 샘플을 전부 지워버릴 수 있는 구조였다. 이제는 반대로,
+    왕복이 나쁜(=구간이 넓고 덜 믿음직한) 샘플부터 떨어뜨려 살아남는 최대
+    집합을 쓴다. 돌려주는 것은 (lo, hi, 쓴 샘플 수, 버린 샘플 수).
+    """
+    keep = sorted(rows, key=lambda r: r["rtt"])
+    dropped = 0
+    while keep:
+        lo = max(r["lo"] for r in keep)
+        hi = min(r["hi"] for r in keep)
+        if lo <= hi:
+            return lo, hi, len(keep), dropped
+        keep.pop()                          # 왕복 최악부터 버린다
+        dropped += 1
+    return float("-inf"), float("inf"), 0, dropped
+
+
+def sync(session=None, samples: int = None, url: str | None = None,
          log=lambda *_: None, diag=None, deadline: float | None = None,
          quiet: bool = False) -> ClockSync:
-    """Date 헤더를 여러 번 받아 offset 구간을 좁힌다.
+    """서버 시각을 여러 발 재서 offset 구간을 좁힌다.
 
-    deadline 을 주면 그 로컬 시각을 넘겨서까지 샘플을 더 받지 않는다. 재측정이
-    정각 근처까지 늘어지는 일을 막기 위한 것이다(회선이 느리면 12발에 15초까지
-    걸린다). 그때까지 받은 샘플만으로 판정한다.
+    샘플 한 발이 말해주는 것:
+      · egovLatestServerTime(밀리초)이 있으면
+            offset ∈ [S - t1, S - t0]          폭 = 왕복
+      · 없으면 Date 헤더(초)로 떨어진다
+            offset ∈ [S - t1, S + 1 - t0]      폭 = 1초 + 왕복
+
+    v1.0.9 까지는 두 번째 경로뿐이었고, 게다가 왕복이 큰 `/?menuno=1` 을
+    두들겼다(고객 PC 실측 왕복 780~1060ms). 그래서 한 발의 폭이 1.8~2.1초,
+    12발을 교집합해도 잔여 폭이 **868ms**(한쪽 오차 ±434ms) 였다. 그 434ms 가
+    조준점 685ms 의 대부분이었다.
+
+    deadline 을 주면 그 로컬 시각을 넘겨서까지 샘플을 더 받지 않는다.
     """
     import requests
 
+    if samples is None:
+        samples = config.CLOCK_SAMPLES
     sess = session or requests.Session()
-    target = url or (config.BASE_URL + "/?menuno=1")
+    target = url or (config.BASE_URL + config.CLOCK_PROBE_PATH)
     out = ClockSync()
 
     errors: list[str] = []
+    rows: list = []
+    ms_hits = 0
     for i in range(samples):
         if deadline is not None and time.time() >= deadline:
             break
@@ -283,39 +369,43 @@ def sync(session=None, samples: int = 12, url: str | None = None,
             errors.append(f"{type(exc).__name__}: {exc}")
             continue
 
-        raw = r.headers.get("Date")
-        if not raw:
-            continue
-        s = _parse_date_header(raw)
-        if s is None:
-            continue
-
         rtt = t1 - t0
-        t_mid = t0 + rtt / 2.0
-        # 왕복 지연의 비대칭 가능성만큼 구간을 넓혀 안전하게 잡는다.
-        half = rtt / 2.0
-        lo = (s - t_mid) - half
-        hi = (s + 1.0 - t_mid) + half
+        if rtt <= 0.0 or rtt > 8.0:
+            continue
 
-        new_lo = max(out.lo, lo)
-        new_hi = min(out.hi, hi)
-        if new_lo <= new_hi:                # 교집합이 살아있을 때만 반영
-            out.lo, out.hi = new_lo, new_hi
-        else:                               # 시계가 튀었으면 이 샘플로 재시작
-            out.lo, out.hi = lo, hi
+        raw = r.headers.get("Date") or ""
+        sms = _parse_server_ms(r.headers)
+        if sms is not None:
+            lo, hi, kind = sms - t1, sms - t0, "ms"
+            ms_hits += 1
+        else:
+            s = _parse_date_header(raw)
+            if s is None:
+                continue
+            lo, hi, kind = s - t1, (s + 1.0) - t0, "date"
 
-        out.samples += 1
+        rows.append({"lo": lo, "hi": hi, "rtt": rtt, "kind": kind})
         out.rtt_best = min(out.rtt_best, rtt)
         out.detail.append(
-            {"i": i, "dateHeader": raw, "rttMs": round(rtt * 1000, 1),
-             "loMs": round(out.lo * 1000, 1), "hiMs": round(out.hi * 1000, 1)}
+            {"i": i, "kind": kind, "dateHeader": raw,
+             "serverMs": round(sms * 1000, 1) if sms is not None else None,
+             "rttMs": round(rtt * 1000, 1),
+             "loMs": round(lo * 1000, 1), "hiMs": round(hi * 1000, 1)}
         )
-        time.sleep(0.13)                    # 초 경계를 여러 위상에서 훑는다
+        # 밀리초 시각이 있으면 초 경계를 훑을 이유가 없어 짧게 쉬고, Date
+        # 헤더로 떨어졌으면 여러 위상에서 경계를 만나야 하므로 더 쉰다.
+        time.sleep(0.05 if kind == "ms" else 0.13)
 
-    if out.samples:
-        out.offset = (out.lo + out.hi) / 2.0
-        out.synced = True
-        out.last_sync_local = time.time()
+    if rows:
+        lo, hi, used, dropped = _intersect(rows)
+        if used:
+            out.lo, out.hi = lo, hi
+            out.offset = (lo + hi) / 2.0
+            out.samples = used
+            out.dropped = dropped
+            out.resolution = "ms" if ms_hits else "date"
+            out.synced = True
+            out.last_sync_local = time.time()
 
     out.errors = errors
     if not quiet:
@@ -328,6 +418,12 @@ def sync(session=None, samples: int = 12, url: str | None = None,
                           {"offsetMs": round(out.offset * 1000, 1),
                            "uncertaintyMs": round(out.uncertainty * 1000, 1)
                            if out.uncertainty != float("inf") else None,
+                           "resolution": out.resolution,
+                           "msSamples": ms_hits,
+                           "usedSamples": out.samples,
+                           "droppedSamples": out.dropped,
+                           "rttBestMs": (round(out.rtt_best * 1000, 1)
+                                         if out.rtt_best != float("inf") else None),
                            "target": target,
                            "errors": errors[:10],
                            "samples": out.detail})
@@ -356,7 +452,7 @@ class ClockKeeper(threading.Thread):
     """
 
     def __init__(self, clock: ClockSync, interval: float = config.RESYNC_SECONDS,
-                 samples: int = 12, log=lambda *_: None, diag=None,
+                 samples: int = config.CLOCK_SAMPLES, log=lambda *_: None, diag=None,
                  stop_event=None, session_factory=None,
                  quiet_seconds: float = config.RESYNC_QUIET_SECONDS,
                  quiet_server_epoch: float | None = None):
@@ -470,7 +566,8 @@ class ClockKeeper(threading.Thread):
         if not c.synced:
             return "아직 한 번도 맞추지 못했습니다"
         return (f"보정 {c.offset * 1000:+.0f}ms "
-                f"(오차 ±{c.uncertainty * 500:.0f}ms, 최소왕복 {c.rtt_best * 1000:.0f}ms)")
+                f"(오차 ±{c.uncertainty * 500:.0f}ms, 최소왕복 {c.rtt_best * 1000:.0f}ms"
+                f"{', 밀리초 서버시각' if c.resolution == 'ms' else ''})")
 
     def _dump(self) -> None:
         if self.diag is None:
@@ -602,13 +699,24 @@ def measure_arrival(session=None, clock: ClockSync | None = None,
     가 나와야 한다. 이게 맞으면 '발사시각'이 아니라 '도착시각'을 맞추고 있다는
     뜻이다. Date 헤더는 1초 해상도라 한 발로는 초 단위까지만 말할 수 있고,
     경계 양쪽을 여러 delta 로 협공해서 sub-second 정확도를 보인다.
+
+    **v1.0.10: 이제 초 단위로 협공할 필요가 없다.** 응답의
+    egovLatestServerTime 쿠키가 서버가 요청을 받은 순간을 밀리초로 알려주므로,
+    한 발마다 도착 오차를 그대로 잴 수 있다.
+
+        actualArrivalOffsetMs = (서버 도착 시각 - B) * 1000
+        arrivalErrorMs        = 실제 도착 - 노린 도착
+
+    이 arrivalErrorMs 가 우리가 09시에 감수하는 오차의 실측치다. 예전에는
+    "우리 추정으로는 +686ms" 라고밖에 말할 수 없었고 실제가 얼마였는지 알 길이
+    없었다(2026-09-01 NOTES 참고).
     """
     import requests
 
     sess = session or requests.Session()
-    target = url or (config.BASE_URL + "/?menuno=1")
+    target = url or (config.BASE_URL + config.CLOCK_PROBE_PATH)
     c = clock if (clock is not None and clock.synced) else sync(
-        session=sess, samples=12, log=log)
+        session=sess, log=log)
 
     rows = []
     for delta in deltas_ms:
@@ -631,8 +739,9 @@ def measure_arrival(session=None, clock: ClockSync | None = None,
             continue
         t1 = time.time()
         served = _parse_date_header(r.headers.get("Date", "")) or 0.0
+        arrived = _parse_server_ms(r.headers)
         expected = boundary - 1 if delta < 0 else boundary
-        rows.append({
+        row = {
             "deltaMs": delta,
             "fireLateMs": round((t0 - fire_local) * 1000, 2),   # 스케줄러 오차
             "estArrivalOffsetMs": round(
@@ -641,13 +750,29 @@ def measure_arrival(session=None, clock: ClockSync | None = None,
             "expectedSecond": int(expected),
             "match": int(served) == int(expected),
             "rttMs": round((t1 - t0) * 1000, 1),
-        })
-        log(f"도착 검증 delta={delta:+}ms → 서버 처리 초 {int(served)} "
-            f"(기대 {int(expected)}) {'일치' if rows[-1].get('match') else '불일치'}")
+        }
+        if arrived is not None:
+            actual = (arrived - boundary) * 1000.0
+            row["actualArrivalOffsetMs"] = round(actual, 1)
+            row["arrivalErrorMs"] = round(actual - delta, 1)
+            # 밀리초 시각이 있으면 초 비교보다 이쪽이 훨씬 엄격한 판정이다.
+            row["match"] = (actual >= 0) == (delta >= 0)
+        rows.append(row)
+        if arrived is not None:
+            log(f"도착 검증 delta={delta:+}ms → 실제 도착 정각 "
+                f"{row['actualArrivalOffsetMs']:+.0f}ms "
+                f"(오차 {row['arrivalErrorMs']:+.0f}ms) "
+                f"{'일치' if row['match'] else '불일치'}")
+        else:
+            log(f"도착 검증 delta={delta:+}ms → 서버 처리 초 {int(served)} "
+                f"(기대 {int(expected)}) {'일치' if row.get('match') else '불일치'}")
         time.sleep(0.4)
 
     ok = [r for r in rows if r.get("match")]
+    errs = [abs(r["arrivalErrorMs"]) for r in rows if "arrivalErrorMs" in r]
     out = {
+        "arrivalErrorWorstMs": round(max(errs), 1) if errs else None,
+        "arrivalErrorMeanMs": round(sum(errs) / len(errs), 1) if errs else None,
         "offsetMs": round(c.offset * 1000, 1),
         "uncertaintyMs": (round(c.uncertainty * 1000, 1)
                           if c.uncertainty != float("inf") else None),

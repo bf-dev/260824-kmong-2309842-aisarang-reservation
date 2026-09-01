@@ -176,7 +176,7 @@ class Runner:
 
         self.status("서버 시각을 맞추는 중입니다...")
         sess = site.make_session()
-        self.clock = clockmod.sync(session=sess, samples=12,
+        self.clock = clockmod.sync(session=sess,
                                    log=self.log, diag=self.diag)
         self.status(self.clock.describe())
 
@@ -308,6 +308,12 @@ class Runner:
         automation.capture(self.driver, self.diag, "after_confirm")
 
         # 정원초과라면 다음 우선 시간대로 한 번 더 간다(고객이 지정했을 때만).
+        #
+        # **'taken'(선예약)은 여기에 넣지 않는다.** 뜻은 같지만, 이 경로는
+        # _prepare_with_retries 가 [예약하기] 를 다시 누른다 = 가상대기열에
+        # 다시 들어간다. 2026-08-26 에 그 재진입이 고객을 72번 → 177번으로
+        # 밀어내고 그날 예약을 통째로 날렸다. 인계 모드(기본)는 애초에 이
+        # 경로를 지나지 않는다. 되살리려면 대기열 근거부터 새로 만들 것.
         if (not res.ok) and res.reason == "full" and len(preferred) > 1:
             rest = [h for h in preferred if h != p.start_hour]
             self.status(f"{p.start_hour:02d}시는 정원초과입니다. 다음 우선순위 "
@@ -709,13 +715,18 @@ class Runner:
                     pass
 
     def _drift_check(self, touched: dict) -> None:
-        """세션 유지 응답의 Date 헤더로 '어긋났는지' 만 본다."""
+        """세션 유지 응답으로 '어긋났는지' 만 본다(밀리초 쿠키 우선)."""
         try:
-            stamp = touched.get("dateEpoch")
+            # 밀리초 서버시각(쿠키)이 있으면 그쪽이 훨씬 좁다. 없으면 Date 헤더.
+            sms = touched.get("serverMs")
+            if sms:
+                stamp, resolution = sms, "ms"
+            else:
+                stamp, resolution = touched.get("dateEpoch"), "date"
             t0, t1 = touched.get("t0"), touched.get("t1")
             if not stamp or t0 is None or t1 is None:
                 return
-            note = self.clock.note_drift_sample(stamp, t0, t1)
+            note = self.clock.note_drift_sample(stamp, t0, t1, resolution)
             if not note.get("usable"):
                 return
             if note["consistent"]:
@@ -778,7 +789,7 @@ class Runner:
         """네트워크/서버시각/조회 API 가 살아 있는지 확인한다(브라우저 없이)."""
         out = {}
         sess = site.make_session()
-        c = clockmod.sync(session=sess, samples=6, log=self.log, diag=self.diag)
+        c = clockmod.sync(session=sess, samples=20, log=self.log, diag=self.diag)
         self.clock = c
         out["clock"] = c.describe()
         out["clock_ok"] = c.synced

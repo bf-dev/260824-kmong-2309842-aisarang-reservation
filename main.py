@@ -42,14 +42,19 @@ def _out(line: str = "") -> None:
         pass
 
 
-def _reopen_probe(drv) -> dict:
-    """'예약시간전' 화면에서 되살리기가 무엇을 누르는지 프로즌 exe 로 확인한다.
+def _reopen_probe(drv, expect_code: str = "") -> dict:
+    """결과 알림 화면에서 되살리기가 무엇을 누르는지 프로즌 exe 로 확인한다.
 
-    2026-08-27 09:00:00 캡처의 실물 알림 마크업(too_early_alert.html) 위에서:
+    2026-08-27 캡처(too_early_alert.html, expect_code 없음):
       - 서버 원문이 우리 판정기로 too_early 로 읽히는가
       - 되살리기 문(`_Reopen`)이 열리는가
       - 눌리는 것이 [예약하기] 하나와 알림 [확인] 하나뿐인가
         (예약 확인창의 [확인] 은 **0회** 여야 한다)
+
+    2026-09-01 캡처(taken_alert.html, expect_code=R_TAKEN):
+      - 서버 원문이 taken 으로 읽히는가
+      - 되살리기 문이 **열리지 않는가** (열리면 대기열 맨 뒤로 간다)
+      - 아무것도 눌리지 않는가
 
     사이트의 진짜 fnSave 는 픽스처에서 제거돼 있다(넷퍼널과 ajax 를 부른다).
     그 자리에 계수기를 놓아 진짜 버튼의 진짜 onclick 이 불렸는지만 센다.
@@ -66,8 +71,10 @@ def _reopen_probe(drv) -> dict:
         "  function(a){ a.addEventListener('click', function(){"
         "    window.__confirmClick++; }); });")
 
+    want = booking.TAKEN_REAL if expect_code == booking.R_TAKEN \
+        else booking.TOO_EARLY_REAL
     notices = booking.read_notices(drv)
-    hit = [n for n in notices if booking.TOO_EARLY_REAL in n]
+    hit = [n for n in notices if want in n]
     classified = booking.classify(hit[0]) if hit else "no_text"
 
     class _Now:
@@ -75,7 +82,8 @@ def _reopen_probe(drv) -> dict:
             return 1001.0
 
     gate = handover._Reopen(_Now(), 1000.0, 2, 15.0)
-    gate.note_outcome(booking.R_TOO_EARLY)
+    # 실제 경로와 똑같이, 방금 읽어낸 판정 결과를 그대로 문에 먹인다.
+    gate.note_outcome(expect_code or booking.R_TOO_EARLY)
     st = handover.read_state(drv)
     allowed = gate.allowed(st)
     if allowed:
@@ -144,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
                 if a.startswith("--interval="):
                     interval = float(a.split("=", 1)[1])
             sess = site.make_session()
-            c = clockmod.sync(session=sess, samples=12, log=_out, diag=diag)
+            c = clockmod.sync(session=sess, log=_out, diag=diag)
             keeper = clockmod.ClockKeeper(c, interval=interval, log=_out, diag=diag)
             keeper.start()
             _out(f"CLOCKTEST 시작: {interval:.0f}초마다 재측정, {minutes:.1f}분 동안")
@@ -315,11 +323,21 @@ def main(argv: list[str] | None = None) -> int:
                 # too_early 로 분류되는지, 되살리기 문이 열리는지를 본다.
                 visit("too_early_alert.html", True)
                 too_early = _reopen_probe(drv)
+                # 2026-09-01 09:00:00 의 그 화면. 도착 추정 정각 +686ms 에
+                # 서버가 '선예약' 으로 자리를 뺏겼다고 답했다. 여기서도 쏘지
+                # 않고(쏠 창이 없다), 되살리기 문은 **열리면 안 된다**.
+                visit("taken_alert.html", True)
+                taken = _reopen_probe(drv, expect_code=booking.R_TAKEN)
                 _out(f"HANDOVERTEST   tooEarlyText={too_early['classified']} "
                      f"reopenAllowed={too_early['allowed']} "
                      f"fnSave={too_early['fnSave']} "
                      f"alertClosed={too_early['alertClosed']} "
                      f"confirmClicked={too_early['confirmClicked']}")
+                _out(f"HANDOVERTEST   takenText={taken['classified']} "
+                     f"reopenAllowed={taken['allowed']} "
+                     f"fnSave={taken['fnSave']} "
+                     f"alertClosed={taken['alertClosed']} "
+                     f"confirmClicked={taken['confirmClicked']}")
             finally:
                 try:
                     drv.quit()
@@ -344,13 +362,20 @@ def main(argv: list[str] | None = None) -> int:
                   and too_early["allowed"] is True
                   and too_early["fnSave"] == 1
                   and too_early["alertClosed"] == 1
-                  and too_early["confirmClicked"] == 0)
+                  and too_early["confirmClicked"] == 0
+                  # 선예약: 쏘지 않고, [예약하기] 를 다시 누르지도 않는다.
+                  and by[("taken_alert.html", True)][1] is False
+                  and taken["classified"] == "taken"
+                  and taken["allowed"] is False
+                  and taken["fnSave"] == 0
+                  and taken["alertClosed"] == 0
+                  and taken["confirmClicked"] == 0)
             fired_total = sum(1 for _n, _t2, _s, f in rows if f)
-            _out(f"HANDOVERTEST fired={fired_total}/5 expected=1")
+            _out(f"HANDOVERTEST fired={fired_total}/6 expected=1")
             diag.add_json("handovertest.json", {
                 "rows": [{"page": n, "ticked": t, "state": s.as_dict(),
                           "fired": f} for n, t, s, f in rows],
-                "tooEarly": too_early})
+                "tooEarly": too_early, "taken": taken})
             diag.upload("인계 모드 점검 " + ("성공" if ok else "실패"),
                         {"mode": "handovertest",
                          "result": "success" if ok else "fail",

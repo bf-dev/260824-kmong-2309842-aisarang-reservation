@@ -85,6 +85,7 @@ def build_driver(headless: bool = False, log=lambda *_: None):
         pass
 
     neutralize_devtool_blocker(driver, log)
+    install_net_recorder(driver, log)
     log("크롬을 실행했습니다.")
     return driver
 
@@ -130,7 +131,7 @@ def neutralize_devtool_blocker(driver, log=lambda *_: None) -> bool:
 
 # ---------------------------------------------------------------- 진단 수집
 
-_NET_RING = deque(maxlen=3000)
+_NET_RING = deque(maxlen=config.NET_RING_MAX)
 
 
 def drain_network(driver, raise_on_error: bool = False) -> list:
@@ -140,8 +141,8 @@ def drain_network(driver, raise_on_error: bool = False) -> list:
       1. 우리가 볼 수 있게 파싱해서 돌려준다.
       2. **드라이버 쪽 버퍼를 비운다.** 09시까지 몇 시간을 대기하는 프로그램이라
          안 비우면 계속 쌓인다.
-    돌려준 것과 별개로 마지막 3000건은 링버퍼에 남겨, capture() 가 언제 불려도
-    직전 구간의 네트워크를 같이 담을 수 있게 한다.
+    돌려준 것과 별개로 마지막 config.NET_RING_MAX 건은 링버퍼에 남겨, capture()
+    가 언제 불려도 직전 구간의 네트워크를 같이 담을 수 있게 한다.
 
     raise_on_error 는 진단 기록 모드가 쓴다. 삼켜버리면 브라우저가 이미 죽었는데도
     "잘 돌았다" 로 보여서, 죽은 세션에 계속 재시도하게 된다(실측으로 걸렸다).
@@ -166,10 +167,28 @@ def drain_network(driver, raise_on_error: bool = False) -> list:
     return out
 
 
-def _network_digest(limit: int = 300) -> list:
-    """링버퍼에서 요청/응답만 간추린다(본문 없음, 헤더 없음)."""
+# 이 조각이 URL 에 들어 있으면 링버퍼에서 절대 버리지 않는다.
+# 09시에 무슨 일이 있었는지 말해주는 유일한 줄들이다.
+_NET_KEEP_ALWAYS = ("InsertOcreqst", "ts.wseq", "OccasionTime", "SelectTotalTime",
+                    "SelectDupleTime", "/icms/occasion/")
+
+
+def _network_digest(limit: int = config.NET_DIGEST_LIMIT) -> list:
+    """링버퍼에서 요청/응답을 간추린다(본문 없음, 헤더 없음).
+
+    v1.0.9 까지는 여기서 **마지막 300건만** 남겼다. 그래서 2026-09-01 캡처에서
+    09시 훨씬 전에 발급된 가상대기열 티켓(opcode=5002)이 통째로 잘려 나갔고,
+    "대기열 티켓이 없었다" 는 틀린 결론을 고객에게 보고했다(진짜 근거는
+    sessionStorage 의 NetFunnel_ID 였다). 그래서 세 가지를 바꿨다.
+
+      1. 상한을 300 → config.NET_DIGEST_LIMIT(1500) 으로 올린다. ZIP 이 94KB
+         밖에 안 되므로 여유가 충분하다.
+      2. 잘라야 할 때는 **앞과 뒤를 같이** 남긴다(가운데를 버린다). 페이지가
+         뜰 때 벌어진 일과 발사 직후에 벌어진 일이 둘 다 필요하다.
+      3. 예약/대기열 관련 줄은 어디에 있든 무조건 남긴다(_NET_KEEP_ALWAYS).
+    """
     rows = []
-    for msg in list(_NET_RING)[-2000:]:
+    for msg in _NET_RING:
         method = msg.get("method", "")
         p = msg.get("params", {}) or {}
         if method == "Network.requestWillBeSent":
@@ -186,7 +205,158 @@ def _network_digest(limit: int = 300) -> list:
         elif method == "Network.loadingFailed":
             rows.append({"id": p.get("requestId"), "kind": "failed",
                          "error": p.get("errorText")})
-    return rows[-limit:]
+    return _trim_middle(rows, limit)
+
+
+def _is_key_row(row: dict) -> bool:
+    url = row.get("url") or ""
+    return any(k in url for k in _NET_KEEP_ALWAYS)
+
+
+def _trim_middle(rows: list, limit: int) -> list:
+    """상한을 넘으면 **가운데**를 버린다. 앞/뒤와 핵심 줄은 남긴다."""
+    if limit <= 0 or len(rows) <= limit:
+        return rows
+    keep_idx = {i for i, r in enumerate(rows) if _is_key_row(r)}
+    room = max(limit - len(keep_idx), 2)
+    head = room // 2
+    tail = room - head
+    keep_idx |= set(range(min(head, len(rows))))
+    keep_idx |= set(range(max(0, len(rows) - tail), len(rows)))
+    out = []
+    dropped = 0
+    for i, r in enumerate(rows):
+        if i in keep_idx:
+            if dropped:
+                out.append({"kind": "elided", "droppedEntries": dropped})
+                dropped = 0
+            out.append(r)
+        else:
+            dropped += 1
+    if dropped:
+        out.append({"kind": "elided", "droppedEntries": dropped})
+    return out
+
+
+# 페이지의 XHR/fetch 를 그대로 두고 **곁에서** 요청/응답 본문만 받아 적는다.
+#
+# 왜 필요한가. 2026-09-01 에 서버는 "1건 예약 중 1건 예약이 선예약으로 인해
+# 예약되지 않았습니다." 를 돌려줬다. 사이트 스크립트가 화면에 찍는 것은
+# `data.returnmsg` 하나뿐이고, 그 옆에 어떤 코드/필드가 같이 왔는지는
+# **응답 본문에만** 있다. 그 본문이 진단 ZIP 에 없어서, 그 문구가 '자리를
+# 뺏겼다' 인지 '중복 예약' 인지 가리는 데 캡처 네 개를 대조해야 했다.
+#
+# 안전 규칙(우선순위 순):
+#   1. 고객 프로그램을 절대 망가뜨리지 않는다. 전부 try/catch 로 감싸고,
+#      원래 핸들러를 교체하지 않는다(addEventListener 로 곁에 붙는다).
+#   2. 응답을 건드리지 않는다. responseText 를 '읽기만' 한다.
+#   3. 양을 묶는다. 요청 40건, 본문 20,000자.
+#   4. 비밀번호로 보이는 필드는 값을 지운다.
+_JS_NET_RECORDER = r"""
+try {
+  if (!window.__aisarangNet) {
+    var LOG = window.__aisarangNet = [];
+    var MAX_ROWS = 40, MAX_BODY = 20000;
+    var WANT = ['InsertOcreqst', '/icms/occasion/', 'ts.wseq', 'OccasionTime'];
+    function want(u){
+      try { u = String(u || '');
+        for (var i = 0; i < WANT.length; i++) { if (u.indexOf(WANT[i]) >= 0) return true; }
+      } catch (e) {}
+      return false;
+    }
+    function clip(v){
+      try {
+        v = (v === null || v === undefined) ? '' : String(v);
+        // 비밀번호/인증서 값은 남기지 않는다.
+        v = v.replace(/((?:pass|pwd|passwd|password|aResult|cert)[^=&]*=)[^&]*/gi, '$1[REDACTED]');
+        if (v.length > MAX_BODY) {
+          v = v.slice(0, MAX_BODY / 2) + '\n...[' + (v.length - MAX_BODY) +
+              ' chars elided]...\n' + v.slice(v.length - MAX_BODY / 2);
+        }
+        return v;
+      } catch (e) { return '[unreadable]'; }
+    }
+    function push(row){ try { if (LOG.length < MAX_ROWS) LOG.push(row); } catch (e) {} }
+
+    var _open = XMLHttpRequest.prototype.open;
+    var _send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) {
+      try { this.__amethod = m; this.__aurl = u; } catch (e) {}
+      return _open.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      try {
+        if (want(this.__aurl)) {
+          var self = this, t0 = Date.now(), req = clip(body);
+          self.addEventListener('loadend', function () {
+            try {
+              push({kind: 'xhr', method: self.__amethod, url: String(self.__aurl),
+                    t0: t0, t1: Date.now(), status: self.status,
+                    requestBody: req,
+                    responseHeaders: clip(self.getAllResponseHeaders ?
+                                          self.getAllResponseHeaders() : ''),
+                    responseBody: clip(self.responseText)});
+            } catch (e) {}
+          });
+        }
+      } catch (e) {}
+      return _send.apply(this, arguments);
+    };
+
+    if (window.fetch) {
+      var _fetch = window.fetch;
+      window.fetch = function (input, init) {
+        var url = '';
+        try { url = (typeof input === 'string') ? input : (input && input.url) || ''; } catch (e) {}
+        var p = _fetch.apply(this, arguments);
+        try {
+          if (want(url)) {
+            var t0 = Date.now();
+            p.then(function (r) {
+              try {
+                r.clone().text().then(function (txt) {
+                  push({kind: 'fetch', url: String(url), t0: t0, t1: Date.now(),
+                        status: r.status, responseBody: clip(txt)});
+                }).catch(function () {});
+              } catch (e) {}
+              return r;
+            }).catch(function () {});
+          }
+        } catch (e) {}
+        return p;
+      };
+    }
+  }
+} catch (e) {}
+"""
+
+
+def install_net_recorder(driver, log=lambda *_: None) -> bool:
+    """예약 POST 의 요청/응답 **본문**을 받아 적는 훅을 설치한다.
+
+    새 문서마다 자동으로 다시 걸리도록 CDP 로 등록하고, 이미 떠 있는 문서에도
+    한 번 바로 넣는다. 실패해도 예약 경로는 그대로 간다(진단만 얇아진다).
+    """
+    ok = False
+    try:
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument",
+                               {"source": _JS_NET_RECORDER})
+        ok = True
+    except Exception as exc:  # noqa: BLE001
+        log(f"네트워크 본문 기록기 등록 실패(무시): {type(exc).__name__}")
+    try:
+        driver.execute_script(_JS_NET_RECORDER)
+        ok = True
+    except Exception:
+        pass
+    return ok
+
+
+def _page_net_bodies(driver) -> list:
+    try:
+        return driver.execute_script("return window.__aisarangNet || [];") or []
+    except Exception:
+        return []
 
 
 def capture(driver, diag, label: str) -> None:
@@ -216,6 +386,14 @@ def capture(driver, diag, label: str) -> None:
     try:
         drain_network(driver)
         diag.add_json(f"network_{label}.json", _network_digest())
+    except Exception:
+        pass
+    # 예약 POST 의 요청/응답 **본문**. v1.0.9 ZIP 에 이게 없어서 서버 응답의
+    # 코드/필드를 볼 수 없었다(NOTES.md v1.0.10 참고).
+    try:
+        bodies = _page_net_bodies(driver)
+        if bodies:
+            diag.add_json(f"xhr_bodies_{label}.json", bodies)
     except Exception:
         pass
 
@@ -251,13 +429,37 @@ def login_grade(driver) -> str:
     return "cert" if is_logged_in(driver) else "none"
 
 
+# 세션 유지 + 공짜 시계 점검.
+#
+# v1.0.10 에서 두 가지가 바뀌었다.
+#   1) 대상이 `/?menuno=1`(무거운 JSP, 실측 왕복 0.8~1.1초) 에서
+#      config.CLOCK_PROBE_PATH(실측 왕복 0.15초) 로 바뀌었다. 둘 다 같은 eGov
+#      세션 필터를 지나므로 세션 유지 효과는 같고, 왕복이 좁을수록 점검이 좁다.
+#   2) 응답 뒤 `document.cookie` 에서 egovLatestServerTime 을 읽는다. 이 쿠키는
+#      HttpOnly 가 아니라(실측: path=/; secure; SameSite=None) JS 가 읽을 수
+#      있고, **밀리초** 서버시각이다. Date 헤더(1초)보다 훨씬 좁은 점검이 된다.
 _JS_TOUCH_SESSION = r"""
 var cb = arguments[arguments.length - 1];
+var path = arguments[0];
 var t0 = Date.now();
-function done(o){ o.t0 = t0; o.t1 = Date.now(); try { cb(o); } catch (e) {} }
+function cookieMs(){
+  try {
+    var m = /(?:^|;\s*)egovLatestServerTime=(\d{10,16})/.exec(document.cookie || '');
+    return m ? Number(m[1]) : null;
+  } catch (e) { return null; }
+}
+var before = cookieMs();
+function done(o){
+  o.t0 = t0; o.t1 = Date.now();
+  try {
+    var now = cookieMs();
+    o.serverMs = (now && now !== before) ? now : null;
+  } catch (e) { o.serverMs = null; }
+  try { cb(o); } catch (e) {}
+}
 try {
-  fetch('/?menuno=1&_ka=' + t0, {method: 'HEAD', cache: 'no-store',
-                                 credentials: 'same-origin'})
+  fetch(path + (path.indexOf('?') >= 0 ? '&' : '?') + '_ka=' + t0,
+        {method: 'HEAD', cache: 'no-store', credentials: 'same-origin'})
     .then(function (r) { done({ok: true, status: r.status,
                                date: r.headers.get('Date')}); })
     .catch(function (e) { done({ok: false, error: String(e)}); });
@@ -277,7 +479,8 @@ def touch_session(driver, log=lambda *_: None) -> dict:
     같은 출처(same-origin) 라 헤더가 그대로 읽힌다. 이 값은 판정에만 쓰고
     오프셋을 직접 움직이지 않는다(clock.note_drift_sample 참고).
 
-    돌려주는 것: {ok, dateEpoch, t0, t1} (t0/t1 은 로컬 epoch 초).
+    돌려주는 것: {ok, dateEpoch, serverMs, t0, t1} (t0/t1/serverMs 는 로컬/서버
+    epoch 초). serverMs 는 밀리초 해상도라 있으면 그쪽을 쓴다.
     """
     prev = None
     try:
@@ -289,7 +492,8 @@ def touch_session(driver, log=lambda *_: None) -> dict:
     except Exception:
         pass
     try:
-        raw = driver.execute_async_script(_JS_TOUCH_SESSION) or {}
+        raw = driver.execute_async_script(_JS_TOUCH_SESSION,
+                                          config.CLOCK_PROBE_PATH) or {}
     except Exception as exc:  # noqa: BLE001
         # 여기서 실패해도 세션 유지 자체는 포기하지 않는다(옛 경로로 한 발).
         log(f"세션 유지 요청 실패(무시): {type(exc).__name__}")
@@ -307,7 +511,7 @@ def touch_session(driver, log=lambda *_: None) -> dict:
         except Exception:
             pass
 
-    out = {"ok": bool(raw.get("ok")), "dateEpoch": None,
+    out = {"ok": bool(raw.get("ok")), "dateEpoch": None, "serverMs": None,
            "status": raw.get("status"), "error": raw.get("error")}
     try:
         t0 = float(raw.get("t0") or 0) / 1000.0
@@ -318,6 +522,12 @@ def touch_session(driver, log=lambda *_: None) -> dict:
         stamp = _parse_date_header(raw.get("date") or "")
         if stamp is not None:
             out["dateEpoch"] = stamp
+        # 밀리초 서버시각(쿠키). 있으면 점검 창이 1초 -> 왕복 폭으로 줄어든다.
+        sms = raw.get("serverMs")
+        if sms:
+            v = float(sms) / 1000.0
+            if 1_000_000_000.0 < v < 4_100_000_000.0:
+                out["serverMs"] = v
     except Exception:
         pass
     return out

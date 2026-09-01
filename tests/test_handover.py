@@ -42,9 +42,10 @@ REAL_DIR = os.path.join(ROOT, "ci", "fixtures", "real")
 
 pytestmark = pytest.mark.skipif(
     not all(os.path.isfile(os.path.join(REAL_DIR, n))
-            for n in ("netfunnel_waiting.html", "too_early_alert.html")),
+            for n in ("netfunnel_waiting.html", "too_early_alert.html",
+                      "taken_alert.html")),
     reason="실물 캡처 픽스처가 없습니다 (python ci/build_netfunnel_fixture.py, "
-           "python ci/build_too_early_fixture.py)",
+           "python ci/build_too_early_fixture.py, python ci/build_taken_fixture.py)",
 )
 
 
@@ -259,6 +260,86 @@ def test_the_real_too_early_wording_is_not_the_sites_own_refusal():
     assert booking.result_is_retryable(booking.classify(booking.TOO_EARLY_REAL))
 
 
+# ------------------------------- 2026-09-01 09:00 의 그 화면 (실물 캡처, 진짜 크롬)
+
+def test_the_real_taken_alert_is_read_and_classified(site):
+    """2026-09-01 에 서버가 실제로 돌려준 '선예약' 문구를 그날 마크업에서 읽는다.
+
+    그날 조준은 정각 +685ms, 도착 추정 +686ms 였고 서버 답은 이것이었다.
+    v1.0.9 의 분류기는 이 문구를 [unknown] 으로 흘렸다. 동작 자체는 안전했지만
+    (되살리기가 too_early 에서만 열리므로 잠겨 있었다) 라벨이 틀렸다.
+    """
+    d = site("taken_alert.html", tick=True)
+
+    shown = d.execute_script(
+        "var out=[];"
+        "document.querySelectorAll(\"[id='layer-alert-popup2']\").forEach(function(e){"
+        "  if (e.getBoundingClientRect().height > 0)"
+        "    out.push((e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim());"
+        "});"
+        "return out;")
+    assert len(shown) == 1, shown
+    assert booking.TAKEN_REAL in shown[0], shown[0]
+
+    notices = booking.read_notices(d)
+    hit = [n for n in notices if booking.TAKEN_REAL in n]
+    assert hit, notices[:5]
+    assert booking.classify(hit[0]) == booking.R_TAKEN, hit[0]
+
+    # 이 화면도 '쏠 수 없는' 화면이다: [확인] 한 발이 확인창을 소비했다.
+    st = handover.read_state(d)
+    assert st.modal is False and st.ready() is False
+    assert st.on_reserve_page is True and st.ticked == 1, st.as_dict()
+
+
+def test_the_taken_wording_in_the_fixture_is_the_servers_own(site):
+    """상수가 우리가 지어낸 글자가 아니라는 것을 픽스처에서 대조한다.
+
+    v1.0.8 때 지어낸 '예약시간전' 픽스처가 분류기 시험을 순환논증으로 만들었다.
+    ci/build_taken_fixture.py 는 고객 PC 캡처 ZIP 에서 알림 레이어를 그대로
+    떠온다. 그러니 그 파일 안의 글자와 booking.TAKEN_REAL 이 같아야 한다.
+    """
+    raw = open(os.path.join(REAL_DIR, "taken_alert.html"), encoding="utf-8").read()
+    m = re.search(r'id="layer-alert-popup-contents2">([^<]+)<', raw)
+    assert m, "픽스처에서 알림 본문을 찾지 못했습니다"
+    assert m.group(1).strip() == booking.TAKEN_REAL, m.group(1)
+
+
+def test_taken_is_not_confused_with_success_or_too_early():
+    """성공 문구와 선예약 문구는 앞부분이 같다. 절대 섞이면 안 된다.
+
+        성공    "1건 예약 중 1건 예약되었습니다."           (2026-08-31 실물)
+        선예약  "1건 예약 중 1건 예약이 선예약으로 인해 …"  (2026-09-01 실물)
+    """
+    ok_real = "1건 예약 중 1건 예약되었습니다."
+    assert booking.classify(ok_real) == booking.R_OK
+    assert booking.classify(booking.TAKEN_REAL) == booking.R_TAKEN
+    assert booking.classify(f"알림 {booking.TAKEN_REAL} 확인") == booking.R_TAKEN
+    # 건수 접두사는 제출 줄 수에 따라 변한다. 뼈대만 보므로 따라가야 한다.
+    assert booking.classify(
+        "3건 예약 중 2건 예약이 선예약으로 인해 예약되지 않았습니다.") == booking.R_TAKEN
+    # 다시 쏴도 자리는 돌아오지 않는다.
+    assert not booking.result_is_retryable(booking.R_TAKEN)
+    # too_early 와도, 사이트 자체 거절과도 갈린다.
+    assert booking.classify(booking.TOO_EARLY_REAL) == booking.R_TOO_EARLY
+    assert booking.classify("예약 가능 시간이 아닙니다.") == booking.R_NOT_BOOKABLE
+
+
+def test_taken_never_reopens_the_reserve_button():
+    """선예약을 맞으면 되살리기 문은 영구히 잠긴다. [예약하기] 재클릭 금지.
+
+    2026-08-26 에 재진입이 고객을 72번 -> 177번으로 밀어냈다. 그날의 교훈이
+    새 결과 코드에도 그대로 적용되는지 여기서 못박는다.
+    """
+    gate = handover._Reopen(_FakeClock(OPEN + 1.0), OPEN, 2, 15.0)
+    gate.note_outcome(booking.R_TAKEN)
+    assert gate.locked is True
+    st = handover.LiveState(on_reserve_page=True, ticked=1, modal=False,
+                            confirm=False, queue=False)
+    assert gate.allowed(st) is False
+    assert "unknown" not in gate.why_not(st)
+
+
 def test_recovery_closes_the_real_alert_and_presses_the_real_reserve_button(site):
     """되살리기가 실물 마크업 위에서 정확히 두 개만 누른다는 것을 못박는다.
 
@@ -406,7 +487,10 @@ PAGE_TOUCHING = {
 READ_ONLY_BOOKING = {
     "_JS_ARM", "read_outcome", "classify", "StepResult",
     "R_OK", "R_FULL", "R_NOT_BOOKABLE", "R_TOO_EARLY", "R_UNKNOWN", "R_FAIL",
-    "TOO_EARLY_REAL",
+    # R_TAKEN 은 '선예약'(자리를 뺏김) 결과 코드다. 읽기만 하는 상수이므로
+    # 화면을 건드리지 않는다. 2026-09-01 실물 응답에서 왔다.
+    "R_TAKEN",
+    "TOO_EARLY_REAL", "TAKEN_REAL",
 }
 
 

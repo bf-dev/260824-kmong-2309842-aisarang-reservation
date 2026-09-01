@@ -78,3 +78,34 @@ def test_package_zip_has_one_top_folder_the_exe_and_the_korean_guide(tmp_path):
     root = updater.payload_root(work, f"{config.APP_SLUG}.exe")
     assert root == work / top
     assert (Path(root) / "_internal" / "python312.dll").is_file()
+
+
+def test_one_point_ten_is_newer_than_one_point_nine():
+    """이번 판이 정확히 그 함정이다. 문자열로 비교하면 1.0.10 < 1.0.9 다.
+
+    문자열 비교를 쓰면 v1.0.9 고객은 영원히 갱신을 못 받는다. 실제로 다른
+    프로젝트에서 그렇게 고객이 한 판에 묶인 적이 있다.
+    """
+    assert "1.0.10" < "1.0.9"                       # 문자열로는 이렇다
+    assert updater.version_tuple("1.0.10") > updater.version_tuple("1.0.9")
+
+    manifest = {"version": "1.0.10",
+                "zipUrl": "https://works.insu.ng/works/public/2309842/"
+                          "aisarang-reservation-1.0.10.zip"}
+    got = updater.choose_download(manifest, "1.0.9")
+    assert got is not None, "1.0.9 -> 1.0.10 갱신 경로가 막혔습니다"
+    kind, url, version = got
+    assert kind == "zip" and version == "1.0.10"
+    assert url.endswith("aisarang-reservation-1.0.10.zip")
+
+    # 이미 최신이면 받지 않는다(재시작 루프 방지).
+    assert updater.choose_download(manifest, "1.0.10") is None
+    assert updater.choose_download(manifest, "1.0.11") is None
+    # 두 자리 이상으로 올라가도 계속 맞아야 한다.
+    assert updater.version_tuple("1.1.0") > updater.version_tuple("1.0.99")
+    assert updater.version_tuple("1.0.100") > updater.version_tuple("1.0.99")
+
+
+def test_the_shipped_version_matches_what_the_manifest_will_say():
+    assert config.APP_VERSION == "1.0.10"
+    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.9")

@@ -59,10 +59,33 @@ from dataclasses import dataclass, field
 #       v1.0.8 까지 우리 CI 픽스처는 우리가 지어낸 '예약시간전' 을 찍고 있었고,
 #       그래서 이 분류기의 시험은 순환논증이었다. 이제 아니다.
 #
+#   [실물 확인 · 2026-08-28 / 2026-09-01 09:00:00] 선예약 (자리를 뺏겼다)
+#       두 날 모두 서버가 그대로 돌려준 문구다(진단 ZIP 의 run.log,
+#       confirm_shots.json, page_source/0002_handover_after.html 이 전부 일치).
+#
+#           1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.
+#
+#       **뜻은 '이미 다른 사람이 그 자리를 가져갔다' 이다.** 한국어를 읽어서
+#       그렇게 정한 게 아니라, 캡처가 그것 말고는 불가능하게 만든다.
+#         · 사이트의 날짜×시간 표 칸은 `<i class="count">` 안에 **남은 자리 수**를
+#           찍는다(selectDay2 가 "X"=불가, "0"=대기만, 그 외=여석으로 읽는다).
+#         · 2026-09-01 08:59 캡처에서 목표일 20260915 는 09~17시 전부 **2**.
+#           즉 자리는 두 개 다 비어 있었다.
+#         · 그 날짜는 09:00 이전에는 아무도 예약할 수 없다(2026-08-27 실측:
+#           정각 296ms 전 도착 → "아직 예약 가능한 시간이 아닙니다"). 그러니
+#           09:00:00.686 시점에 존재할 수 있는 '선예약' 은 그 686ms 안에
+#           **다른 사람이** 넣은 것뿐이다. 고객 본인 것일 수가 없다.
+#         · 뒷받침: 08-31 에 성공한 20260914 는 09-01 캡처에서 09~16시가 전부
+#           **0**(고객 1 + 남 1), 17시만 1 이다. 여석 2 는 하루 만에 다 나간다.
+#         · 그날 09:00:10 의 가상대기열은 앞에 319명이었다. 자리 2개에 319명.
+#
 #   [아직 실물 없음] 정원초과
-#       고객이 글로 적어준 단어다. 2026-08-25 / 08-26 / 08-27 캡처를 전부
-#       뒤졌지만 한 건도 없다(우리가 한 번도 늦게 도착한 적이 없다).
-#       표기 흔들림을 넓게 열어 둔 채로 둔다.
+#       고객이 글로 적어준 단어다. 2026-08-25 ~ 2026-09-01 캡처를 전부 뒤져도
+#       한 건도 없다. 위 선예약이 이 사이트의 '자리 없음' 응답이라는 것이
+#       밝혀졌으므로, **정원초과 는 사이트가 보내지 않는 문구일 가능성이 높다**
+#       (고객이 뜻을 옮겨 적은 말로 보인다). 그래도 지우지 않는다: 지워서
+#       얻는 것이 없고, 남겨두면 정말 오는 날 잡힌다. 다만 '실물 없음' 등급인
+#       것을 여기 명시해 둔다.
 #
 #   [실물 확인] NOT_BOOKABLE_WORDS 는 OccasionTimeMainSlPL.html 응답의
 #       사이트 자바스크립트에서 그대로 옮긴 문구다.
@@ -88,6 +111,15 @@ _RE_NOT_YET = re.compile(r"아직\s*(?:예약|신청)?[^.。]{0,12}"
 
 FULL_WORDS = ("정원초과", "정원 초과", "정원이 초과", "정원이 마감",
               "마감되었습니다", "잔여 정원", "정원이 없습니다")
+
+# 서버 원문 그대로 (2026-08-28 · 2026-09-01, 고객 PC 진단 ZIP 두 건에서 동일).
+# 지어낸 글자가 아니다. 픽스처와 테스트는 이 상수만 쓴다.
+TAKEN_REAL = "1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다."
+
+# 앞의 건수는 제출한 줄 수에 따라 변한다("2건 예약 중 1건 …"). 그래서 건수는
+# 보지 않고 '선예약 … 예약되지 않았' 이라는 뼈대만 본다.
+_RE_TAKEN = re.compile(r"선예약[^.。]{0,16}예약되지\s*않")
+TAKEN_WORDS = ("선예약으로 인해", "선예약으로인해", "선예약 으로 인해")
 
 OK_WORDS = ("예약이 완료", "신청이 완료", "정상적으로 신청", "정상적으로 예약",
             "예약되었습니다", "신청되었습니다", "완료되었습니다")
@@ -137,6 +169,9 @@ FAIL_WORDS = ("이미 신청", "이미 예약", "중복", "실패", "오류가 �
 R_OK = "ok"
 R_TOO_EARLY = "too_early"
 R_FULL = "full"
+# '선예약' — 그 자리를 다른 사람이 먼저 가져갔다. FULL 과 뜻은 같지만 근거의
+# 등급이 다르다(이쪽은 실물 2회, FULL 은 0회). 섞지 않으려고 코드를 나눈다.
+R_TAKEN = "taken"
 R_FAIL = "fail"
 R_NOT_BOOKABLE = "not_bookable"
 R_UNKNOWN = "unknown"
@@ -149,6 +184,7 @@ def classify(text: str) -> str:
       0. **질문은 결과가 아니다.** 확인창 본문이 결과로 분류되면 안 된다.
       1. 완료 문구가 있으면 그것이 최종이다.
       2. '정원초과' 안에 '초과' 가 있으므로 일반 실패보다 먼저 본다.
+      2b. '선예약 … 예약되지 않았' 은 자리를 뺏긴 것이다(R_TAKEN). 실물 2회.
       3. **'아직 …' 은 아직 안 열린 것이다.** 사이트가 칸을 거절하는 문구와
          한 글자 차이라 여기서 먼저 갈라준다(_RE_NOT_YET 주석 참고).
       4. 사이트가 스스로 막는 문구는 재시도 대상이 아니다(R_NOT_BOOKABLE).
@@ -166,6 +202,12 @@ def classify(text: str) -> str:
     for w in FULL_WORDS:
         if w in t:
             return R_FULL
+    # '선예약' — 자리를 뺏겼다. NOT_BOOKABLE/FAIL 보다 먼저 본다.
+    if _RE_TAKEN.search(t):
+        return R_TAKEN
+    for w in TAKEN_WORDS:
+        if w in t:
+            return R_TAKEN
     if _RE_NOT_YET.search(t):
         return R_TOO_EARLY
     for w in NOT_BOOKABLE_WORDS:
@@ -1850,6 +1892,8 @@ def read_outcome(driver, timeout: float = 6.0) -> tuple:
         for w in FULL_WORDS:
             if w in src:
                 return R_FULL, w
+        if _RE_TAKEN.search(src):
+            return R_TAKEN, TAKEN_REAL
         time.sleep(0.15)
     return R_UNKNOWN, last_text
 
@@ -2120,6 +2164,15 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
                                "confirmAttempts": attempt})
         if shot.code == R_FULL:
             return StepResult(False, shot.text or "정원이 초과되었습니다.", "full", p,
+                              {"shots": [s.as_dict() for s in shots],
+                               "confirmArrivalOffsetMs": round(shot.arrival_offset_ms, 1),
+                               "confirmAttempts": attempt})
+        if shot.code == R_TAKEN:
+            # 선예약: 다른 사람이 먼저 가져갔다. 다시 쏴도 자리가 돌아오지
+            # 않는다. 두들기지 않고 여기서 멈춘다(FULL 과 같은 처리).
+            return StepResult(False,
+                              shot.text or "이미 다른 이용자가 예약한 자리입니다.",
+                              "taken", p,
                               {"shots": [s.as_dict() for s in shots],
                                "confirmArrivalOffsetMs": round(shot.arrival_offset_ms, 1),
                                "confirmAttempts": attempt})
