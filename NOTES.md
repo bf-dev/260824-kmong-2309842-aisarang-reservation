@@ -1642,6 +1642,84 @@ ints, so it is correct, and `test_one_point_ten_is_newer_than_one_point_nine` no
 pins exactly this case. If you ever swap that for a string compare, every customer
 freezes on their current build forever.
 
+## 배포 현황 (v1.0.10, 2026-09-01 01:43Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.10.zip
+  (29,256,305 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.10/`)
+  **빌드 바이트 sha256 = CI 가 찍은 값 = Caddy 로 실제 내려받은 바이트 sha256 =
+  `fbdc0f98222556e58b07c1efdb7828871a891c9833b02d7cd784365a413566f8`**
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.10` / `zipUrl` 만 (exeUrl 없음: 1.0.4 이하 업데이터가 ZIP 을 exe
+  자리에 덮어쓰는 사고를 막기 위해서다. 이 규칙은 바꾸지 말 것).
+- CI: GitHub Actions run **33458956368**, 전 단계 green.
+
+### 1.0.9 -> 1.0.10 갱신 경로를 실제로 걸어서 확인했다
+
+**이번 판이 정확히 문자열 비교 함정이다.** `"1.0.10" < "1.0.9"` 이므로, 버전을
+문자열로 비교하는 업데이터였다면 고객은 v1.0.9 에 영원히 묶인다.
+`updater.version_tuple` 은 `.` 으로 쪼개 int 로 비교하므로 맞고,
+`tests/test_updater.py::test_one_point_ten_is_newer_than_one_point_nine` 이
+이 경우를 못박는다. 여기를 문자열 비교로 바꾸지 말 것.
+
+확인한 것은 함수 하나가 아니라 고객이 실제로 걷는 경로 전체다. 출하 코드의
+`config.VERSION_URL` 을 그대로 받아서:
+
+```
+manifest HTTP 200
+choose_download(from 1.0.9) -> ('zip', '.../aisarang-reservation-1.0.10.zip', '1.0.10')
+UpdaterThread._download  -> 29,256,305 bytes  (Content-Length 일치, MIN_ZIP_BYTES 통과)
+sha256 fbdc0f98...66f8   = 매니페스트 값 = CI 빌드 값        (모두 일치)
+zip top-level            = ['aisarang-reservation-1.0.10']
+updater.payload_root()   -> aisarang-reservation-1.0.10/aisarang-reservation.exe
+새 판 안의 APP_VERSION   = 1.0.10   (exe 안 PYZ 를 풀어 확인. 재시작 루프 없음)
+choose_download(from 1.0.10) -> None   (이미 최신이면 안 받는다)
+```
+
+`_swap_folder_and_restart` 는 `sys.frozen` 이 아니면 아무 일도 하지 않으므로
+리눅스에서 확인 가능한 끝이 여기다. 그 다음 단계(교체+재시작)는 CI 의
+"run the exe extracted from the delivered zip" 이 진짜 윈도우에서 커버한다.
+
+### 이번 판에서 CI 가 두 번 섰다. 둘 다 게시물이 아니라 발판이었다.
+
+**1) `periodic clock re-sync actually runs (frozen exe)`** — 재측정이 3회여야
+하는데 2회였다. 표면 원인은 샘플이 12발에서 40발로 늘어난 것이지만, 진짜 원인은
+`ci/fixture_server.py` 가 **출하되는 경로를 재현하지 않는다**는 것이었다. 그 서버는
+`egovLatestServerTime` 을 안 붙였고, 그래서 프로즌 exe 가 밀리초 경로가 아니라
+Date 헤더 폴백(샘플마다 0.13초 대기)을 돌고 있었다. 픽스처 서버가 진짜 사이트처럼
+그 헤더를 붙이게 고쳤고(요청이 들어온 순간을 찍는 것까지 동일), CI 에
+`resolution=ms` 가 3회 나오는지 확인하는 줄을 넣었다. 폴백으로 조용히 되돌아가면
+시각 오차가 다시 수백 ms 로 벌어지는데, 그건 로그를 안 보면 모른다.
+
+**2) `diagnostic recorder records but never clicks (frozen exe)`** —
+`RECTEST pages=2 requests=10 wanted=0 clicks=0 reserved=None`. `window.__reserved`
+가 `None` 이라는 것이 결정적이었다: 그 값은 `/rec` 페이지의 인라인 스크립트가 넣는
+것이라, `None` 이면 브라우저가 그 페이지에 있지도 않았다는 뜻이다. 즉 크롬이
+`ERR_CONNECTION_REFUSED` 화면을 들고 30초씩 두 번 헛기다린 것이다. 워크플로가
+픽스처 서버를 띄우고 `Start-Sleep -Seconds 4` 로 눈 감고 기다리고 있었다.
+포트가 실제로 응답할 때까지(최대 30초) 폴링하도록 바꾸고, 안 뜨면 그 자리에서
+분명하게 실패하게 했다. 같이, `--rectest` 가 기다림에 실패하면 브라우저의 진짜
+`current_url` 과 본문 앞부분을 ASCII 로 찍는다. 다음에 또 서면 로그 한 줄로 갈린다.
+
+**같이 잡힌 진짜 결함 하나.** 위를 파다가 본문 기록 훅의 fetch 래퍼가
+`_fetch.apply(this, arguments)` 인 것을 발견했다. 엄격 모드 스크립트가 맨몸으로
+`fetch(...)` 를 부르면 `this` 가 `undefined` 라서 크롬이 "Illegal invocation" 을
+던진다. **우리 진단 훅이 고객 페이지의 fetch 를 망가뜨리는 경로**였다. 1순위 규칙
+위반이라 `window` 로 고정했고, 테스트가 옛 형태를 금지한다.
+
+### 게시 순서 (다음 사람이 그대로 따라할 것)
+
+```bash
+gh run download <runId> -n aisarang-reservation -D out/ci-<ver>
+sha256sum out/ci-<ver>/out/aisarang-reservation-<ver>.zip     # CI 로그의 값과 대조
+~/workspace/scripts/works-publish 2309842 out/ci-<ver>/out/aisarang-reservation-<ver>.zip
+# Caddy 로 실제 내려받아 sha256 을 다시 대조한 뒤에만 매니페스트를 갱신한다
+curl -s -o /tmp/x.zip --resolve works.insu.ng:443:127.0.0.1 \
+  "https://works.insu.ng/works/public/2309842/aisarang-reservation-<ver>.zip?cb=$RANDOM"
+sha256sum /tmp/x.zip
+install -m 0644 version-aisarang.json \
+  /home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json
+```
+
 ## 배포 현황 (v1.0.9, 2026-08-27 00:52Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.9.zip
@@ -1938,7 +2016,15 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
    고객이 진단 기록 모드로 확인창까지 걸어준 캡처로 4~9단계 실물을 전부
    받았다. 위 v1.0.7 절과 `ci/fixtures/real/` 참고. 감사 숫자는
    확인 22 → **50** (51~52개 중). 남은 것은 아래 2번 하나다.
-2. **"예약시간전" / "정원초과" 의 서버 원문은 여전히 미확인이다.**
+2. ~~"예약시간전" / "정원초과" 의 서버 원문은 여전히 미확인이다~~ →
+   **절반은 닫혔다.** `예약시간전` 은 2026-08-27 실물(`booking.TOO_EARLY_REAL`),
+   자리 없음은 2026-08-28 / 2026-09-01 실물 `선예약`(`booking.TAKEN_REAL`)로
+   확정됐고 픽스처가 캡처에서 직접 생성된다. **`정원초과` 만 여전히 0건이고,
+   자리 없음이 선예약으로 온다는 것이 밝혀졌으므로 사이트가 아예 안 쓰는 문구일
+   가능성이 높다.** 지우지는 않았다. 자세한 것은 위 v1.0.10 절.
+   아래 옛 서술은 기록용으로 남긴다.
+
+   **(옛 서술) "예약시간전" / "정원초과" 의 서버 원문은 여전히 미확인이다.**
    2026-08-25 캡처 373건을 전수 검색했으나 **0건**이다. 고객이 확인창에서
    멈춰 `InsertOcreqst.html` 이 호출된 적이 없기 때문이다. 두 문구는
    **고객이 글로 적어준 것뿐**이고, `ci/fixtures/reserve_page.html` 이 그
@@ -1951,9 +2037,16 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 3. **간편인증도 `loginMode == "CT"` 로 쳐주는가.** 617 의 문구가
    "공동인증서/간편인증서 로그인이 필요합니다" 라 그럴 가능성이 높다.
    고객 실행 진단의 `loginMode` 값 한 줄이면 판정된다.
-4. **서버가 정각보다 얼마나 이른 도착을 거부하는지.** 이제 `예약시간전`
-   응답으로 실전 중에 스스로 좁힌다(`clock.note_too_early`). 첫 실행의
-   `correctionNotes` 를 보고 `arrival_lead_ms` 기본값을 조정하면 된다.
+4. **서버가 정각보다 얼마나 이른 도착을 거부하는지.** 답은 "0ms 라도 이르면
+   거부" 다(2026-08-27, -296ms 도착 → `아직 예약 가능한 시간이 아닙니다`).
+   그래서 조준은 언제나 정각 뒤다. 남은 미지수는 반대쪽이다: **정각 뒤 몇 ms
+   까지가 안전한가.** 2026-09-01 에 +686ms 는 늦었다(자리 두 개가 그 안에
+   다 나갔다). v1.0.10 의 조준은 350~380ms 근처이고, 그것이 충분한지는
+   다음 실전 한 번이면 나온다. `confirm_shots.json` 의 `arrivalOffsetMs` 와
+   새로 저장되는 `xhr_bodies_*.json` 의 응답 헤더 `Date` 를 같이 보면
+   **추정이 아니라 실제 도착**을 처음으로 대조할 수 있다.
+   (`clock.note_too_early` 는 그대로 살아 있지만, 조준이 뒤로 간 뒤로는
+   `예약시간전` 이 나올 일이 거의 없어 학습 기회가 없다.)
 5. ~~[예약하기] 가 정말 서버로 아무것도 안 보내는지~~ → **2026-08-25 캡처로 판정됐다.**
    `record/network.json` 373건의 **마지막 요청**이 [예약하기] 클릭이 부른 것이고,
    그것은 예약이 아니라 **넷퍼넬(대기열) 진입**이다:
@@ -1981,6 +2074,20 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
    고객이 정한다. 자동 모드에서는 그대로 240 이지만, 대기열이 2~5분이면 4분
    전은 아슬아슬하다. 고객이 자동 모드를 다시 쓰게 되면 이 값을 재검토하라.
 
+   **6번의 "모르는 것" 은 2026-09-01 캡처로 닫혔다.** 표는 정각까지 유효하다.
+   네 날 모두 발사 전 `sessionStorage` 에 `nwait=0` 티켓이 이미 있었고,
+   09-01 의 그 티켓 키가 POST 직후 `opcode=5004`(NetFunnel_Complete)의 키와
+   바이트까지 같다. 즉 08:40 에 받은 표로 09:00:00 의 제출이 나갔다.
+   대기열은 `fnSave` **진입**을 막지 제출을 막지 않는다. 인계 모드는 이미
+   09시 대기열을 20분 앞서 통과해 있고, **이보다 좋은 표는 없다.**
+   자세한 것은 위 v1.0.10 "4) 대기열" 절.
+
+8. **자리를 놓친 날의 예약대기(waitlist).** `selectDay2` 는 칸 값이 `"0"` 이면
+   `wait_gb="Y"` 로 두고, 사이트는 예약이 아니라 **예약대기**를
+   (`reswaitdt` / `reswaitbgntm` / `reswaitendtm`) 로 등록한다. 밀리초 싸움에
+   지는 날의 두 번째 수단이 될 수 있다. **구현하지 않았다**: 고객이 받는 것이
+   달라지므로 먼저 물어봐야 한다.
+
 ### 고객 계정으로 실제로 해본 것 / 하지 않은 것
 
 했다(2026-08-24): 아이디 로그인 1회, `?menuno=242/605/245/617` 조회,
@@ -2006,8 +2113,22 @@ burst: True  shots=[{"code":"too_early"},{"code":"ok"}]  fired count: 2
 ## 하면 안 되는 것
 
 - 고객 계정으로 반복 예약 테스트 금지. 실제 예약이 생기고 취소는 센터 전화(1661-9361)로만 된다.
-- **'정원초과' 를 받고 같은 칸을 다시 두들기지 말 것.** 이미 나간 자리이고,
-  9시 정각의 서버에 의미 없는 부하만 준다. `confirm_burst` 가 즉시 멈춘다.
+- **'정원초과' 나 '선예약' 을 받고 같은 칸을 다시 두들기지 말 것.** 이미 나간
+  자리이고, 9시 정각의 서버에 의미 없는 부하만 준다. `confirm_burst` 가 즉시
+  멈추고, 인계 모드의 되살리기 문은 영구히 잠긴다.
+- **시각 측정 프로브로 `InsertOcreqst.html` 을 절대 쓰지 말 것.** 그 경로는
+  밀리초 시각 쿠키도 붙고 왕복도 150ms 라 프로브로 딱 좋아 보이지만 **예약 등록
+  경로**다. 취소가 전화로만 되는 사이트에서 잘못 들어간 예약은 놓친 예약보다
+  훨씬 나쁘다. `config.CLOCK_PROBE_PATH` 는 읽기 전용 경로여야 하고,
+  `tests/test_clock.py` 가 `clock.py` 안에 그 문자열이 없다는 것을 못박는다.
+- **`ARRIVAL_SAFETY_MS` 를 깎아서 조준을 당기지 말 것.** 조준이 늦으면 측정을
+  좁혀라. v1.0.10 이 685ms -> 350ms 를 만든 방법이 그것이고, 상수는 250ms
+  그대로다. 상수를 깎으면 측정 오차가 그대로 남은 채 하한만 내려가서, 확정
+  실패인 '정각 전 도착' 쪽으로 넘어갈 수 있다.
+- **진단 훅이 페이지의 XHR/fetch 핸들러를 교체하게 만들지 말 것.** 곁에
+  `addEventListener` 로 붙고, `fetch` 응답은 `clone()` 하고, 원본은 `window` 로
+  고정해 그대로 부른다(`_fetch.apply(this, …)` 는 엄격 모드에서 "Illegal
+  invocation" 이 난다). 고객 예약 화면을 우리 진단이 깨뜨리는 것이 최악이다.
 - 선택표 행 체크가 꺼진 채로 [예약하기]/[확인] 을 누르지 말 것
   (엉뚱한 행이 예약될 수 있다). `Prepared.ready()` 가 막는다.
 - 개발자도구 열기 금지 (자동 로그아웃).
