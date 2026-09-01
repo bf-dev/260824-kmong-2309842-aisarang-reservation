@@ -102,7 +102,10 @@ def test_the_recorder_can_never_break_the_customers_page():
     # 원래 구현을 반드시 그대로 호출해 돌려준다.
     assert "_open.apply(this, arguments)" in js
     assert "_send.apply(this, arguments)" in js
-    assert "_fetch.apply(this, arguments)" in js
+    # window 로 고정해야 한다. this 를 넘기면 엄격 모드 호출에서
+    # "Illegal invocation" 이 나고 페이지의 fetch 가 죽는다.
+    assert "_fetch.apply(window, arguments)" in js
+    assert "_fetch.apply(this" not in js
     # 동기 갈래: try 마다 catch 가 있다 = 감싸지 않은 갈래가 없다.
     assert js.count("try {") == js.count("catch (e)") == 10
     # 비동기 갈래: .then 마다 .catch 가 붙어 있다(거부가 새어 나가면 페이지에

@@ -135,7 +135,16 @@ jobs:
         shell: pwsh
         run: |
           $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18642" -PassThru
-          Start-Sleep -Seconds 4
+          $ready = $false
+          foreach ($i in 1..60) {
+            try {
+              $tc = Test-NetConnection -ComputerName 127.0.0.1 -Port 18642 -InformationLevel Quiet -WarningAction SilentlyContinue
+              if ($tc) { $ready = $true; break }
+            } catch { }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $ready) { throw "fixture server did not come up on 18642" }
+          "fixture server ready on 18642"
           try {
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18642"
             $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe -ArgumentList "--selftest" -PassThru -Wait
@@ -162,7 +171,16 @@ jobs:
           $exe = Get-ChildItem unzipped -Recurse -Filter aisarang-reservation.exe | Select-Object -First 1
           "extracted exe: $($exe.FullName)"
           $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18643" -PassThru
-          Start-Sleep -Seconds 4
+          $ready = $false
+          foreach ($i in 1..60) {
+            try {
+              $tc = Test-NetConnection -ComputerName 127.0.0.1 -Port 18643 -InformationLevel Quiet -WarningAction SilentlyContinue
+              if ($tc) { $ready = $true; break }
+            } catch { }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $ready) { throw "fixture server did not come up on 18643" }
+          "fixture server ready on 18643"
           try {
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18643"
             $p = Start-Process $exe.FullName -ArgumentList "--selftest" -PassThru -Wait
@@ -180,7 +198,16 @@ jobs:
         shell: pwsh
         run: |
           $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18644" -PassThru
-          Start-Sleep -Seconds 4
+          $ready = $false
+          foreach ($i in 1..60) {
+            try {
+              $tc = Test-NetConnection -ComputerName 127.0.0.1 -Port 18644 -InformationLevel Quiet -WarningAction SilentlyContinue
+              if ($tc) { $ready = $true; break }
+            } catch { }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $ready) { throw "fixture server did not come up on 18644" }
+          "fixture server ready on 18644"
           try {
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18644"
             $log = "clocktest.log"
@@ -210,7 +237,16 @@ jobs:
         shell: pwsh
         run: |
           $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18645" -PassThru
-          Start-Sleep -Seconds 4
+          $ready = $false
+          foreach ($i in 1..60) {
+            try {
+              $tc = Test-NetConnection -ComputerName 127.0.0.1 -Port 18645 -InformationLevel Quiet -WarningAction SilentlyContinue
+              if ($tc) { $ready = $true; break }
+            } catch { }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $ready) { throw "fixture server did not come up on 18645" }
+          "fixture server ready on 18645"
           try {
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18645"
             $log = "rectest.log"
@@ -281,7 +317,10 @@ jobs:
           $srv = $null
           if ("${{ steps.probe.outcome }}" -ne "success") {
             $srv = Start-Process python -ArgumentList "ci\fixture_server.py","18642" -PassThru
-            Start-Sleep -Seconds 4
+            foreach ($i in 1..60) {
+              if (Test-NetConnection -ComputerName 127.0.0.1 -Port 18642 -InformationLevel Quiet -WarningAction SilentlyContinue) { break }
+              Start-Sleep -Milliseconds 500
+            }
             $env:AISARANG_BASE_URL = "http://127.0.0.1:18642"
             Write-Host "live site blocked from runner: filling the UI from recorded real responses"
           }

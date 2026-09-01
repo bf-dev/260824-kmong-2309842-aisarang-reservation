@@ -207,17 +207,42 @@ def main(argv: list[str] | None = None) -> int:
                     _t.sleep(0.3)
                 return False
 
+            def _where():
+                """실패했을 때 브라우저가 실제로 무엇을 보고 있었는지 남긴다.
+
+                2026-09-01 CI 에서 이 하네스가 30초씩 두 번 헛기다리고 섰는데,
+                로그에 남은 것이 숫자뿐이라 원인을 좁힐 수 없었다. 브라우저가
+                픽스처 화면에 있었는지 크롬 오류 화면에 있었는지만 알면
+                한 번에 갈린다. ASCII 로만 찍는다(러너 stdout 은 cp1252 다).
+                """
+                try:
+                    url = drv.current_url
+                except Exception as exc:  # noqa: BLE001
+                    return f"url=<{type(exc).__name__}>"
+                try:
+                    body = drv.execute_script(
+                        "return (document.body ? document.body.innerText : '')"
+                        ".slice(0, 160);") or ""
+                except Exception as exc:  # noqa: BLE001
+                    body = f"<{type(exc).__name__}>"
+                ascii_body = body.encode("ascii", "replace").decode("ascii")
+                ascii_body = " ".join(ascii_body.split())
+                return f"url={url} body={ascii_body!r}"
+
             reserved, clicks = None, 0
             try:
                 # 여기서 누르는 것은 **사람 역할의 CI 하네스**다. 기록기 자신은
                 # 아무것도 누르지 않는다(recorder.py 에 클릭 경로가 없다).
                 if _wait("!!document.querySelector('input[name=occasionChk]')"):
                     drv.find_element("css selector", "input[name=occasionChk]").click()
+                else:
+                    _out(f"RECTEST no-child-radio {_where()}")
                 # 실물 id 다. v1.0.7 에서 fixture 를 고객 캡처의 진짜 마크업으로
                 # 바꿨는데(#timecareTableAddBtn / #timecareConfirm) 이 하네스만
                 # 예전에 우리가 지어낸 #btnAdd / #btnReserve 를 계속 눌러서
                 # NoSuchElement 로 헛발질했고, 클릭 3회를 못 채워 CI 가 섰다.
-                _wait("!!document.getElementById('timecareTableAddBtn')")
+                if not _wait("!!document.getElementById('timecareTableAddBtn')"):
+                    _out(f"RECTEST no-add-button {_where()}")
                 for sel in ("#timecareTableAddBtn", "#timecareConfirm"):
                     try:
                         drv.find_element("css selector", sel).click()

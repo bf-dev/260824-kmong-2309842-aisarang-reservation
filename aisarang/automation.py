@@ -308,7 +308,11 @@ try {
       window.fetch = function (input, init) {
         var url = '';
         try { url = (typeof input === 'string') ? input : (input && input.url) || ''; } catch (e) {}
-        var p = _fetch.apply(this, arguments);
+        // window 로 고정해서 부른다. `this` 를 그대로 넘기면, 엄격 모드 스크립트가
+        // 맨몸으로 fetch(...) 를 부를 때 this 가 undefined 라서 크롬이
+        // "Illegal invocation" 을 던진다. 즉 우리가 고객 페이지의 fetch 를
+        // 망가뜨리게 된다. 1순위 규칙 위반이다.
+        var p = _fetch.apply(window, arguments);
         try {
           if (want(url)) {
             var t0 = Date.now();
