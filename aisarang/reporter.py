@@ -22,6 +22,7 @@ import threading
 import time
 import zipfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 from . import config
 from .masking import mask
@@ -30,6 +31,33 @@ MAX_ZIP_BYTES = 4 * 1024 * 1024
 MAX_ENTRY_BYTES = 512 * 1024
 MAX_ENTRIES = 120
 MAX_LOG_CHARS = 200_000
+
+
+def _install_dir() -> str:
+    """설치 폴더(frozen 이면 exe 가 있는 폴더). 실패해도 절대 던지지 않는다."""
+    try:
+        if config.is_frozen():
+            return str(Path(sys.executable).parent)
+        return str(Path(__file__).resolve().parent.parent)
+    except Exception:
+        return "<unknown>"
+
+
+def _update_state() -> dict:
+    """자동 업데이트 교체가 걸려 있는지. 교체 실패를 서버에서 보기 위한 것."""
+    out = {}
+    try:
+        from . import updater
+        out["state"] = updater.read_state()
+    except Exception:
+        pass
+    try:
+        p = config.log_dir() / "update-swap.log"
+        out["swapLog"] = (p.read_text(encoding="utf-8", errors="replace")[-2000:]
+                          if p.exists() else None)
+    except Exception:
+        pass
+    return out
 
 
 def _now() -> str:
@@ -130,6 +158,11 @@ class Diagnostics:
             "os": f"{platform.system()} {platform.release()} ({platform.version()})",
             "machine": platform.machine(),
             "targetSite": config.BASE_URL,
+            # 설치 위치. 2026-09-02 자동 업데이트 사고 때 고객 PC 의 설치
+            # 경로를 우리가 한 번도 받아본 적이 없어서, 교체가 왜 실패했는지
+            # 서버에서 좁힐 수가 없었다. 비밀이 아니고 진단에 결정적이다.
+            "installDir": _install_dir(),
+            "updateState": _update_state(),
         }
         if extra:
             for k, v in extra.items():

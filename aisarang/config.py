@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.10"
+APP_VERSION = "1.0.11"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면

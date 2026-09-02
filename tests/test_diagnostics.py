@@ -154,6 +154,8 @@ class _FakeDriver:
         return []
 
     def execute_script(self, script, *a):
+        if "!!window.__aisarangNet" in script:
+            return True
         if "__aisarangNet" in script:
             return [{"kind": "xhr", "method": "POST",
                      "url": "https://www.childcare.go.kr/icms/occasion/InsertOcreqst.html",
@@ -168,9 +170,30 @@ def test_capture_lands_the_bodies_file():
     diag = _FakeDiag()
     automation.capture(_FakeDriver(), diag, "handover_after")
     assert "xhr_bodies_handover_after.json" in diag.files, sorted(diag.files)
-    row = diag.files["xhr_bodies_handover_after.json"][0]
+    blob = diag.files["xhr_bodies_handover_after.json"]
+    # 훅이 걸렸는지 자체를 남긴다. 파일이 아예 없으면 "훅이 안 걸렸다" 와
+    # "걸렸는데 잡을 요청이 없었다" 를 서버에서 구분할 수 없다(2026-09-02).
+    assert blob["hookInstalled"] is True
+    assert blob["count"] == 1
+    row = blob["rows"][0]
     assert "InsertOcreqst" in row["url"]
     assert "returnval" in row["responseBody"]
+
+
+def test_bodies_file_is_written_even_when_nothing_was_captured():
+    """빈 결과도 파일로 남겨야 훅 미설치와 구분된다."""
+    class _Empty(_FakeDriver):
+        def execute_script(self, script, *a):
+            if "!!window.__aisarangNet" in script:
+                return False
+            if "__aisarangNet" in script:
+                return []
+            return {}
+    diag = _FakeDiag()
+    automation.capture(_Empty(), diag, "handover_after")
+    blob = diag.files["xhr_bodies_handover_after.json"]
+    assert blob["hookInstalled"] is False
+    assert blob["count"] == 0
 
 
 # ------------------------------- 진짜 크롬에서 본문이 실제로 잡히는지 (로컬 전용)

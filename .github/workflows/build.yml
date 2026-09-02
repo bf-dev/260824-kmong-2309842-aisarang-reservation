@@ -105,13 +105,13 @@ jobs:
 
       - name: Defender scan of the v1.0.10 onedir build
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.10-onedir" -MustBeClean
+        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.11-onedir" -MustBeClean
 
       - name: Defender scan of the delivered zip
         shell: pwsh
         run: |
           $zip = Get-ChildItem out\*.zip | Select-Object -First 1
-          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.10-zip" -MustBeClean
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.11-zip" -MustBeClean
 
       # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
       # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.
@@ -189,6 +189,23 @@ jobs:
           } finally {
             Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           }
+
+      # 자동 업데이트의 '교체' 를 진짜로 실행해 본다.
+      #
+      # 2026-09-02 사고의 회귀 시험이다. 그날 고객은 "새 버전을 받았습니다 곧
+      # 자동으로 재시작합니다" 를 본 뒤 프로그램이 꺼지고 다시 오지 않는 것을
+      # 반복해서 겪었고, 원인은 교체 배치 안의 파이프(`tasklist | find`) 였다.
+      # 콘솔 없는 DETACHED_PROCESS 에서 cmd 는 파이프를 만들지 못하고 배치가
+      # 그 줄에서 통째로 중단된다. robocopy 도 재실행도 도달하지 못했다.
+      #
+      # 그때까지 이 저장소의 업데이터 시험은 전부 순수 함수만 봤고, 교체 배치는
+      # CI 에서 **한 번도 실행된 적이 없었다.** 그래서 CI 가 계속 초록이었다.
+      # 한글 경로 사례도 같이 돈다(고객은 한국어 윈도우를 쓴다).
+      - name: auto-update swap actually applies (real batch, real robocopy)
+        shell: pwsh
+        run: |
+          python ci\swap_check.py dist\aisarang-reservation
+          if ($LASTEXITCODE -ne 0) { throw "auto-update swap check failed" }
 
       # v1.0.6 의 핵심 약속: 서버 시각을 한 번 재고 마는 게 아니라 프로그램이
       # 도는 내내 다시 잰다(제품 주기 5분). 그 말이 사실인지 프로즌 exe 로

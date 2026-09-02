@@ -125,12 +125,19 @@ class Runner:
         try:
             result = self._run(settings, cert_password)
         except Exception as exc:  # noqa: BLE001
-            self.log(f"실행 오류: {type(exc).__name__}: {exc}")
+            # ChromeStartError 처럼 고객이 읽고 바로 행동할 수 있는 문장을 들고
+            # 있는 예외는 그 문장만 보여준다. 크롬드라이버 스택 덤프를 화면에
+            # 그대로 쏟으면 고객은 그것을 복사해 우리에게 보내는 수밖에 없다
+            # (2026-09-02 아침 09시 직전에 실제로 그랬다).
+            friendly = (str(exc)
+                        if isinstance(exc, automation.ChromeStartError) else "")
+            self.log(friendly or f"실행 오류: {type(exc).__name__}: {exc}")
             try:
                 self.diag.upload_exception(exc, "runner")
             except Exception:
                 pass
-            result = {"ok": False, "message": f"오류로 중단되었습니다: {type(exc).__name__}"}
+            result = {"ok": False,
+                      "message": friendly or f"오류로 중단되었습니다: {type(exc).__name__}"}
         finally:
             # 인증서 비밀번호는 메모리에서 즉시 버린다.
             cert_password = ""
@@ -212,7 +219,7 @@ class Runner:
                  "(2026-08-27 09:00:00 실측). 그래서 늦는 쪽으로 조준합니다.")
 
         self.status("크롬을 실행합니다...")
-        self.driver = automation.build_driver(log=self.log)
+        self.driver = automation.build_driver(log=self.log, diag=self.diag)
 
         if not self._login(settings, cert_password):
             return self._finish(False, "로그인하지 못했습니다.", center, target_date, slots)

@@ -2411,3 +2411,133 @@ the owner's call.
   영원히 거짓이다. 인계 모드는 `handover.LiveState.ready()` 로 매번 다시 읽는다.
 - **오늘(2026-08-26) 캡처의 `page_source` 를 저장소에 넣지 말 것.** 아동 실명이
   평문으로 4번 들어 있다. 대기열 픽스처는 레이어 조각만 떼어 붙인 것이다.
+
+---
+
+## 2026-09-02 사고: 자동 업데이트가 프로그램을 죽이고 있었다 (v1.0.11)
+
+### 증상 (고객 원문)
+> "프로그램을 켰는데 계속 꺼지네요"
+> "새버전을 받았습니다 곧 자동으로 재시작합니다 메세지 후에 계속 프로그램이 꺼집니다"
+
+09:00 예약 20분 전이었다.
+
+### 근본 원인 1 (확정, windows-builder 실측 2회) — 교체 배치의 **파이프**
+
+`updater._spawn_bat` 이 만드는 교체 배치 안의 이 한 줄:
+
+```
+tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL
+```
+
+`DETACHED_PROCESS` 로 띄운 cmd 는 **콘솔이 없고**, 부모가 `os._exit(0)` 로 즉시
+죽으면서 물려받은 표준 핸들도 닫힌다. 그 상태에서 cmd 가 파이프를 만들려고 하면
+(파이프는 cmd 가 자기 자신을 두 번 더 띄워 연결하는 구조다) **배치가 그 줄에서
+통째로 중단된다.**
+
+실측 (windows-builder, 마커 파일로 확인):
+- 원래 배치를 그대로 띄우면 마커에 `A_START` **하나만** 남는다. `tasklist` 줄
+  다음의 `B_LOOP` 부터는 한 줄도 실행되지 않는다.
+- 최소 재현: `echo hello | find "hello" >NUL` 한 줄만으로도 그 뒤가 전부 죽는다
+  (`1_START` 만 남고 `2_TRIVIAL_PIPE` 없음). 파이프 자체가 원인이다.
+- 그래서 `robocopy` 도 `start` 도 `rd` 도 `del "%~f0"` 도 도달하지 못한다.
+  실제로 `%TEMP%` 에 배치 파일과 `aisarang-update-*` 폴더가 그대로 남아 있었다.
+
+결과: 프로그램은 29MB 를 받고 → "재시작합니다" 를 띄우고 → `os._exit(0)` 로
+사라지고 → **교체가 안 됐으니 버전이 그대로라** → 다음 실행에서 똑같이 반복.
+`os._exit(0)` 는 atexit 를 건너뛰므로 종료 시 진단 업로드도 안 된다.
+
+`stdin/stdout/stderr=DEVNULL` 만 붙이는 것으로는 **고쳐지지 않는다**(실측).
+파이프를 없애야 한다.
+
+### 근본 원인 2 (확정, 실측) — 한글 경로면 파이프를 없애도 실패
+배치는 cmd 가 **OEM 코드페이지**(한국어 윈도우 949)로 읽는데 우리는 UTF-8 로
+썼다. 설치 폴더에 한글이 있으면 robocopy 경로가 깨져 조용히 실패한다.
+실측: `C:\updtest\case_한글사용자\...` 에서 `SWAP OK: False`.
+
+### 고친 것 (v1.0.11)
+1. 배치에서 파이프를 전부 제거. `tasklist ... > 파일` + `findstr /C:... 파일`.
+2. `timeout /t` → `ping -n`. `timeout` 은 콘솔이 없으면 즉시 실패해 대기가 안 된다.
+3. `updater.bat_path()`: 한글 경로는 8.3 단축 경로(순수 ASCII)로 바꿔 넣는다.
+   단축 이름이 꺼진 볼륨을 위해 `_spawn_bat` 이 배치를 ANSI(`mbcs`)로도 저장한다.
+4. `%APPDATA%\AisarangReservation\logs\update-swap.log` 에 robocopy 결과를 남긴다.
+5. **무한 루프 차단**: `update-state.json` 에 시도 횟수를 적어, 같은 버전으로
+   2회 실패하면 더 받지 않고 `aisarang-reservation-update` 로 진단을 올린다.
+6. 진단 `meta.json` 에 `installDir` 와 `updateState`(교체 로그 포함) 추가.
+   그전에는 고객 PC 의 설치 경로를 **한 번도 받아본 적이 없었다.**
+
+실측 결과 (windows-builder, 실제 게시된 1.0.9 → 1.0.10 ZIP):
+`SWAP OK: True` (ASCII 경로), `SWAP OK: True` (한글 경로), 둘 다 재실행 확인.
+
+### CI 가 왜 초록이었나
+`tests/test_updater.py` 8개가 전부 **순수 함수**(`choose_download`,
+`payload_root`, zip 구조)만 봤다. 교체 배치는 CI 에서도 windows-builder 에서도
+**한 번도 실행된 적이 없다.** 윈도우 버전 차이도, 권한도, 백신도 아니었다.
+
+그래서 `ci/swap_check.py` 를 넣었고 워크플로에 필수 단계로 걸었다
+(`auto-update swap actually applies`). ASCII 경로와 한글 경로 둘 다 진짜로
+배치를 띄워 파일이 바뀌고 프로그램이 다시 뜨는지 본다.
+회귀 시험도 추가: 배치에 `|` 가 있으면 `test_the_swap_batch_contains_no_pipe` 가 깨진다.
+
+### 크롬이 안 뜨던 건 별개 문제였다 (같은 날 아침)
+`SessionNotCreatedException: Chrome instance exited.` 고객이 스스로 찾았다:
+**"다른 크롬창을 끄니까 되었습니다!"**
+
+- 1.0.9 와 1.0.10 은 **크롬드라이버를 아예 번들하지 않는다**(두 ZIP 모두
+  `chromedriver` 항목 0개). 드라이버는 실행 시점에 Selenium Manager 가 받는다.
+  두 ZIP 의 차이는 파일 3개뿐: `aisarang-reservation.exe`,
+  `_internal/base_library.zip`, `사용안내.txt`. **버전 스큐도 32/64비트 문제도 아니다.**
+  (그날 traceback 의 두 스택은 1차 Selenium Manager=64비트, 2차
+  webdriver-manager=32비트로 **서로 다른 드라이버였고 둘 다 같은 실패**를 냈다.
+  드라이버가 아니라 크롬이 죽은 것이다.)
+- 고친 것: `automation.chrome_process_count()` 로 미리 경고하고,
+  실패하면 `ChromeStartError` 로 **한국어 한 줄**("이미 열려 있는 크롬 창을 모두
+  닫고 [시작] 을 다시 눌러 주세요")만 화면에 보인다. 크롬드라이버 스택 덤프는
+  더 이상 고객 화면에 나오지 않는다(원본은 진단 ZIP 에 그대로 올라간다).
+- 크롬드라이버 `--verbose` 로그를 `logs/chromedriver.log` 에 남기고 실패 시
+  `error/chromedriver_verbose.log` 로 진단에 넣는다. 그전에는 서버가
+  "Examine ChromeDriver verbose log" 라고 했는데 **그 로그를 안 남기고 있었다.**
+
+### 예약 POST 본문이 왜 없었나
+없는 게 맞다. 그날 고객이 돌린 것은 **v1.0.9** 이고, XHR 본문 훅은 **v1.0.10 에서
+추가**됐다(`_JS_NET_RECORDER`). 1.0.9 의 `network_*.json` 에는 InsertOcreqst 의
+요청/응답 **메타데이터만** 있고(status 200, mime application/json) 본문이 없다.
+훅 자체는 `Page.addScriptToEvaluateOnNewDocument` 로 걸려 있어 화면 이동에도 살아남는다.
+추가로 고친 것: `xhr_bodies_*.json` 을 **비어 있어도 항상** 쓰고
+`hookInstalled`/`count` 를 같이 적는다. 파일이 아예 없으면 "훅이 안 걸렸다" 와
+"걸렸는데 잡을 게 없었다" 를 서버에서 구분할 수 없다.
+
+### 매니페스트: 지금 1.0.9 이고, 그대로 두어야 한다  ← 다음 사람 필독
+`version-aisarang.json` 은 2026-09-02 08:38 KST 에 1.0.10 → **1.0.9 로 롤백**했고
+지금도 1.0.9 다. 1.0.10 ZIP 은 지우지 않았다(그대로 서빙된다).
+
+**매니페스트를 1.0.10 으로 되돌리면 안 된다.** 이유는 크롬드라이버와 무관하다:
+
+- 고객 PC 는 **1.0.9** 다(2026-09-02 08:41 / 09:08 진단 ZIP 의 `appVersion`).
+- 1.0.9 와 1.0.10 은 **동일한 (망가진) 업데이터**를 담고 있다.
+  `git show c8edcad:aisarang/updater.py | sha256sum` ==
+  `git show 75684bf:aisarang/updater.py | sha256sum` == `840ce1a2...`
+  (updater.py 는 2026-08-25 이후 손댄 적이 없다).
+- 따라서 매니페스트가 1.0.9 보다 높은 무엇을 가리키는 순간, 고객의 1.0.9 는
+  29MB 를 받고 "재시작합니다" 를 띄우고 사라진다. 오늘 아침 그대로다.
+- **고친 업데이터는 고객이 손으로 새 빌드를 깔아야만 들어간다.** 자동 업데이트
+  경로 자체가 망가져 있으므로 자기 자신을 고칠 수 없다.
+
+순서:
+1. 매니페스트는 1.0.9 로 둔다(고객이 1.0.9 든 1.0.10 이든 아무 일도 안 일어난다).
+2. v1.0.11 을 빌드해 **수동 다운로드 링크**로 전달한다(1.0.10 의 밀리초 시계도
+   여기 다 들어 있다).
+3. 고객 진단 ZIP 의 `appVersion` 이 1.0.11 로 보이는 것을 확인한 **뒤에만**
+   매니페스트를 1.0.11 로 올린다. 그때부터 자동 업데이트가 다시 안전하다.
+
+### 조준값에 대해 (건드리지 말 것)
+실측 도착 오프셋과 결과는 상관이 없다: +793ms 성공(08-31), +803ms 실패(09-02),
++686ms 실패 2회. 이 구간 안에서는 도착 시각이 결과를 예측하지 못한다.
+오늘 진 이유는 조준이 아니다. 고객 요청이 있어도 조준을 당기지 말 것.
+
+### 재현/검증 도구 (windows-builder)
+`C:\updtest\` 에 하네스를 남겨두지 않았다(일회성). 다시 필요하면
+`ci/swap_check.py` 를 쓰면 된다. 로컬에서도 돈다:
+```
+python ci/swap_check.py dist/aisarang-reservation     # 윈도우에서만 의미 있음
+```

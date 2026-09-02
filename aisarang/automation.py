@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from collections import deque
@@ -36,7 +37,90 @@ from . import config
 
 # ---------------------------------------------------------------- 드라이버
 
-def build_driver(headless: bool = False, log=lambda *_: None):
+class ChromeStartError(RuntimeError):
+    """크롬을 띄우지 못했다.
+
+    `str(exc)` 가 곧 고객에게 보여줄 한국어 문장이다. 크롬드라이버의 스택
+    덤프를 화면에 그대로 쏟지 않기 위해 존재한다. 원래 예외는 __cause__ 로
+    매달아 두므로 진단 ZIP 에는 전체 추적이 그대로 올라간다.
+    """
+
+
+# 크롬이 이미 떠 있을 때 크롬드라이버가 내는 문구들. 전부 "다른 크롬을 닫아라"
+# 로 귀결된다. 2026-09-02 고객 실측: "session not created: Chrome instance
+# exited" 가 떴고, 고객이 다른 크롬 창을 닫자 바로 정상 동작했다.
+_CHROME_BUSY_HINTS = (
+    "chrome instance exited",
+    "exited normally",
+    "user data directory is already in use",
+    "cannot create default profile",
+    "devtoolsactiveport file doesn't exist",
+    "chrome failed to start",
+)
+
+_CHROME_BUSY_MESSAGE = (
+    "크롬을 열지 못했습니다.\n\n"
+    "이미 열려 있는 크롬 창을 모두 닫고 [시작] 을 다시 눌러 주세요.\n"
+    "창을 닫아도 작업표시줄이나 트레이에 크롬이 남아 있을 수 있으니 그것도 "
+    "함께 닫아 주세요.\n\n"
+    "크롬을 모두 닫았는데도 같은 메시지가 나오면 알려 주세요. "
+    "진단 기록은 자동으로 전송되었습니다."
+)
+
+
+def chrome_process_count() -> int:
+    """지금 떠 있는 chrome.exe 개수. 셀 수 없으면 -1.
+
+    파이프를 쓰지 않는다(배치가 아니라 파이썬에서 직접 실행한다).
+    """
+    if os.name != "nt":
+        return -1
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq chrome.exe", "/NH", "/FO", "CSV"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout or ""
+        return sum(1 for ln in out.splitlines() if "chrome.exe" in ln.lower())
+    except Exception:
+        return -1
+
+
+def driver_log_path():
+    """크롬드라이버 상세 로그가 쓰일 자리."""
+    try:
+        return config.log_dir() / "chromedriver.log"
+    except Exception:
+        return None
+
+
+def read_driver_log(limit: int = 200_000) -> str:
+    """크롬드라이버 상세 로그를 읽어 온다. 없으면 왜 없는지 남긴다."""
+    try:
+        p = driver_log_path()
+        if p is None or not p.exists():
+            return "<no chromedriver log was produced>"
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        if len(txt) > limit:
+            txt = txt[:limit // 2] + f"\n...[{len(txt) - limit} chars elided]...\n" + txt[-limit // 2:]
+        return txt
+    except Exception as exc:
+        return f"<chromedriver log unreadable: {exc}>"
+
+
+def chrome_start_error(first, second, running: int) -> ChromeStartError:
+    blob = f"{first}\n{second}".lower()
+    if running > 0 or any(h in blob for h in _CHROME_BUSY_HINTS):
+        return ChromeStartError(_CHROME_BUSY_MESSAGE)
+    return ChromeStartError(
+        "크롬을 열지 못했습니다.\n\n"
+        "크롬이 설치되어 있는지 확인하고 [시작] 을 다시 눌러 주세요.\n"
+        "진단 기록은 자동으로 전송되었습니다."
+    )
+
+
+def build_driver(headless: bool = False, log=lambda *_: None, diag=None):
     """고객 PC 의 크롬을 띄운다. 프로필을 재사용해 로그인 세션이 남는다."""
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
@@ -68,14 +152,55 @@ def build_driver(headless: bool = False, log=lambda *_: None):
         "enablePage": True,
     })
 
+    # 이미 크롬이 떠 있으면 예약용 크롬이 그대로 죽는다. 미리 알려준다.
+    running = chrome_process_count()
+    if running > 0:
+        log(f"이미 열려 있는 크롬 창이 있습니다(chrome.exe {running}개). "
+            "예약용 크롬이 뜨지 않을 수 있으니 다른 크롬 창을 모두 닫아 주세요.")
+
+    # 크롬드라이버 상세 로그. "Chrome instance exited. Examine ChromeDriver
+    # verbose log to determine the cause." 라는 응답을 받고도 정작 그 로그를
+    # 우리가 안 남기고 있었다(2026-09-02). 이제 남기고 진단 ZIP 에 넣는다.
+    from selenium.webdriver.chrome.service import Service
+    drv_log = driver_log_path()
+
+    def _service(path=None):
+        kw = {"service_args": ["--verbose"]}
+        try:
+            kw["log_output"] = str(drv_log)
+        except Exception:
+            pass
+        if path:
+            kw["executable_path"] = path
+        try:
+            return Service(**kw)
+        except Exception:
+            return Service(executable_path=path) if path else Service()
+
     try:
-        driver = webdriver.Chrome(options=opts)
-    except Exception:
+        driver = webdriver.Chrome(service=_service(), options=opts)
+    except Exception as first:
         # 드라이버가 PATH 에 없을 때만 다운로드를 시도한다.
-        from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()),
-                                  options=opts)
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            driver = webdriver.Chrome(
+                service=_service(ChromeDriverManager().install()), options=opts)
+        except Exception as second:
+            # 크롬드라이버 스택 덤프를 고객 화면에 쏟지 않는다. 고객이
+            # 할 수 있는 일 한 줄로 바꿔서 올린다(원본은 진단 ZIP 에 남는다).
+            err = chrome_start_error(first, second, running)
+            if diag is not None:
+                try:
+                    diag.add_text("error/chromedriver_verbose.log",
+                                  read_driver_log())
+                    diag.add_text("error/chrome_start.txt",
+                                  f"running chrome.exe processes: {running}\n"
+                                  f"profile dir: {config.profile_dir()}\n\n"
+                                  f"attempt 1 (Selenium Manager):\n{first}\n\n"
+                                  f"attempt 2 (webdriver-manager):\n{second}\n")
+                except Exception:
+                    pass
+            raise err from second
     try:
         driver.execute_cdp_cmd(
             "Page.addScriptToEvaluateOnNewDocument",
@@ -394,10 +519,22 @@ def capture(driver, diag, label: str) -> None:
         pass
     # 예약 POST 의 요청/응답 **본문**. v1.0.9 ZIP 에 이게 없어서 서버 응답의
     # 코드/필드를 볼 수 없었다(NOTES.md v1.0.10 참고).
+    # 비어 있어도 **반드시** 파일을 남긴다. 파일이 아예 없으면 "훅이 안 걸렸다"
+    # 와 "걸렸는데 잡을 요청이 없었다" 를 서버에서 구분할 수 없다. 2026-09-02
+    # 에 바로 그 구분이 안 돼서 예약 POST 본문이 왜 없는지 좁히는 데 시간이 갔다.
     try:
         bodies = _page_net_bodies(driver)
-        if bodies:
-            diag.add_json(f"xhr_bodies_{label}.json", bodies)
+        installed = False
+        try:
+            installed = bool(driver.execute_script(
+                "return !!window.__aisarangNet;"))
+        except Exception:
+            pass
+        diag.add_json(f"xhr_bodies_{label}.json", {
+            "hookInstalled": installed,
+            "count": len(bodies),
+            "rows": bodies,
+        })
     except Exception:
         pass
 

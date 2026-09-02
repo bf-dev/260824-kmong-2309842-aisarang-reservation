@@ -206,3 +206,39 @@ def test_dry_run_never_fires_confirm(monkeypatch):
     booking.open_modal(d, res.prepared)
     booking.dismiss_modal(d)
     assert not any("__aisarang_fire" in c for c in d.clicked)
+
+
+# ---------------------------------------------------------------- 2026-09-02
+# 고객이 09시 직전에 크롬드라이버 스택 덤프를 화면에서 복사해 우리에게 보내야
+# 했다. 원인은 다른 크롬 창이 떠 있던 것이었고, 프로그램은 그것을 말해주지 않았다.
+
+def test_chrome_busy_maps_to_a_korean_instruction():
+    from aisarang import automation
+    real = ("session not created: Chrome instance exited. "
+            "Examine ChromeDriver verbose log to determine the cause.")
+    err = automation.chrome_start_error(real, real, running=-1)
+    assert isinstance(err, automation.ChromeStartError)
+    text = str(err)
+    assert "크롬 창을 모두 닫고" in text
+    # 고객 화면에 스택 덤프가 새어 나가면 안 된다.
+    assert "GetHandleVerifier" not in text
+    assert "chromedriver!" not in text
+    assert "Stacktrace" not in text
+
+
+def test_a_running_chrome_alone_is_enough_to_give_the_close_chrome_message():
+    from aisarang import automation
+    err = automation.chrome_start_error("something else", "unknown", running=3)
+    assert "크롬 창을 모두 닫고" in str(err)
+
+
+def test_unknown_chrome_failure_still_gets_a_korean_message_not_a_stack():
+    from aisarang import automation
+    err = automation.chrome_start_error("boom", "boom", running=0)
+    assert "크롬을 열지 못했습니다" in str(err)
+    assert "Traceback" not in str(err)
+
+
+def test_chrome_process_count_never_raises():
+    from aisarang import automation
+    assert isinstance(automation.chrome_process_count(), int)
