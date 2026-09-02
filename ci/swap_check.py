@@ -40,6 +40,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+# GitHub Actions 러너의 stdout 은 cp1252 다. 한글 경로 사례를 출력하는 순간
+# UnicodeEncodeError 로 죽어서, 정작 교체는 성공했는데 단계가 빨갛게 된다
+# (2026-09-02 실측). 이 저장소에서 같은 함정을 밟은 게 두 번째다.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 EXE_NAME = "aisarang-reservation.exe"
 PROOF = "SWAPPROOF.txt"
 TIMEOUT_S = 120
