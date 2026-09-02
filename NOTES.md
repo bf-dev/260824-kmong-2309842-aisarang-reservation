@@ -2546,3 +2546,15 @@ tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL
 ```
 python ci/swap_check.py dist/aisarang-reservation     # 윈도우에서만 의미 있음
 ```
+
+### v1.0.11 게시 (2026-09-02)
+- ZIP: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.11.zip
+- sha256 `019a4986ef2a321abf4880f67bafa60b077f94d9ffcf4b6a09df213381edebab`
+  (CI 로그 값 == Caddy 로 실제 내려받은 바이트 값)
+- CI run 33577023388 초록. 새 필수 단계
+  `auto-update swap actually applies` 가 `OK[ascii]` / `OK[korean]` 둘 다 통과.
+- **매니페스트는 건드리지 않았다. 여전히 1.0.9 다.**
+  고객은 이 ZIP 을 **손으로** 받아 풀어야 한다. 고객 PC 의 1.0.9 는 망가진
+  업데이터를 갖고 있어서 자동 업데이트로는 이 수정본을 전달할 수 없다.
+- 고객 진단 ZIP 의 `appVersion` 이 `1.0.11` 로 보이면, 그때 매니페스트를
+  1.0.11 로 올려도 된다(그때부터 자동 업데이트가 다시 안전하다).
