@@ -2458,8 +2458,13 @@ tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL
 ### 고친 것 (v1.0.11)
 1. 배치에서 파이프를 전부 제거. `tasklist ... > 파일` + `findstr /C:... 파일`.
 2. `timeout /t` → `ping -n`. `timeout` 은 콘솔이 없으면 즉시 실패해 대기가 안 된다.
-3. `updater.bat_path()`: 한글 경로는 8.3 단축 경로(순수 ASCII)로 바꿔 넣는다.
-   단축 이름이 꺼진 볼륨을 위해 `_spawn_bat` 이 배치를 ANSI(`mbcs`)로도 저장한다.
+3. **경로를 배치 본문에 넣지 않는다.** `AIS_SRC` / `AIS_DST` / `AIS_EXE` 등
+   환경변수로 넘기고 본문은 항상 순수 ASCII 로 유지한다(`script_is_pure_ascii`,
+   아니면 교체를 아예 시작하지 않는다). 8.3 단축 경로에 기대는 방법을 먼저
+   시도했는데 **틀렸다**: 8dot3 이 꺼진 볼륨(GitHub Actions 러너의 D:)에서는
+   긴 경로가 그대로 돌아오고, 그때 robocopy 가 `1`(성공)을 돌려주면서 깨진
+   이름의 엉뚱한 폴더에 복사한다. 환경변수는 CreateProcess 가 유니코드로
+   넘기므로 코드페이지 문제 자체가 없다.
 4. `%APPDATA%\AisarangReservation\logs\update-swap.log` 에 robocopy 결과를 남긴다.
 5. **무한 루프 차단**: `update-state.json` 에 시도 횟수를 적어, 같은 버전으로
    2회 실패하면 더 받지 않고 `aisarang-reservation-update` 로 진단을 올린다.

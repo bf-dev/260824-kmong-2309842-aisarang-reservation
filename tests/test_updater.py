@@ -127,10 +127,13 @@ def test_the_shipped_version_matches_what_the_manifest_will_say():
 # 업데이터 시험은 전부 순수 함수(choose_download/payload_root/zip 구조)만 봤고,
 # 교체 배치는 CI 에서도 windows-builder 에서도 **한 번도 실행된 적이 없다**.
 
-def _swap_script(tmp_path, monkeypatch):
+_LAST_ENV = {"env": {}}
+
+
+def _swap_script(tmp_path, monkeypatch, korean=False):
     """실제 교체 배치 문자열을 만들어 돌려준다(스폰은 하지 않는다)."""
     import sys as _s
-    install = tmp_path / "install"
+    install = tmp_path / ("설치폴더 한글" if korean else "install")
     install.mkdir()
     exe = install / "aisarang-reservation.exe"
     exe.write_bytes(b"old")
@@ -148,8 +151,11 @@ def _swap_script(tmp_path, monkeypatch):
     monkeypatch.setattr(_s, "executable", str(exe))
     captured = {}
     monkeypatch.setattr(updater.UpdaterThread, "_spawn_bat",
-                        lambda self, script: captured.setdefault("script", script))
+                        lambda self, script, env=None: (
+                            captured.setdefault("script", script),
+                            captured.setdefault("env", env or {})))
     updater.UpdaterThread()._swap_folder_and_restart(str(zip_path))
+    _LAST_ENV["env"] = captured.get("env", {})
     return captured.get("script", "")
 
 
@@ -173,14 +179,38 @@ def test_the_swap_batch_records_what_it_did(tmp_path, monkeypatch):
     """교체가 실패해도 서버에서 보이도록 robocopy 결과를 남겨야 한다."""
     script = _swap_script(tmp_path, monkeypatch)
     assert "robocopy=" in script
-    assert "update-swap.log" in script
+    assert "%AIS_LOG%" in script
+    assert "update-swap.log" in _LAST_ENV["env"]["AIS_LOG"]
 
 
-def test_bat_path_is_ascii_for_a_korean_install_dir():
-    """한글 경로는 배치에 그대로 넣으면 cmd 가 깨뜨린다(8.3 또는 ANSI 로 처리)."""
-    # 리눅스에서는 변환이 없다(윈도우 전용 문제). 반환값이 문자열이면 된다.
-    assert isinstance(updater.bat_path("/tmp/한글"), str)
-    assert updater.bat_path("/tmp/ascii") == "/tmp/ascii"
+def test_the_swap_batch_body_is_pure_ascii_even_for_a_korean_install_dir(
+        tmp_path, monkeypatch):
+    """배치 본문에 한글이 들어가면 cmd 가 코드페이지로 읽다가 깨뜨린다.
+
+    8.3 단축 경로에 기대면 안 된다. 8dot3 이 꺼진 볼륨에서는 긴 경로가 그대로
+    돌아오고, 그때 robocopy 는 '성공' 을 돌려주면서 깨진 이름의 엉뚱한 폴더에
+    복사한다(2026-09-02 GitHub Actions 러너 D: 에서 실측).
+    """
+    script = _swap_script(tmp_path, monkeypatch, korean=True)
+    assert script.isascii(), "배치 본문에 ASCII 밖 글자가 있다:\n" + script
+    assert updater.script_is_pure_ascii(script)
+    assert not updater.script_is_pure_ascii("robocopy \"C:\\한글\"")
+
+
+def test_the_swap_batch_passes_paths_through_the_environment(tmp_path, monkeypatch):
+    """경로는 본문이 아니라 환경변수로 넘어가야 한다."""
+    _swap_script(tmp_path, monkeypatch, korean=True)
+    env = _LAST_ENV["env"]
+    assert "설치폴더 한글" in env["AIS_DST"], env
+    for key in ("AIS_PID", "AIS_SRC", "AIS_DST", "AIS_EXE", "AIS_WORK",
+                "AIS_LOG", "AIS_TL"):
+        assert key in env, f"{key} 가 환경변수에 없다"
+
+
+def test_a_non_ascii_batch_body_is_never_spawned():
+    """만약을 대비한 마지막 방어선: 깨질 배치는 아예 띄우지 않는다."""
+    assert updater.script_is_pure_ascii("@echo off\nrobocopy \"%AIS_SRC%\"")
+    assert not updater.script_is_pure_ascii("@echo off\necho 한글")
 
 
 def test_repeated_failed_updates_stop_instead_of_looping(tmp_path, monkeypatch):

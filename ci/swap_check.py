@@ -120,9 +120,18 @@ def run_case(dist: Path, work: Path, label: str, dirname: str) -> bool:
         time.sleep(2)
     swapped = (install / PROOF).is_file()
 
-    tl = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {EXE_NAME}", "/NH", "/FO", "CSV"],
-                        capture_output=True, text=True).stdout or ""
-    relaunched = EXE_NAME.lower() in tl.lower()
+    # 재실행은 robocopy 뒤에 일어난다. 표식 파일이 보이자마자 확인하면
+    # `start` 가 아직 안 돌았을 수 있다(실측). 잠깐 더 기다려 준다.
+    relaunched = False
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        tl = subprocess.run(
+            ["tasklist", "/FI", f"IMAGENAME eq {EXE_NAME}", "/NH", "/FO", "CSV"],
+            capture_output=True, text=True).stdout or ""
+        if EXE_NAME.lower() in tl.lower():
+            relaunched = True
+            break
+        time.sleep(2)
     _kill_app()
 
     try:

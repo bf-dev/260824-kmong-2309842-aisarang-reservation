@@ -115,36 +115,17 @@ def choose_download(manifest: dict, current_version: str) -> tuple | None:
     return None
 
 
-def bat_path(p) -> str:
-    """배치 파일 안에 넣어도 안전한 경로 문자열.
+def script_is_pure_ascii(script: str) -> bool:
+    """배치 본문에 ASCII 밖 글자가 없어야 한다.
 
-    배치 파일은 cmd 가 **OEM 코드페이지**(한국어 윈도우면 949)로 읽는다.
-    우리가 파일을 UTF-8 로 쓰면 경로에 한글이 들어간 순간 cmd 쪽에서 깨진
-    글자가 되고, robocopy 도 재실행도 "경로를 찾을 수 없음" 으로 조용히
-    실패한다. 2026-09-02 windows-builder 실측: 설치 폴더 이름에 한글이
-    들어가면 파이프를 다 걷어낸 뒤에도 교체가 되지 않았다.
-
-    그래서 한글이 섞인 경로는 8.3 단축 경로(순수 ASCII)로 바꿔 넣는다.
-    단축 이름이 꺼져 있는 볼륨이면 원래 경로가 그대로 돌아오고, 그때는
-    _spawn_bat 이 배치를 ANSI 코드페이지로 저장해서 맞춘다.
+    배치 파일은 cmd 가 **코드페이지**(한국어 윈도우 949, 영어 윈도우 437/1252)로
+    읽는다. 우리가 어떤 인코딩으로 쓰든 한쪽은 반드시 깨진다. 그래서 경로는
+    본문에 넣지 않고 환경변수로 넘기고, 본문은 항상 순수 ASCII 로 유지한다.
     """
-    s = str(p)
-    if os.name != "nt" or s.isascii():
-        return s
     try:
-        import ctypes
-        from ctypes import wintypes
-        fn = ctypes.windll.kernel32.GetShortPathNameW
-        fn.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
-        fn.restype = wintypes.DWORD
-        need = fn(s, None, 0)
-        if need:
-            buf = ctypes.create_unicode_buffer(need)
-            if fn(s, buf, need) and buf.value:
-                return buf.value
+        return str(script).isascii()
     except Exception:
-        pass
-    return s
+        return False
 
 
 def payload_root(extracted_dir, exe_name: str):
@@ -292,33 +273,41 @@ class UpdaterThread(threading.Thread):
             return
 
         pid = os.getpid()
-        log = bat_path(config.log_dir() / "update-swap.log")
-        tl = bat_path(Path(work).parent / f"aisarang-tasklist-{pid}.txt")
-        src = bat_path(src)
-        install_dir = bat_path(install_dir)
-        current = bat_path(current)
-        work = bat_path(work)
         # robocopy 는 0~7 을 성공으로 쓴다. 실행 파일이 잠겨 있을 수 있으니
         # 프로세스가 완전히 끝난 뒤에 복사한다.
-        script = f"""@echo off
-> "{log}" echo swap start pid={pid} target="{install_dir}"
+        #
+        # 경로는 배치 **본문에 넣지 않고** 환경변수로 넘긴다. 아래 _spawn_bat
+        # 주석 참고: 배치 본문은 cmd 가 코드페이지로 읽어서 한글이 깨지지만,
+        # 환경변수는 CreateProcess 가 유니코드 그대로 전달한다.
+        env = {
+            "AIS_PID": str(pid),
+            "AIS_SRC": str(src),
+            "AIS_DST": str(install_dir),
+            "AIS_EXE": str(current),
+            "AIS_WORK": str(work),
+            "AIS_LOG": str(config.log_dir() / "update-swap.log"),
+            "AIS_TL": str(Path(work).parent / f"aisarang-tasklist-{pid}.txt"),
+        }
+        script = """@echo off
+> "%AIS_LOG%" echo swap start pid=%AIS_PID% target="%AIS_DST%"
 :wait
-tasklist /FI "PID eq {pid}" /NH /FO CSV > "{tl}" 2>NUL
-findstr /C:"{pid}" "{tl}" >NUL 2>NUL
+tasklist /FI "PID eq %AIS_PID%" /NH /FO CSV > "%AIS_TL%" 2>NUL
+findstr /C:"%AIS_PID%" "%AIS_TL%" >NUL 2>NUL
 if not errorlevel 1 (
   ping -n 2 127.0.0.1 >NUL 2>NUL
   goto wait
 )
-robocopy "{src}" "{install_dir}" /E /IS /IT /R:2 /W:1 /NFL /NDL /NJH /NJS >NUL 2>NUL
+robocopy "%AIS_SRC%" "%AIS_DST%" /E /IS /IT /R:2 /W:1 /NFL /NDL /NJH /NJS >NUL 2>NUL
 set RC=%errorlevel%
->> "{log}" echo robocopy=%RC%
-start "" "{current}"
->> "{log}" echo relaunched=%errorlevel%
-rd /s /q "{work}" >NUL 2>NUL
-del "{tl}" >NUL 2>NUL
+>> "%AIS_LOG%" echo robocopy=%RC%
+if %RC% GEQ 8 echo ROBOCOPY FAILED, install may be incomplete >> "%AIS_LOG%"
+start "" "%AIS_EXE%"
+>> "%AIS_LOG%" echo relaunched=%errorlevel%
+rd /s /q "%AIS_WORK%" >NUL 2>NUL
+del "%AIS_TL%" >NUL 2>NUL
 del "%~f0"
 """
-        self._spawn_bat(script)
+        self._spawn_bat(script, env)
 
     def _swap_and_restart(self, new_exe: str) -> None:
         """옛 한파일 배포 교체 (1.0.4 이하가 깔린 PC 용)."""
@@ -326,29 +315,32 @@ del "%~f0"
             return
         current = sys.executable
         pid = os.getpid()
-        log = bat_path(config.log_dir() / "update-swap.log")
-        tl = bat_path(Path(tempfile.gettempdir()) / f"aisarang-tasklist-{pid}.txt")
-        current = bat_path(current)
-        new_exe = bat_path(new_exe)
-        script = f"""@echo off
-> "{log}" echo exe swap start pid={pid} target="{current}"
+        env = {
+            "AIS_PID": str(pid),
+            "AIS_EXE": str(current),
+            "AIS_NEW": str(new_exe),
+            "AIS_LOG": str(config.log_dir() / "update-swap.log"),
+            "AIS_TL": str(Path(tempfile.gettempdir()) / f"aisarang-tasklist-{pid}.txt"),
+        }
+        script = """@echo off
+> "%AIS_LOG%" echo exe swap start pid=%AIS_PID% target="%AIS_EXE%"
 :wait
-tasklist /FI "PID eq {pid}" /NH /FO CSV > "{tl}" 2>NUL
-findstr /C:"{pid}" "{tl}" >NUL 2>NUL
+tasklist /FI "PID eq %AIS_PID%" /NH /FO CSV > "%AIS_TL%" 2>NUL
+findstr /C:"%AIS_PID%" "%AIS_TL%" >NUL 2>NUL
 if not errorlevel 1 (
   ping -n 2 127.0.0.1 >NUL 2>NUL
   goto wait
 )
-copy /y "{new_exe}" "{current}" >NUL 2>NUL
->> "{log}" echo copy=%errorlevel%
-start "" "{current}"
->> "{log}" echo relaunched=%errorlevel%
-del "{tl}" >NUL 2>NUL
+copy /y "%AIS_NEW%" "%AIS_EXE%" >NUL 2>NUL
+>> "%AIS_LOG%" echo copy=%errorlevel%
+start "" "%AIS_EXE%"
+>> "%AIS_LOG%" echo relaunched=%errorlevel%
+del "%AIS_TL%" >NUL 2>NUL
 del "%~f0"
 """
-        self._spawn_bat(script)
+        self._spawn_bat(script, env)
 
-    def _spawn_bat(self, script: str) -> None:
+    def _spawn_bat(self, script: str, env: dict | None = None) -> None:
         """교체 배치를 떼어내 띄우고 즉시 죽는다.
 
         **이 배치 안에는 파이프(`|`)가 하나도 없어야 한다.** DETACHED_PROCESS 로
@@ -365,29 +357,29 @@ del "%~f0"
 
         `timeout /t` 도 쓰지 않는다. 콘솔이 없으면 입력 리다이렉션 오류로 즉시
         빠져나와 대기가 되지 않는다. `ping -n` 은 콘솔 없이도 제대로 기다린다.
+
+        경로는 본문이 아니라 **환경변수**로 넘긴다. 배치 본문은 cmd 가
+        코드페이지로 읽기 때문에 한글 경로를 어떤 인코딩으로 써도 한쪽이
+        깨진다(8.3 단축 경로는 8dot3 이 꺼진 볼륨에서 안 통한다: GitHub
+        Actions 러너의 D: 가 그렇고, 거기서 robocopy 가 '성공' 을 돌려주면서
+        깨진 이름의 엉뚱한 폴더에 복사했다). 환경변수는 CreateProcess 가
+        유니코드 그대로 넘기므로 코드페이지 문제가 아예 없다.
         """
+        # 본문은 순수 ASCII 여야 한다. 아니면 교체를 아예 시작하지 않는다.
+        # 반쯤 덮어쓰거나 엉뚱한 폴더로 복사하는 것이 최악이다.
+        if not script_is_pure_ascii(script):
+            return
         fd, bat = tempfile.mkstemp(suffix=".bat")
-        # cmd 는 배치를 OEM/ANSI 코드페이지로 읽는다. UTF-8 로 쓰면 경로에
-        # 한글이 있을 때 cmd 쪽에서 깨진다. bat_path() 가 대부분 ASCII 로
-        # 바꿔주지만, 단축 이름이 꺼진 볼륨을 위해 여기서도 맞춰서 쓴다.
-        wrote = False
-        if os.name == "nt":
-            try:
-                with os.fdopen(fd, "w", encoding="mbcs", errors="strict") as f:
-                    f.write(script)
-                wrote = True
-            except Exception:
-                try:
-                    os.close(fd)
-                except Exception:
-                    pass
-        if not wrote:
-            with open(bat, "w", encoding="utf-8") as f:
-                f.write(script)
+        with os.fdopen(fd, "w", encoding="ascii", errors="strict") as f:
+            f.write(script)
+        child_env = None
+        if env:
+            child_env = dict(os.environ)
+            child_env.update({str(k): str(v) for k, v in env.items()})
         flags = 0
         if os.name == "nt":
             flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags,
+        subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags, env=child_env,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, close_fds=True)
         os._exit(0)
