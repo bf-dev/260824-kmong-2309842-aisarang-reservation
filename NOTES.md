@@ -2558,3 +2558,63 @@ python ci/swap_check.py dist/aisarang-reservation     # 윈도우에서만 의�
   업데이터를 갖고 있어서 자동 업데이트로는 이 수정본을 전달할 수 없다.
 - 고객 진단 ZIP 의 `appVersion` 이 `1.0.11` 로 보이면, 그때 매니페스트를
   1.0.11 로 올려도 된다(그때부터 자동 업데이트가 다시 안전하다).
+
+### 매니페스트 1.0.9 -> 1.0.11 (2026-09-03 00:05Z) <- 지금 서빙 중
+
+The precondition above is met, so the 2026-09-02 rollback is lifted. The customer's
+diagnostic uploaded `2026-09-03T00:00:01Z` reports `appVersion 1.0.11`, i.e. the fixed
+updater is the one installed on their PC. The manifest now serves 1.0.11.
+
+Served file (NOT in this repo, it lives only in the gateway public dir):
+`/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`
+
+before:
+```json
+{"version": "1.0.9",
+ "zipUrl": ".../aisarang-reservation-1.0.9.zip",
+ "sha256": "60f96c5f11b2c3ad6d6eef8bbf431cc05cbc2c7110eea9208a7969959f84f279",
+ "updatedAt": "2026-09-01T23:40:00Z", "rolledBackFrom": "1.0.10"}
+```
+after:
+```json
+{"version": "1.0.11",
+ "zipUrl": ".../aisarang-reservation-1.0.11.zip",
+ "sha256": "019a4986ef2a321abf4880f67bafa60b077f94d9ffcf4b6a09df213381edebab",
+ "size": 29263749,
+ "updatedAt": "2026-09-03T00:05:00Z", "supersedes": "1.0.9"}
+```
+`zipUrl` only, still no `exeUrl`. Do not add one: a pre-1.0.5 updater would drop the
+ZIP on top of the exe path. `size` and `sha256` are informational, the shipped
+updater reads neither (it validates `Content-Length` + `MIN_ZIP_BYTES`), and unknown
+keys are ignored by `choose_download`.
+
+Checked before writing, against the bytecode inside the **shipped** 1.0.11 exe (PYZ
+extracted from `aisarang-reservation.exe`, module `aisarang.updater`), not the repo
+source:
+```
+version_tuple  = tuple(int(x) for x in str(v).strip().split("."))   <- int compare
+choose_download(live manifest, installed 1.0.11) -> None            <- no self-reinstall
+choose_download(live manifest, installed 1.0.9)  -> ('zip', .../1.0.11.zip, '1.0.11')
+choose_download(version 1.0.12, installed 1.0.11)-> ('zip', .../1.0.12.zip, '1.0.12')
+```
+So the two-digit-patch string-compare trap (`"1.0.11" > "1.0.9"` is False) does not
+apply: nothing in the shipped path compares versions as strings. The shipped swap
+batch constants were read out of the same PYZ and confirmed pure ASCII with no `|`
+(the only pipe left in the module is inside the docstring that explains the old bug).
+
+HTTP verification, real serving path (Caddy, not the gateway loopback):
+```
+GET  version-aisarang.json?cb=...    -> 200, version 1.0.11, etag dl58pj4mowcny0
+                                        last-modified Thu, 03 Sep 2026 00:04:06 GMT
+HEAD aisarang-reservation-1.0.11.zip -> 200, content-length 29263749, application/zip
+public egress (real DNS/Cloudflare)  -> 200 for both, manifest version 1.0.11
+```
+`cache-control: public, max-age=300`, so an edge-cached 1.0.9 can survive at most
+5 minutes. Note `urllib` gets a 403 from the edge on its default User-Agent, use
+`curl` (or the product's requests session) when probing by hand.
+
+Nothing else changed: the customer's running program was not touched, the gateway was
+not restarted, and the 1.0.9 / 1.0.10 ZIPs are still on disk for rollback. To roll back,
+`install -m 0644` the previous JSON back over that path, re-typed from the `before`
+block above (a copy was left under `~/workspace/kmong/tmp/`, which is pruned after
+14 days, so do not depend on it).
