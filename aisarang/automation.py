@@ -371,6 +371,19 @@ def _trim_middle(rows: list, limit: int) -> list:
 # **응답 본문에만** 있다. 그 본문이 진단 ZIP 에 없어서, 그 문구가 '자리를
 # 뺏겼다' 인지 '중복 예약' 인지 가리는 데 캡처 네 개를 대조해야 했다.
 #
+# v1.0.12 (2026-09-04): 이 훅은 이제 진단만이 아니라 **판정**에도 쓰인다.
+# 09-04 09:00:00 의 로그는 이랬다.
+#   [확인] 1발째 · 도착 추정 정각 +352ms · 서버: (문구 없음) [unknown]
+# 그런데 같은 실행의 xhr_bodies_handover_after.json 안에는 답이 그대로 있었다.
+#   {"returnmsg":"1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.",
+#    "returnval":""}
+# 응답이 3,418ms 걸렸고 화면 판정(OUTCOME_TIMEOUT 1.6초)은 그전에 포기했다.
+# 즉 우리는 서버 답을 손에 쥐고도 [unknown] 을 적고 있었다. 그래서:
+#   - 예약 제출(InsertOcreqst)만은 링버퍼 상한과 무관한 **전용 칸**에 둔다
+#     (window.__aisarangSubmit). 40건 상한에 밀려 사라지지 않는다.
+#   - 보내는 순간 done:false 로 칸을 만든다. 판정 쪽이 "아직 오는 중" 과
+#     "아무것도 안 보냈다" 를 구분할 수 있어야 기다릴지 말지를 정한다.
+#
 # 안전 규칙(우선순위 순):
 #   1. 고객 프로그램을 절대 망가뜨리지 않는다. 전부 try/catch 로 감싸고,
 #      원래 핸들러를 교체하지 않는다(addEventListener 로 곁에 붙는다).
@@ -383,11 +396,38 @@ try {
     var LOG = window.__aisarangNet = [];
     var MAX_ROWS = 40, MAX_BODY = 20000;
     var WANT = ['InsertOcreqst', '/icms/occasion/', 'ts.wseq', 'OccasionTime'];
+    var SUBMIT = 'InsertOcreqst';
+    window.__aisarangSubmitSeq = window.__aisarangSubmitSeq || 0;
     function want(u){
       try { u = String(u || '');
         for (var i = 0; i < WANT.length; i++) { if (u.indexOf(WANT[i]) >= 0) return true; }
       } catch (e) {}
       return false;
+    }
+    function isSubmit(u){
+      try { return String(u || '').indexOf(SUBMIT) >= 0; } catch (e) { return false; }
+    }
+    // 예약 제출 전용 칸. 링버퍼가 아니라 마지막 한 건만 들고 있는다.
+    function openSubmit(method, url, t0, requestBody){
+      var slot = null;
+      try {
+        slot = {seq: ++window.__aisarangSubmitSeq, method: String(method || ''),
+                url: String(url || ''), t0: t0, t1: 0, done: false,
+                status: 0, requestBody: requestBody,
+                responseBody: '', responseHeaders: ''};
+        window.__aisarangSubmit = slot;
+      } catch (e) {}
+      return slot;
+    }
+    function closeSubmit(slot, status, responseBody, responseHeaders){
+      try {
+        if (!slot) return;
+        slot.t1 = Date.now();
+        slot.status = status;
+        slot.responseBody = responseBody;
+        slot.responseHeaders = responseHeaders;
+        slot.done = true;
+      } catch (e) {}
     }
     function clip(v){
       try {
@@ -413,14 +453,19 @@ try {
       try {
         if (want(this.__aurl)) {
           var self = this, t0 = Date.now(), req = clip(body);
+          var slot = isSubmit(self.__aurl)
+            ? openSubmit(self.__amethod, self.__aurl, t0, req) : null;
           self.addEventListener('loadend', function () {
             try {
+              var hdr = clip(self.getAllResponseHeaders ?
+                             self.getAllResponseHeaders() : '');
+              var res = clip(self.responseText);
+              closeSubmit(slot, self.status, res, hdr);
               push({kind: 'xhr', method: self.__amethod, url: String(self.__aurl),
                     t0: t0, t1: Date.now(), status: self.status,
                     requestBody: req,
-                    responseHeaders: clip(self.getAllResponseHeaders ?
-                                          self.getAllResponseHeaders() : ''),
-                    responseBody: clip(self.responseText)});
+                    responseHeaders: hdr,
+                    responseBody: res});
             } catch (e) {}
           });
         }
@@ -441,9 +486,12 @@ try {
         try {
           if (want(url)) {
             var t0 = Date.now();
+            var fslot = isSubmit(url)
+              ? openSubmit('fetch', url, t0, '') : null;
             p.then(function (r) {
               try {
                 r.clone().text().then(function (txt) {
+                  closeSubmit(fslot, r.status, clip(txt), '');
                   push({kind: 'fetch', url: String(url), t0: t0, t1: Date.now(),
                         status: r.status, responseBody: clip(txt)});
                 }).catch(function () {});
@@ -486,6 +534,14 @@ def _page_net_bodies(driver) -> list:
         return driver.execute_script("return window.__aisarangNet || [];") or []
     except Exception:
         return []
+
+
+def booking_submit_slot(driver):
+    """예약 제출 전용 칸을 그대로 읽어온다(없으면 None). 진단용."""
+    try:
+        return driver.execute_script("return window.__aisarangSubmit || null;")
+    except Exception:
+        return None
 
 
 def capture(driver, diag, label: str) -> None:
@@ -533,6 +589,9 @@ def capture(driver, diag, label: str) -> None:
         diag.add_json(f"xhr_bodies_{label}.json", {
             "hookInstalled": installed,
             "count": len(bodies),
+            # v1.0.12: 링버퍼 상한과 무관한 예약 제출 전용 칸. 판정이 실제로
+            # 무엇을 읽었는지 서버에서 되짚을 수 있어야 한다.
+            "submit": booking_submit_slot(driver),
             "rows": bodies,
         })
     except Exception:

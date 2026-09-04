@@ -1333,6 +1333,227 @@ python ci/build_too_early_fixture.py [ZIP]     # regenerate
 python main.py --handovertest                  # expects: fired=1/5, HANDOVERTEST OK
 ```
 
+## v1.0.12 (2026-09-04): we were holding the server's answer and writing `[unknown]`
+
+Written in English-first house style; the Korean strings quoted below are verbatim
+server/UI text and must not be translated.
+
+### What happened: 2026-09-04 09:00:00
+
+```
+[09:00:00] 발사 직전 점검: 확인창 감지됨 · 선택표 체크 켜짐 · 정각에 [확인] 을 누릅니다
+[09:00:00] 조준 확정: 도착 목표 정각 +350ms (시각 오차 ±24ms + 여유 250ms)
+[09:00:01] 지금 [확인] 을 누릅니다!
+[09:00:02] [확인] 1발째 · 도착 추정 정각 +352ms · 서버: (문구 없음) [unknown]
+[09:00:03] 선택표 체크 켜짐 · 확인창 없음 ([예약하기] 를 눌러주세요)
+```
+
+`…-20260904-090037.zip`, appVersion **1.0.11**, install dir
+`C:\Users\Jinoo\Downloads\aisarang-reservation-1.0.11`, targetDate 20260918.
+
+The customer read "선예약" off their own screen. We logged nothing. Same on 08-28,
+09-01, 09-02, 09-04. A one-shot tool that cannot record the verdict of its single
+shot is blind exactly when it matters.
+
+### THE VERBATIM SERVER STRING (this is the answer we were missing)
+
+It was in that same ZIP the whole time, in `xhr_bodies_handover_after.json`, the
+`InsertOcreqst.html` row. Response body, complete, byte for byte:
+
+```json
+{"returnmsg":"1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.","returnval":""}
+```
+
+with
+
+```
+HTTP 200   content-type: application/json;charset=UTF-8
+date: Fri, 04 Sep 2026 00:00:00 GMT        <- 09:00:00 KST, the second the server took it
+t0 1788480001289 -> t1 1788480004707       <- round trip 3,418 ms
+x-web-server: web03
+```
+
+So: it *was* a 선예약 rejection, the classifier has known that string since v1.0.10
+(`booking.TAKEN_REAL`, `_RE_TAKEN`), and it would have said `taken` if it had ever
+been shown the string. The gap was never vocabulary. **It was reachability plus
+patience.** Two separate faults, both fixed here:
+
+1. **The classifier only ever looked at the DOM.** The XHR body hook added in
+   v1.0.10 (`automation._JS_NET_RECORDER`) fed the diagnostics ZIP and nothing else.
+   The server's own words never reached `classify()`.
+2. **We gave up before the answer arrived.** `handover.OUTCOME_TIMEOUT` is 1.6 s.
+   The submit took **3,418 ms**. At 09:00:02 we wrote `[unknown]`; the response
+   landed at 09:00:04.7. The site paints `data.returnmsg` only after that, so the
+   screen was genuinely empty when we looked, twice, and then we stopped looking.
+
+`returnval` is `""`, not `"fail"`. Do not key anything off `returnval`; the site's
+own script only checks `returnval != "success"`. We classify on `returnmsg`.
+
+Also captured this round, from the **winning** morning (2026-09-03, arrival +363 ms):
+
+```
+알림 1건 예약 중 1건 예약되었습니다. 확인          <- booking.OK_REAL_ALERT (screen)
+1건 예약 중 1건 예약되었습니다.                    <- booking.OK_REAL (returnmsg)
+```
+
+That one was read off the screen inside 1.6 s, which is why a win has never looked
+blind: a successful submit answers fast, a contested one does not.
+
+### 1) The submit response is now the first-class evidence
+
+- `automation._JS_NET_RECORDER` keeps a **dedicated, never-dropped slot** for
+  `InsertOcreqst`: `window.__aisarangSubmit`. The 40-row ring buffer used for
+  diagnostics cannot evict it. The slot is opened at `send()` with `done:false`, so
+  the classifier can tell "still in flight" from "nothing was ever submitted".
+- `booking.submit_response(driver)` reads that slot through one
+  `driver.execute_script`, pinned to the initial browsing context. **No window
+  switching, no new handle, no CDP target juggling.** It deliberately does NOT pull
+  `requestBody` back: that field holds the child's resident registration number, and
+  it stays in the masked diagnostics ZIP only.
+- `booking.read_outcome_detail()` checks the submit body **before** the alert / the
+  notice layers / the session-message block, and returns a `booking.Outcome` with
+  `source`, `status`, `body`, `returnval`, `serverDate` and the measured round trip.
+  `read_outcome()` is now a two-tuple wrapper over it, so older call sites are
+  unchanged.
+- **A pending submit extends the wait.** `handover.SUBMIT_TIMEOUT` (9.0 s) applies
+  only while the slot says `done:false`; the screen window stays 1.6 s so re-fire
+  latency on `too_early` is unchanged. If nothing was submitted we do not wait at
+  all.
+- The stale guard: the slot is ignored when `t0 < window.__aisarang_fired_at - 250`.
+  `_JS_FIRE` already stamps `__aisarang_fired_at`, so this costs **zero extra
+  round trips before the shot** (which is the whole reason it is done that way, and
+  not with a watermark read just before firing).
+- The log now prints the evidence, not just a code:
+
+```
+[확인] 1발째 · 도착 추정 정각 +352ms · 서버: 1건 예약 중 1건 예약이 선예약으로
+인해 예약되지 않았습니다. [taken · 선예약(다른 이용자가 먼저 가져감)]
+판정 근거: 서버 응답 본문 (HTTP 200, 왕복 3418ms) · 서버가 요청을 받은 시각:
+Fri, 04 Sep 2026 00:00:00 GMT
+```
+
+  That `date` header is a bonus we have never had: it is the **server's own second**
+  for our submit, not our arrival estimate. `handover_*.json` / `confirm_shots.json`
+  carry the same thing under `outcome`.
+
+**The fetch wrapper still calls `_fetch.apply(window, arguments)`.** Do not
+"simplify" it to `this`: a strict-mode script calling bare `fetch(...)` has
+`this === undefined` and Chrome throws `Illegal invocation`, which is how we broke
+the customer's booking page once. Two tests pin it, and the `--handovertest` probe
+below exercises a real strict-mode bare `fetch()` in real Chromium.
+
+### 2) The masking bug that ate the evidence file
+
+`_RRN` was `\b(\d{6})[-\s]?([1-4]\d{6})\b`, i.e. any bare 13-digit run. A
+millisecond epoch is 13 digits. In the 2026-09-03 ZIP:
+
+```
+"t0": 1788393601822   ->   "t0": 178839-3******
+```
+
+which is not valid JSON, so `xhr_bodies_handover_after.json` **could not be parsed
+at all** for the winning day. (The 09-04 file survived by luck: the 7th digit of
+1788480001289 is `0`, outside the `[1-4]` gender digit.) Now the first six digits
+must be a real `YYMMDD`, so `178839` (month 88) no longer matches while every real
+RRN still does. Verified both directions: `251022-3123456` and `2510223123456` are
+still masked; `1788393601822` survives.
+
+This is not a side quest. That file is the evidence channel this whole release
+depends on.
+
+### 3) The arrival floor: 350 ms -> 250 ms (and what it is NOT)
+
+Only `config.ARRIVAL_MIN_AFTER_MS` changed. The formula is untouched:
+
+```
+정각 + clamp(uncertainty/2 + ARRIVAL_SAFETY_MS, ARRIVAL_MIN_AFTER_MS, 1200)
+                             ^ still 250, not shaved
+```
+
+Checked against the code before changing it (`clock.safe_arrival_after`, and
+`runner._arrival_aim` which recomputes it on every re-measurement): the floor was
+set when the clock was the RFC 7231 `Date` header, quantised to 1 s, giving
+±435-495 ms. Since v1.0.10 we read childcare.go.kr's millisecond
+`egovLatestServerTime`, and the customer's own logs measure:
+
+```
+09-03  "조준 확정: 도착 목표 정각 +350ms (시각 오차 ±27ms + 여유 250ms)"   27+250 = 277
+09-04  "조준 확정: 도착 목표 정각 +350ms (시각 오차 ±24ms + 여유 250ms)"   24+250 = 274
+```
+
+Both computed values were **clamped up to 350 by the floor**. So the floor, not the
+measurement, was choosing the aim. With a 250 floor the computed 274-277 ms is used
+directly, and at ±24 ms the worst case still lands +250 ms after the hour. Arriving
+*before* the hour is the one hard rejection (2026-08-27, 1/1), and the
+`uncertainty/2` term still pushes the aim back out on a worse morning: ±100 ms gives
+350 ms, ±200 ms gives 450 ms, ±435 ms gives 685 ms. The floor is only the bottom for
+an unusually good measurement. So the floor was not load-bearing for safety.
+
+**This is not expected to win more often, and nothing in this repo should claim it
+is.** Measured arrival vs outcome:
+
+| date | arrival | outcome |
+|---|---|---|
+| 08-27 | -296 ms | rejected (before the hour) |
+| 08-28 | +686 ms | lost |
+| 08-31 | +793 ms | **WON** |
+| 09-01 | +686 ms | lost |
+| 09-02 | +803 ms | lost |
+| 09-03 | +363 ms | **WON** |
+| 09-04 | +352 ms | lost |
+
++352 lost and +363 won. Arrival does not predict the outcome anywhere in
+350-800 ms. This was changed because it is safe and the customer asked twice.
+
+### 4) CI: the swap batch still runs for real, and the new path is proven end to end
+
+- `auto-update swap actually applies (real batch, real robocopy)` is unchanged and
+  still required: `python ci\swap_check.py dist\aisarang-reservation`, ASCII and
+  Korean install paths. Pure-function updater tests are what let the 09-02 outage
+  ship; that step is the reason it cannot ship again.
+- **New**: `--handovertest` now reproduces 09-04 exactly, in real Chromium, on the
+  frozen exe. A page with **no alert and no notice layer at all** fires a real XHR
+  POST to a local `InsertOcreqst.html` that replays the real captured body **after
+  2.5 s**, i.e. past the 1.6 s screen window. CI asserts:
+
+```
+submitCode=taken submitSource=submit submitStatus=200 screenNotices=0 verbatim=True
+submitWaitedMs=2524.9 screenWindowMs=1600.0 pageStillGotJson=True fetchStatus=200
+  fetchError=- staleIgnored=True
+```
+
+  and fails the build if `submitWaitedMs <= screenWindowMs`. `pageStillGotJson`
+  proves the site's own `onreadystatechange` still received the JSON (we clone, we
+  do not consume); `fetchStatus=200 fetchError=-` is the strict-mode bare-`fetch`
+  regression; `staleIgnored` proves a previous shot's response is never reused.
+
+### New fixture
+
+`ci/fixtures/real/insert_ocreqst_taken.json`, rebuildable with
+`python ci/build_submit_fixture.py <ZIP>`. This is the **first InsertOcreqst
+response body this repo has ever held** (v1.0.9 had no hook; v1.0.10 added it and
+09-04 was the first failure after that). The builder refuses to write unless the
+body actually contains 선예약 and passes the PII shape check, so an invented string
+cannot get in. `tests/test_submit_outcome.py` compares it against
+`booking.TAKEN_REAL` character for character.
+
+### Tests
+
+`tests/test_submit_outcome.py` (18 new). Updated: `test_arrival.py` (the floor is
+250, plus the ±24/±27 ms cases from the customer's own logs and the
+"a worse morning pushes the aim back up" case), `test_clock.py`,
+`test_handover.py` (the ast whitelist gained `read_outcome_detail`,
+`outcome_label`, `SUBMIT_WAIT_SECONDS`, all read-only).
+
+### What did NOT change
+
+- No window switching, no second Chrome window, no extra round trip before the shot.
+- No burst fire. Still one shot, re-fired only on `too_early`.
+- `[예약하기]` is still reachable only from `_Reopen.do`, still locked forever on
+  any non-`too_early` outcome and on any sight of the queue.
+- `ARRIVAL_SAFETY_MS` is still 250. The formula's shape is unchanged.
+- Nothing was ever submitted to childcare.go.kr from this machine.
+
 ## v1.0.10 (2026-09-01): 늦는 것도 지는 것이었다
 
 Written in English-first house style; the Korean strings quoted below are verbatim

@@ -378,10 +378,11 @@ def test_a_tight_clock_moves_the_aim_from_685ms_down_to_the_floor():
     """조준 공식은 그대로다. 앞쪽 항이 줄어드니 조준점이 따라 내려온다.
 
     2026-09-01 실전값: 오차 ±435ms -> 435 + 250 = 685ms.
-    측정이 좁아지면 같은 공식이 하한 350ms 로 내려온다. 상수는 그대로다.
+    측정이 좁아지면 같은 공식이 하한까지 내려온다. 여유 상수는 그대로다.
+    v1.0.12 에서 하한만 350 -> 250 으로 내렸다(config.py 주석 참고).
     """
     assert config.ARRIVAL_SAFETY_MS == 250.0        # 깎지 않았다
-    assert config.ARRIVAL_MIN_AFTER_MS == 350.0
+    assert config.ARRIVAL_MIN_AFTER_MS == 250.0
 
     loose = clockmod.ClockSync(synced=True, lo=-0.869, hi=0.0)   # 폭 869ms
     assert abs(loose.safe_arrival_after() * 1000 - 684.5) < 1.0

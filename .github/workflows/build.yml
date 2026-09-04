@@ -103,15 +103,15 @@ jobs:
           "downloaded v1.0.4: $((Get-Item diag\v104.exe).Length) bytes sha256=$h"
           powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path diag\v104.exe -Label "v1.0.4-onefile"
 
-      - name: Defender scan of the v1.0.10 onedir build
+      - name: Defender scan of the onedir build
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.11-onedir" -MustBeClean
+        run: powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path dist\aisarang-reservation -Label "v1.0.12-onedir" -MustBeClean
 
       - name: Defender scan of the delivered zip
         shell: pwsh
         run: |
           $zip = Get-ChildItem out\*.zip | Select-Object -First 1
-          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.11-zip" -MustBeClean
+          powershell -ExecutionPolicy Bypass -File ci\defender_scan.ps1 -Path $zip.FullName -Label "v1.0.12-zip" -MustBeClean
 
       # 러너에서 대상 사이트에 닿는지 먼저 본다. 여기가 막히면 exe 문제가 아니라
       # 망 문제이므로, 아래 selftest 는 실패로 치지 않고 fixture 로 검증한다.
@@ -326,6 +326,27 @@ jobs:
           }
           if ($raw -notmatch "takenText=taken reopenAllowed=False fnSave=0 alertClosed=0 confirmClicked=0") {
             throw "a taken slot must not re-press the reserve button"
+          }
+          # v1.0.12: 2026-09-04 09:00:00 의 실패를 그대로 재현한다. 화면에는
+          # 안내가 하나도 없고(screenNotices=0), 예약 제출의 응답만 화면 판정
+          # 창(1.6초)보다 늦게 온다. 그날 로그는 "(문구 없음) [unknown]" 이었다.
+          # 이제는 응답 본문으로 taken 이 나와야 하고, 그 문구는 서버 원문
+          # (2026-09-04 캡처의 returnmsg) 그대로여야 한다.
+          if ($raw -notmatch "submitCode=taken submitSource=submit submitStatus=200 screenNotices=0 verbatim=True") {
+            throw "the submit response body did not reach the classifier"
+          }
+          # 응답을 끝까지 기다렸다는 증거. 여기가 깨지면 09-04 로 되돌아간 것이다.
+          $m = [regex]::Match($raw, "submitWaitedMs=([\d.]+) screenWindowMs=([\d.]+)")
+          if (-not $m.Success) { throw "no submit wait measurement in the log" }
+          "submit waited $($m.Groups[1].Value) ms, screen window $($m.Groups[2].Value) ms"
+          if ([double]$m.Groups[1].Value -le [double]$m.Groups[2].Value) {
+            throw "the classifier gave up before the submit response arrived"
+          }
+          # 훅이 고객 페이지를 망가뜨리지 않는다: 사이트 자신의 핸들러도 같은
+          # JSON 을 받고, 엄격 모드의 맨몸 fetch(...) 가 살아 있다.
+          # (`_fetch.apply(this, ...)` 로 되돌리면 여기서 Illegal invocation 이 난다.)
+          if ($raw -notmatch "pageStillGotJson=True fetchStatus=200 fetchError=- staleIgnored=True") {
+            throw "the net hook broke the page, or a stale response was reused"
           }
 
       - name: GUI screenshot (real window, real result on screen)

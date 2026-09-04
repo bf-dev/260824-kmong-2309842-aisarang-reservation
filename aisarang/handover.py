@@ -498,18 +498,30 @@ class HandoverShot:
     code: str = booking.R_UNKNOWN
     text: str = ""
     blockers: list = field(default_factory=list)
+    # v1.0.12: 판정의 근거. 어디서 읽었고 서버가 정확히 무엇을 돌려줬는지.
+    outcome: "booking.Outcome | None" = None
 
     def as_dict(self) -> dict:
-        return {"attempt": self.attempt,
-                "arrivalOffsetMs": round(self.arrival_offset_ms, 1),
-                "fired": self.fired, "code": self.code,
-                "text": (self.text or "")[:300],
-                "blockers": list(self.blockers)}
+        out = {"attempt": self.attempt,
+               "arrivalOffsetMs": round(self.arrival_offset_ms, 1),
+               "fired": self.fired, "code": self.code,
+               "label": booking.outcome_label(self.code),
+               "text": (self.text or "")[:300],
+               "blockers": list(self.blockers)}
+        if self.outcome is not None:
+            out["outcome"] = self.outcome.as_dict()
+        return out
 
 
-# [확인] 이후 서버 답을 기다리는 시간. 자동 모드는 6초지만 여기서는 재발사
-# 간격을 짧게 유지해야 해서 더 짧게 본다. 답이 오면 그 자리에서 돌아온다.
+# [확인] 이후 **화면**을 보는 시간. 자동 모드는 6초지만 여기서는 재발사 간격을
+# 짧게 유지해야 해서 짧게 본다. 답이 오면 그 자리에서 돌아온다.
 OUTCOME_TIMEOUT = 1.6
+# 예약 제출의 **응답 본문**을 기다리는 상한(초). 화면 창과 따로다.
+#
+# 2026-09-04 09:00:00: 제출 응답이 3,418ms 걸렸고 화면 창 1.6초는 그전에
+# 끝났다. 그래서 로그에 "(문구 없음) [unknown]" 이 남았다. 서버 답은 그때
+# 이미 오는 중이었다. 오는 중인 답을 버리고 미분류를 적는 일은 다시 없다.
+SUBMIT_TIMEOUT = booking.SUBMIT_WAIT_SECONDS
 
 
 class _Reopen:
@@ -604,6 +616,29 @@ class _Reopen:
                 "pressedReserveAgain": self.pressed}
 
 
+def _evidence_line(outcome) -> str:
+    """판정의 근거를 사람이 읽을 한 줄로. 이 줄이 09-04 에 없어서 눈이 멀었다."""
+    if outcome is None:
+        return "판정 근거: 없음"
+    if outcome.source == "submit":
+        bits = [f"판정 근거: 서버 응답 본문 (HTTP {outcome.status}"]
+        if outcome.elapsed_ms:
+            bits.append(f", 왕복 {outcome.elapsed_ms:.0f}ms")
+        bits.append(")")
+        line = "".join(bits)
+        if outcome.server_date:
+            line += f" · 서버가 요청을 받은 시각: {outcome.server_date}"
+        if outcome.returnval:
+            line += f" · returnval={outcome.returnval}"
+        return line
+    if outcome.source == "screen":
+        return "판정 근거: 화면 안내 문구 (서버 응답 본문은 못 봤습니다)"
+    if outcome.submit_seen and not outcome.submit_done:
+        return (f"판정 근거: 없음. 예약 제출 응답이 "
+                f"{outcome.waited_ms / 1000:.1f}초 안에 오지 않았습니다.")
+    return "판정 근거: 없음. 예약 제출이 잡히지 않았습니다."
+
+
 def burst(driver, clock, open_epoch: float, watcher: Watcher,
           retry_seconds: int = 20, retry_ms: int = 90,
           log=lambda *_: None, diag=None, stop_event=None,
@@ -679,12 +714,16 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
             time.sleep(max(retry_ms, 50) / 1000.0)
             continue
 
-        code, text = booking.read_outcome(driver, timeout=OUTCOME_TIMEOUT)
-        shot.code, shot.text = code, text
+        outcome = booking.read_outcome_detail(driver, timeout=OUTCOME_TIMEOUT,
+                                              submit_timeout=SUBMIT_TIMEOUT)
+        code, text = outcome.code, outcome.text
+        shot.code, shot.text, shot.outcome = code, text, outcome
         shots.append(shot)
         reopen.note_outcome(code)
         log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
-            f"· 서버: {text or '(문구 없음)'} [{code}]")
+            f"· 서버: {text or '(문구 없음)'} "
+            f"[{code} · {booking.outcome_label(code)}]")
+        log(_evidence_line(outcome))
 
         detail = {"shots": [s.as_dict() for s in shots],
                   "confirmAttempts": attempt,

@@ -134,11 +134,48 @@ def test_a_tighter_clock_aims_closer_to_the_hour():
     assert mid < loose
     assert abs(mid * 1000.0 - (250.0 + config.ARRIVAL_SAFETY_MS)) < 0.5
 
-    # CI 러너처럼 아주 잘 맞은 시계(uncertainty 133.2ms)면 66.6 + 250 = 316.6ms
-    # 인데, 바닥값이 그것보다 크므로 바닥값으로 간다. 늦는 쪽이 안전한 방향이다.
+    # uncertainty 133.2ms → 66.6 + 250 = 316.6ms. v1.0.11 까지는 하한 350 에
+    # 걸려 올라갔지만, v1.0.12 부터 하한이 250 이라 계산값이 그대로 쓰인다.
     tight = _measured(133.2).safe_arrival_after()
-    assert tight * 1000.0 == config.ARRIVAL_MIN_AFTER_MS
+    assert abs(tight * 1000.0 - 316.6) < 0.5, tight * 1000.0
     assert tight < mid
+    assert tight * 1000.0 >= config.ARRIVAL_MIN_AFTER_MS
+
+
+def test_the_customers_measured_clock_now_drives_the_aim_not_the_floor():
+    """v1.0.12 의 유일한 조준 변경: 하한 350 → 250.
+
+    고객 PC 실측 두 아침(로그 원문):
+      09-03  "조준 확정: 도착 목표 정각 +350ms (시각 오차 ±27ms + 여유 250ms)"
+      09-04  "조준 확정: 도착 목표 정각 +350ms (시각 오차 ±24ms + 여유 250ms)"
+    27+250=277, 24+250=274 인데 둘 다 하한 350 에 걸려 올라갔다. 즉 조준점을
+    정하고 있던 것은 측정이 아니라 하한이었다. 이제 계산값이 그대로 나온다.
+    공식도 여유(250ms)도 건드리지 않았다.
+    """
+    assert config.ARRIVAL_SAFETY_MS == 250.0        # 깎지 않았다
+    assert config.ARRIVAL_MIN_AFTER_MS == 250.0
+    assert config.ARRIVAL_MAX_AFTER_MS == 1200.0
+
+    for half_ms, want in ((27.0, 277.0), (24.0, 274.0)):
+        got = _measured(half_ms * 2).safe_arrival_after() * 1000.0
+        assert abs(got - want) < 0.5, (half_ms, got)
+        # 그래도 정각 뒤다. 최악(한쪽 오차만큼 이른 쪽)이어도 정각을 넘는다.
+        assert got - half_ms >= config.ARRIVAL_SAFETY_MS - 0.5, (half_ms, got)
+
+
+def test_a_worse_morning_pushes_the_aim_back_up_by_itself():
+    """하한을 내려도 이른 쪽 위험이 늘지 않는 이유.
+
+    앞쪽 항(uncertainty/2)이 살아 있어서, 시각이 덜 맞은 아침에는 조준점이
+    자동으로 다시 뒤로 간다. 하한은 측정이 아주 좋게 나왔을 때의 바닥일 뿐이다.
+    """
+    pairs = [(24.0, 274.0), (100.0, 350.0), (200.0, 450.0), (435.0, 685.0)]
+    last = 0.0
+    for half_ms, want in pairs:
+        got = _measured(half_ms * 2).safe_arrival_after() * 1000.0
+        assert abs(got - want) < 0.5, (half_ms, got)
+        assert got > last
+        last = got
 
 
 def test_the_aim_is_clamped_at_both_ends():

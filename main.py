@@ -98,6 +98,102 @@ def _reopen_probe(drv, expect_code: str = "") -> dict:
             "text": (hit[0][:120] if hit else "")}
 
 
+# 2026-09-04 09:00:00 의 실패를 그대로 재현하는 화면. 알림이 하나도 없는
+# 페이지에서 예약 제출만 나가고, 응답은 화면 판정 창(1.6초)보다 늦게 온다.
+# 그날 우리 로그: "서버: (문구 없음) [unknown]". 답은 응답 본문에 있었다.
+#
+# 이 페이지는 엄격 모드다. 훅이 원본 fetch 를 `this` 로 부르면 여기서
+# "Illegal invocation" 이 나고 사이트의 fetch 가 죽는다(실제로 한 번 그랬다).
+_SUBMIT_PROBE_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>submit probe</title></head>
+<body>
+<p id="mark">this page shows no alert and no notice layer, on purpose</p>
+<script>
+"use strict";
+window.__probe = {sent: false, status: 0, pageSaw: "", fetchStatus: 0, fetchError: ""};
+function probeFire() {
+  window.__aisarang_fired_at = Date.now();
+  var x = new XMLHttpRequest();
+  x.open('POST', '/icms/occasion/InsertOcreqst.html', true);
+  x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+  x.onreadystatechange = function () {
+    if (x.readyState === 4) {
+      window.__probe.status = x.status;
+      window.__probe.pageSaw = x.responseText;
+    }
+  };
+  x.send('resdtArray=20260918&resgb=R');
+  window.__probe.sent = true;
+  return true;
+}
+function probeFetch() {
+  fetch('/icms/occasion/SelectTotalTime.html').then(function (r) {
+    window.__probe.fetchStatus = r.status;
+  }).catch(function (e) { window.__probe.fetchError = String(e); });
+  return true;
+}
+</script>
+</body></html>
+"""
+
+
+def _submit_probe(drv, port: int) -> dict:
+    """예약 제출의 **응답 본문**이 판정까지 도달하는지 진짜 크롬으로 확인한다.
+
+    증명하려는 것 (2026-09-04 의 실패 그대로):
+      1) 화면에는 아무 안내도 없다 (read_notices 가 비어 있다)
+      2) 제출 응답이 화면 판정 창(1.6초)보다 늦게 온다
+      3) 그래도 판정은 taken 이고, 문구는 서버 원문 그대로다
+      4) 근거가 'submit' (응답 본문) 이지 화면이 아니다
+      5) 사이트 자신의 onreadystatechange 도 같은 JSON 을 그대로 받는다
+         (우리는 응답을 소비하지도, 핸들러를 갈아치우지도 않는다)
+      6) 엄격 모드의 맨몸 fetch 가 살아 있다 (Illegal invocation 회귀 시험)
+    """
+    import time as _t
+
+    from aisarang import booking, handover
+
+    drv.get(f"http://127.0.0.1:{port}/__submit_probe")
+    _t.sleep(0.4)
+    notices = booking.read_notices(drv)
+
+    drv.execute_script("return probeFetch();")
+    for _ in range(60):
+        got = drv.execute_script("return window.__probe;") or {}
+        if got.get("fetchStatus") or got.get("fetchError"):
+            break
+        _t.sleep(0.1)
+
+    before = booking.submit_response(drv)
+    drv.execute_script("return probeFire();")
+    t0 = _t.time()
+    outcome = booking.read_outcome_detail(
+        drv, timeout=handover.OUTCOME_TIMEOUT,
+        submit_timeout=handover.SUBMIT_TIMEOUT)
+    waited_ms = (_t.time() - t0) * 1000.0
+
+    got = drv.execute_script("return window.__probe;") or {}
+    # 발사 시각을 앞으로 밀어 두면, 방금 그 응답은 '이번 발사의 것' 이 아니다.
+    # 지난 발사의 답을 이번 발사의 판정으로 쓰지 않는다는 것을 여기서 못박는다.
+    drv.execute_script("window.__aisarang_fired_at = Date.now() + 60000;")
+    stale = booking.submit_response(drv)
+
+    return {"notices": len(notices),
+            "seenBefore": bool(before.get("seen")),
+            "code": outcome.code,
+            "source": outcome.source,
+            "status": outcome.status,
+            "textIsServerVerbatim": outcome.text == booking.TAKEN_REAL,
+            "waitedMs": round(waited_ms, 1),
+            "screenWindowMs": round(handover.OUTCOME_TIMEOUT * 1000, 1),
+            "pageStillGotJson": booking.TAKEN_REAL in str(got.get("pageSaw") or ""),
+            "fetchStatus": int(got.get("fetchStatus") or 0),
+            "fetchError": str(got.get("fetchError") or ""),
+            "staleIgnored": not stale.get("seen"),
+            "serverDate": outcome.server_date,
+            "text": (outcome.text or "")[:120]}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv if argv is not None else sys.argv[1:])
     diag = Diagnostics()
@@ -297,12 +393,51 @@ def main(argv: list[str] | None = None) -> int:
                 _out(f"HANDOVERTEST REFUSED: no fixtures at {real_dir}")
                 return 2
 
+            # 2026-09-04 실물 응답 본문. 픽스처가 없으면 그냥 세운다.
+            # 지어낸 문구로 이 시험을 돌리면 v1.0.8 의 순환논증으로 되돌아간다.
+            import json as _json
+            submit_fx = _os.path.join(real_dir, "insert_ocreqst_taken.json")
+            if not _os.path.isfile(submit_fx):
+                _out(f"HANDOVERTEST REFUSED: no submit fixture at {submit_fx}")
+                return 2
+            with open(submit_fx, encoding="utf-8") as fh:
+                submit_body = _json.load(fh)["responseBody"].encode("utf-8")
+            # 화면 판정 창(1.6초)보다 늦게 답한다. 09-04 의 실측 왕복은 3,418ms 다.
+            SUBMIT_DELAY = 2.5
+
             # file:// 로 띄우면 안 된다. 크롬이 문서마다 오리진을 따로 줘서
             # CSS 가 제대로 안 붙고, 그러면 .popup_wrap{display:none} 이 죽어
             # 숨어 있어야 할 확인창 사본까지 '보인다' 로 판정된다.
             class _Quiet(SimpleHTTPRequestHandler):
                 def log_message(self, *a):
                     pass
+
+                def _send(self, code, ctype, body: bytes):
+                    self.send_response(code)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def do_GET(self):
+                    if self.path.startswith("/__submit_probe"):
+                        return self._send(200, "text/html; charset=utf-8",
+                                          _SUBMIT_PROBE_PAGE.encode("utf-8"))
+                    if "SelectTotalTime" in self.path:
+                        return self._send(200, "application/json;charset=UTF-8",
+                                          b'{"ok":true}')
+                    return SimpleHTTPRequestHandler.do_GET(self)
+
+                def do_POST(self):
+                    length = int(self.headers.get("Content-Length") or 0)
+                    if length:
+                        self.rfile.read(length)
+                    if "InsertOcreqst" in self.path:
+                        # 사이트가 9시에 실제로 그러듯 늦게 답한다.
+                        _t.sleep(SUBMIT_DELAY)
+                        return self._send(200, "application/json;charset=UTF-8",
+                                          submit_body)
+                    return self._send(404, "text/plain", b"no")
 
             httpd = ThreadingHTTPServer(
                 ("127.0.0.1", 0), _ft.partial(_Quiet, directory=real_dir))
@@ -364,6 +499,20 @@ def main(argv: list[str] | None = None) -> int:
                      f"fnSave={taken['fnSave']} "
                      f"alertClosed={taken['alertClosed']} "
                      f"confirmClicked={taken['confirmClicked']}")
+                # 2026-09-04 09:00:00 그대로: 화면은 아무 말도 안 하고
+                # 서버 응답만 늦게 온다. 그날 로그는 [unknown] 이었다.
+                submit = _submit_probe(drv, port)
+                _out(f"HANDOVERTEST   submitCode={submit['code']} "
+                     f"submitSource={submit['source']} "
+                     f"submitStatus={submit['status']} "
+                     f"screenNotices={submit['notices']} "
+                     f"verbatim={submit['textIsServerVerbatim']}")
+                _out(f"HANDOVERTEST   submitWaitedMs={submit['waitedMs']} "
+                     f"screenWindowMs={submit['screenWindowMs']} "
+                     f"pageStillGotJson={submit['pageStillGotJson']} "
+                     f"fetchStatus={submit['fetchStatus']} "
+                     f"fetchError={submit['fetchError'] or '-'} "
+                     f"staleIgnored={submit['staleIgnored']}")
             finally:
                 try:
                     drv.quit()
@@ -395,13 +544,29 @@ def main(argv: list[str] | None = None) -> int:
                   and taken["allowed"] is False
                   and taken["fnSave"] == 0
                   and taken["alertClosed"] == 0
-                  and taken["confirmClicked"] == 0)
+                  and taken["confirmClicked"] == 0
+                  # v1.0.12: 화면이 아무 말도 안 해도 서버 응답 본문으로 판정한다.
+                  and submit["notices"] == 0
+                  and submit["seenBefore"] is False
+                  and submit["code"] == booking.R_TAKEN
+                  and submit["source"] == "submit"
+                  and submit["status"] == 200
+                  and submit["textIsServerVerbatim"] is True
+                  # 화면 판정 창이 끝나도 응답을 끝까지 기다렸다는 증거.
+                  and submit["waitedMs"] > submit["screenWindowMs"]
+                  # 사이트 자신의 핸들러도 같은 JSON 을 그대로 받았다.
+                  and submit["pageStillGotJson"] is True
+                  # 엄격 모드 맨몸 fetch 가 살아 있다 (Illegal invocation 회귀).
+                  and submit["fetchStatus"] == 200
+                  and submit["fetchError"] == ""
+                  # 지난 발사의 응답을 이번 판정으로 쓰지 않는다.
+                  and submit["staleIgnored"] is True)
             fired_total = sum(1 for _n, _t2, _s, f in rows if f)
             _out(f"HANDOVERTEST fired={fired_total}/6 expected=1")
             diag.add_json("handovertest.json", {
                 "rows": [{"page": n, "ticked": t, "state": s.as_dict(),
                           "fired": f} for n, t, s, f in rows],
-                "tooEarly": too_early, "taken": taken})
+                "tooEarly": too_early, "taken": taken, "submit": submit})
             diag.upload("인계 모드 점검 " + ("성공" if ok else "실패"),
                         {"mode": "handovertest",
                          "result": "success" if ok else "fail",

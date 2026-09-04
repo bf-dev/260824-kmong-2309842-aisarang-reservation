@@ -112,9 +112,23 @@ _RE_NOT_YET = re.compile(r"아직\s*(?:예약|신청)?[^.。]{0,12}"
 FULL_WORDS = ("정원초과", "정원 초과", "정원이 초과", "정원이 마감",
               "마감되었습니다", "잔여 정원", "정원이 없습니다")
 
-# 서버 원문 그대로 (2026-08-28 · 2026-09-01, 고객 PC 진단 ZIP 두 건에서 동일).
-# 지어낸 글자가 아니다. 픽스처와 테스트는 이 상수만 쓴다.
+# 서버 원문 그대로 (2026-08-28 · 2026-09-01 · 2026-09-04, 고객 PC 진단 ZIP
+# 세 건에서 동일). 지어낸 글자가 아니다. 픽스처와 테스트는 이 상수만 쓴다.
+#
+# 2026-09-04 부터는 화면이 아니라 **서버 응답 본문**에서 그대로 읽었다.
+# `xhr_bodies_handover_after.json` 의 InsertOcreqst.html 행, 응답 본문 전문:
+#
+#   {"returnmsg":"1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.",
+#    "returnval":""}
+#
+# 그날 응답 헤더의 date 는 `Fri, 04 Sep 2026 00:00:00 GMT` (= 09:00:00 KST) 였고,
+# 브라우저 시계로 t0=1788480001289 → t1=1788480004707, 즉 **왕복 3,418ms** 였다.
 TAKEN_REAL = "1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다."
+
+# 성공했을 때 화면에 뜨는 실물 문구 (2026-09-03 09:00:00, 도착 +363ms).
+# 서버 원문(returnmsg)은 이 안의 '알림'/'확인' 을 뺀 부분이다.
+OK_REAL_ALERT = "알림 1건 예약 중 1건 예약되었습니다. 확인"
+OK_REAL = "1건 예약 중 1건 예약되었습니다."
 
 # 앞의 건수는 제출한 줄 수에 따라 변한다("2건 예약 중 1건 …"). 그래서 건수는
 # 보지 않고 '선예약 … 예약되지 않았' 이라는 뼈대만 본다.
@@ -229,6 +243,23 @@ def result_is_retryable(code: str) -> bool:
     거절한 것이라, 다시 쏘면 정각의 남은 시간을 그냥 태운다.
     """
     return code == R_TOO_EARLY
+
+
+# 로그/화면에 찍는 한 줄짜리 이름. v1.0.11 까지 고객 로그의 결과 칸은
+# `[taken]` 같은 영문 코드 하나였고, 09-04 처럼 화면이 비면 `[unknown]` 이었다.
+OUTCOME_LABELS = {
+    R_OK: "예약 성공",
+    R_TAKEN: "선예약(다른 이용자가 먼저 가져감)",
+    R_FULL: "정원초과",
+    R_TOO_EARLY: "예약시간전(아직 안 열림)",
+    R_NOT_BOOKABLE: "예약 불가 시간대",
+    R_FAIL: "실패",
+    R_UNKNOWN: "판정 불가",
+}
+
+
+def outcome_label(code: str) -> str:
+    return OUTCOME_LABELS.get(code or "", OUTCOME_LABELS[R_UNKNOWN])
 
 
 # ---------------------------------------------------------------- 자료구조
@@ -1848,20 +1879,214 @@ def read_alert(driver) -> str:
         return ""
 
 
-def read_outcome(driver, timeout: float = 6.0) -> tuple:
-    """[확인] 이후 화면이 뭐라고 했는지. (코드, 원문).
+# ------------------------------------------------------- 서버 응답 본문 (v1.0.12)
+#
+# 왜 이것이 생겼나. 2026-09-04 09:00:00 의 고객 로그 한 줄:
+#
+#     [확인] 1발째 · 도착 추정 정각 +352ms · 서버: (문구 없음) [unknown]
+#
+# 고객은 자기 화면에서 '선예약' 을 읽었는데 우리 로그는 아무것도 못 적었다.
+# 08-28 / 09-01 / 09-02 / 09-04 네 번 같은 일이 있었다. 한 발이 전부인 도구가
+# 그 한 발의 판정을 못 남기는 것이 이 프로젝트에서 제일 나쁜 실패다.
+#
+# 그런데 그날 진단 ZIP 의 `xhr_bodies_handover_after.json` 에는 답이 그대로
+# 있었다. 즉 우리는 서버 답을 손에 쥐고도 화면만 쳐다보다 놓친 것이다.
+# 이유는 둘이다.
+#   1) 판정 경로가 DOM(알림 레이어/세션 메세지/page_source) 만 봤다.
+#      네트워크 훅은 진단 ZIP 으로만 흘러가고 분류기까지 오지 않았다.
+#   2) 응답이 3,418ms 걸렸는데 인계 모드의 판정 창은 1.6초였다.
+#      화면에 알림이 그려지기도 전에 우리가 먼저 포기했다.
+#
+# 그래서 v1.0.12 는 예약 제출(InsertOcreqst)의 **응답 본문**을 1순위 근거로
+# 삼고, 그 응답이 아직 오는 중이면 기다린다.
+#
+# 페이지 접촉 방식은 바꾸지 않는다. 여전히 처음 브라우징 컨텍스트에 고정된
+# `driver.execute_script` 한 줄이고, 창 전환은 없다. 훅은 `window.fetch` 에
+# 얹되 원본은 `_fetch.apply(window, ...)` 로 부른다(`this` 로 부르면 엄격 모드
+# 스크립트의 맨몸 fetch(...) 가 "Illegal invocation" 으로 죽는다 - 실제로 한 번
+# 고객 페이지를 그렇게 망가뜨렸고 test_diagnostics 가 그것을 못박고 있다).
+SUBMIT_URL_MARK = "InsertOcreqst"
 
-    사이트가 결과를 알려주는 자리는 세 군데다:
+# 예약 제출 전용 칸을 읽는다. 요청 본문은 일부러 가져오지 않는다
+# (아동 주민번호가 들어 있다. 그것은 마스킹을 통과하는 진단 ZIP 에만 남는다).
+_JS_SUBMIT_SLOT = r"""
+try {
+  var s = window.__aisarangSubmit;
+  if (!s) return null;
+  var fired = window.__aisarang_fired_at || 0;
+  return {seq: s.seq || 0, url: String(s.url || ''), method: String(s.method || ''),
+          t0: s.t0 || 0, t1: s.t1 || 0, done: !!s.done, status: s.status || 0,
+          responseBody: String(s.responseBody || ''),
+          responseHeaders: String(s.responseHeaders || ''),
+          firedAt: fired,
+          stale: !!(fired && s.t0 && s.t0 < fired - 250)};
+} catch (e) { return null; }
+"""
+
+# 사이트 스크립트가 화면에 찍는 것은 data.returnmsg 다. 본문이 JSON 이 아니거나
+# 잘렸을 때를 대비해 정규식 폴백을 둔다.
+_RE_RETURNMSG = re.compile(r'"returnmsg"\s*:\s*"((?:[^"\\]|\\.)*)"')
+_RE_RETURNVAL = re.compile(r'"returnval"\s*:\s*"((?:[^"\\]|\\.)*)"')
+
+
+def parse_submit_body(text: str) -> dict:
+    """InsertOcreqst 응답 본문에서 returnmsg / returnval 을 뽑는다.
+
+    실물 (2026-09-04 09:00:00, 고객 PC):
+        {"returnmsg":"1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.",
+         "returnval":""}
+    """
+    body = str(text or "")
+    out = {"returnmsg": "", "returnval": "", "parsed": False}
+    if not body.strip():
+        return out
+    try:
+        import json as _json
+        data = _json.loads(body)
+        if isinstance(data, dict):
+            out["returnmsg"] = str(data.get("returnmsg") or "")
+            out["returnval"] = str(data.get("returnval") or "")
+            out["parsed"] = True
+            return out
+    except Exception:
+        pass
+    m = _RE_RETURNMSG.search(body)
+    if m:
+        # 조각을 다시 JSON 문자열로 읽는다. `unicode_escape` 로 풀면 한글이
+        # 통째로 깨진다(그 자체가 우리가 고치려는 실패다).
+        try:
+            import json as _json
+            out["returnmsg"] = _json.loads('"' + m.group(1) + '"')
+        except Exception:
+            out["returnmsg"] = m.group(1)
+    v = _RE_RETURNVAL.search(body)
+    if v:
+        out["returnval"] = v.group(1)
+    return out
+
+
+def _header_value(headers: str, name: str) -> str:
+    for line in str(headers or "").replace("\r\n", "\n").split("\n"):
+        if line.lower().startswith(name.lower() + ":"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def submit_response(driver) -> dict:
+    """이번 발사가 만든 예약 제출의 상태와 응답 본문.
+
+    돌려주는 dict 는 항상 있고, 아직 아무것도 안 보냈으면 seen=False 다.
+      seen     이번 발사 이후 시작된 InsertOcreqst 제출이 있는가
+      done     응답이 도착했는가 (False = 아직 오는 중)
+      message  서버 원문 returnmsg
+      status   HTTP 상태
+      date     응답 헤더의 date (= 서버가 요청을 받은 초). 도착 실측값이다.
+    """
+    raw = _js(driver, _JS_SUBMIT_SLOT, default=None)
+    out = {"seen": False, "done": False, "message": "", "returnval": "",
+           "status": 0, "body": "", "date": "", "seq": 0,
+           "t0": 0, "t1": 0, "elapsedMs": 0.0, "stale": False}
+    if not isinstance(raw, dict):
+        return out
+    out["stale"] = bool(raw.get("stale"))
+    out["seq"] = int(raw.get("seq") or 0)
+    if out["stale"]:
+        return out
+    out["seen"] = True
+    out["done"] = bool(raw.get("done"))
+    out["status"] = int(raw.get("status") or 0)
+    out["t0"] = int(raw.get("t0") or 0)
+    out["t1"] = int(raw.get("t1") or 0)
+    if out["t0"] and out["t1"]:
+        out["elapsedMs"] = float(out["t1"] - out["t0"])
+    out["body"] = str(raw.get("responseBody") or "")
+    out["date"] = _header_value(raw.get("responseHeaders"), "date")
+    got = parse_submit_body(out["body"])
+    out["message"] = got["returnmsg"]
+    out["returnval"] = got["returnval"]
+    return out
+
+
+@dataclass
+class Outcome:
+    """[확인] 한 발의 판정과 그 근거."""
+    code: str = R_UNKNOWN
+    text: str = ""
+    source: str = ""          # "submit" | "screen" | ""
+    status: int = 0
+    body: str = ""
+    returnval: str = ""
+    server_date: str = ""
+    elapsed_ms: float = 0.0
+    submit_seen: bool = False
+    submit_done: bool = False
+    waited_ms: float = 0.0
+
+    def as_dict(self) -> dict:
+        return {"code": self.code, "text": (self.text or "")[:300],
+                "label": outcome_label(self.code),
+                "source": self.source, "status": self.status,
+                "body": (self.body or "")[:1000],
+                "returnval": self.returnval,
+                "serverDate": self.server_date,
+                "elapsedMs": round(self.elapsed_ms, 1),
+                "submitSeen": self.submit_seen,
+                "submitDone": self.submit_done,
+                "waitedMs": round(self.waited_ms, 1)}
+
+
+# 제출 응답을 기다리는 상한(초). 화면 판정 창(timeout)과 따로 둔다.
+# 2026-09-04 의 실측 왕복은 3,418ms 였다. 09시의 서버는 느리다.
+SUBMIT_WAIT_SECONDS = 9.0
+
+
+def read_outcome_detail(driver, timeout: float = 6.0,
+                        submit_timeout: float = None) -> Outcome:
+    """[확인] 이후 서버가 뭐라고 했는지. 근거까지 같이 돌려준다.
+
+    보는 순서:
+      0) **예약 제출의 응답 본문** (1순위, v1.0.12). 사이트가 화면에 찍기 전에,
+         그리고 화면이 아무것도 안 찍어도, 서버 원문이 여기 있다.
       1) 브라우저 alert
       2) icmsLayerPopup 같은 레이어 안내
       3) 서버가 페이지에 찍어 내려주는 '세션 메세지' 블록
-    셋을 다 보고, 그 중 분류가 되는 첫 문구를 쓴다.
+    화면 셋 중 분류가 되는 첫 문구를 쓰되, 제출 응답이 있으면 그것이 이긴다.
+
+    제출이 아직 오는 중이면 timeout 이 지나도 submit_timeout 까지는 기다린다.
+    답을 기다리지 않고 [unknown] 을 적는 것이 09-04 에 우리가 한 짓이다.
     """
     from . import automation
 
-    end = time.time() + timeout
+    started = time.time()
+    if submit_timeout is None:
+        submit_timeout = SUBMIT_WAIT_SECONDS
+    end = started + max(float(timeout), 0.0)
+    hard_end = started + max(float(timeout), float(submit_timeout))
     last_text = ""
-    while time.time() < end:
+    best = Outcome()
+    while True:
+        sub = submit_response(driver)
+        if sub["seen"]:
+            best.submit_seen = True
+            best.submit_done = sub["done"]
+            if sub["done"]:
+                msg = sub["message"]
+                code = classify(msg) if msg else R_UNKNOWN
+                out = Outcome(code=code, text=msg, source="submit",
+                              status=sub["status"], body=sub["body"],
+                              returnval=sub["returnval"],
+                              server_date=sub["date"],
+                              elapsed_ms=sub["elapsedMs"],
+                              submit_seen=True, submit_done=True,
+                              waited_ms=(time.time() - started) * 1000.0)
+                if code != R_UNKNOWN:
+                    return out
+                # 본문은 받았는데 문구가 분류되지 않는다. 화면도 마저 본다.
+                best = out
+            elif time.time() < hard_end:
+                # 오는 중이다. 화면 판정 창이 끝나도 이 응답까지는 기다린다.
+                end = max(end, min(hard_end, time.time() + 0.5))
+
         texts = []
         a = read_alert(driver)
         if a:
@@ -1876,26 +2101,54 @@ def read_outcome(driver, timeout: float = 6.0) -> tuple:
         for t in texts:
             code = classify(t)
             if code != R_UNKNOWN:
-                return code, t
+                best.code, best.text = code, t
+                best.source = best.source or "screen"
+                best.waited_ms = (time.time() - started) * 1000.0
+                return best
             if t and not last_text:
                 last_text = t
-        try:
-            src = driver.page_source or ""
-        except Exception:
-            src = ""
-        for w in OK_WORDS:
-            if w in src:
-                return R_OK, w
-        for w in TOO_EARLY_WORDS:
-            if w in src:
-                return R_TOO_EARLY, w
-        for w in FULL_WORDS:
-            if w in src:
-                return R_FULL, w
-        if _RE_TAKEN.search(src):
-            return R_TAKEN, TAKEN_REAL
+        hit = _scan_page_source(driver)
+        if hit is not None:
+            best.code, best.text = hit
+            best.source = best.source or "screen"
+            best.waited_ms = (time.time() - started) * 1000.0
+            return best
+        if time.time() >= end:
+            break
         time.sleep(0.15)
-    return R_UNKNOWN, last_text
+
+    if not best.text:
+        best.text = last_text
+    best.waited_ms = (time.time() - started) * 1000.0
+    return best
+
+
+def _scan_page_source(driver):
+    """page_source 통짜 훑기. 분류되면 (코드, 문구), 아니면 None."""
+    try:
+        src = driver.page_source or ""
+    except Exception:
+        src = ""
+    for w in OK_WORDS:
+        if w in src:
+            return R_OK, w
+    for w in TOO_EARLY_WORDS:
+        if w in src:
+            return R_TOO_EARLY, w
+    for w in FULL_WORDS:
+        if w in src:
+            return R_FULL, w
+    if _RE_TAKEN.search(src):
+        return R_TAKEN, TAKEN_REAL
+    return None
+
+
+def read_outcome(driver, timeout: float = 6.0,
+                 submit_timeout: float = None) -> tuple:
+    """`read_outcome_detail` 의 (코드, 원문) 축약형. 옛 호출부가 쓴다."""
+    out = read_outcome_detail(driver, timeout=timeout,
+                              submit_timeout=submit_timeout)
+    return out.code, out.text
 
 
 # ---------------------------------------------------------------- 준비(1~8)
@@ -2078,12 +2331,17 @@ class ConfirmShot:
     fired: bool = False
     code: str = R_UNKNOWN
     text: str = ""
+    outcome: "Outcome | None" = None
 
     def as_dict(self) -> dict:
-        return {"attempt": self.attempt,
-                "arrivalOffsetMs": round(self.arrival_offset_ms, 1),
-                "fired": self.fired, "code": self.code,
-                "text": (self.text or "")[:300]}
+        out = {"attempt": self.attempt,
+               "arrivalOffsetMs": round(self.arrival_offset_ms, 1),
+               "fired": self.fired, "code": self.code,
+               "label": outcome_label(self.code),
+               "text": (self.text or "")[:300]}
+        if self.outcome is not None:
+            out["outcome"] = self.outcome.as_dict()
+        return out
 
 
 def confirm_once(driver, p: Prepared, clock, open_epoch: float,
@@ -2105,10 +2363,14 @@ def confirm_once(driver, p: Prepared, clock, open_epoch: float,
         shot.text = "확인 버튼이 사라져 누르지 못했습니다."
         log(shot.text)
         return shot
-    code, text = read_outcome(driver)
-    shot.code, shot.text = code, text
+    outcome = read_outcome_detail(driver)
+    shot.code, shot.text, shot.outcome = outcome.code, outcome.text, outcome
     log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
-        f"· 서버: {text or '(문구 없음)'} [{code}]")
+        f"· 서버: {outcome.text or '(문구 없음)'} "
+        f"[{outcome.code} · {outcome_label(outcome.code)}]")
+    if outcome.source == "submit":
+        log(f"판정 근거: 서버 응답 본문 (HTTP {outcome.status}, "
+            f"왕복 {outcome.elapsed_ms:.0f}ms)")
     return shot
 
 

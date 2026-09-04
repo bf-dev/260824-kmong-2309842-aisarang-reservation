@@ -491,6 +491,11 @@ READ_ONLY_BOOKING = {
     # 화면을 건드리지 않는다. 2026-09-01 실물 응답에서 왔다.
     "R_TAKEN",
     "TOO_EARLY_REAL", "TAKEN_REAL",
+    # v1.0.12: 판정 근거를 서버 응답 본문에서 읽는다. 셋 다 읽기 전용이다.
+    # read_outcome_detail 은 execute_script 로 window.__aisarangSubmit 를
+    # **읽기만** 한다(클릭/제출/화면 이동 없음). outcome_label 은 사전 조회,
+    # SUBMIT_WAIT_SECONDS 는 상수다.
+    "read_outcome_detail", "outcome_label", "SUBMIT_WAIT_SECONDS",
 }
 
 

@@ -1,0 +1,10 @@
+{
+  "_source": "2026-09-04 09:00:00 KST, 고객 2309842 PC, v1.0.11 인계 모드, xhr_bodies_handover_after.json 의 InsertOcreqst 행. 요청 본문은 아동 주민번호가 들어 있어 일부러 담지 않는다.",
+  "_note": "그날 로그는 '서버: (문구 없음) [unknown]' 이었다. 답은 여기 있었고 우리가 3.4초를 못 기다린 것뿐이다.",
+  "url": "/icms/occasion/InsertOcreqst.html",
+  "status": 200,
+  "date": "Fri, 04 Sep 2026 00:00:00 GMT",
+  "contentType": "application/json;charset=UTF-8",
+  "elapsedMs": 3418,
+  "responseBody": "{\"returnmsg\":\"1건 예약 중 1건 예약이 선예약으로 인해 예약되지 않았습니다.\",\"returnval\":\"\"}"
+}
