@@ -215,25 +215,36 @@ def test_open_modal_refuses_when_cell_not_selected(monkeypatch):
 # ---------------------------------------------------------------- 재시도 규칙
 
 def _burst(monkeypatch, codes, clock=None):
-    """read_outcome 을 정해진 순서로 답하게 만들고 confirm_burst 를 돌린다."""
+    """판정을 정해진 순서로 답하게 만들고 confirm_burst 를 돌린다.
+
+    가로채는 이름은 confirm_burst 가 **실제로 부르는** 것이어야 한다.
+    v1.0.12 에서 confirm_once 가 read_outcome → read_outcome_detail 로 옮겨갔고,
+    이 도우미가 옛 이름(read_outcome)을 계속 감싸는 바람에 가짜가 한 번도 불리지
+    않았다. 그러면 진짜 판정기가 FireDriver 를 읽어 [unknown] 을 돌려주고,
+    FakeClock.server_now() 는 값이 늘지 않으므로 `while server_now() < deadline`
+    이 영원히 돈다. 실제로 테스트가 47번째에서 멈춰 섰다.
+    """
     seq = list(codes)
     calls = {"n": 0}
 
-    def fake_outcome(driver, timeout=6.0):
+    def fake_outcome(driver, timeout=6.0, submit_timeout=None):
         i = min(calls["n"], len(seq) - 1)
         calls["n"] += 1
         code = seq[i]
         text = {"too_early": "예약시간전", "full": "정원초과",
                 "ok": "예약이 완료되었습니다.", "unknown": "???"}[code]
-        return code, text
+        return booking.Outcome(code=code, text=text, source="screen")
 
-    monkeypatch.setattr(booking, "read_outcome", fake_outcome)
+    monkeypatch.setattr(booking, "read_outcome_detail", fake_outcome)
     monkeypatch.setattr(booking, "redrive_confirm", lambda d, p, log=None: True)
     monkeypatch.setattr(booking.time, "sleep", lambda *_: None)
     d = FireDriver([])
     p = _ready()
     res = booking.confirm_burst(d, p, clock or FakeClock(-0.4), 0.0,
                                 retry_seconds=5, retry_ms=1)
+    # 가짜가 정말로 불렸는가. 이 한 줄이 없으면 판정기의 이름이 다음에 또 바뀔 때
+    # 테스트가 실패하는 대신 **멈춰 선다**(위 docstring 의 47번째 사건).
+    assert calls["n"] > 0, "confirm_burst 가 가로챈 판정기를 부르지 않았다"
     return d, res, calls
 
 

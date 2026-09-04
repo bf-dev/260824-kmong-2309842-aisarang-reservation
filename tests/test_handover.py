@@ -845,8 +845,12 @@ def _run_burst(monkeypatch, states, outcomes, **kw):
         calls["fire"] += 1
         return True
 
-    def fake_outcome(_driver, timeout=0.0):
-        return outcomes[min(calls["fire"], len(outcomes)) - 1]
+    def fake_outcome(_driver, timeout=0.0, submit_timeout=None):
+        # handover.burst 가 부르는 이름은 v1.0.12 부터 read_outcome_detail 이고,
+        # 돌려주는 것은 (코드, 원문) 이 아니라 Outcome 이다. 여기서 튜플을 계속
+        # 돌려주면 shot.code 에 튜플이 들어가 모든 분기가 조용히 빗나간다.
+        code, text = outcomes[min(calls["fire"], len(outcomes)) - 1]
+        return booking.Outcome(code=code, text=text, source="screen")
 
     def fake_repress(_driver, log=lambda *_: None):
         calls["repress"] += 1
@@ -857,7 +861,7 @@ def _run_burst(monkeypatch, states, outcomes, **kw):
         return booking.TOO_EARLY_REAL
 
     monkeypatch.setattr(handover, "fire", fake_fire)
-    monkeypatch.setattr(booking, "read_outcome", fake_outcome)
+    monkeypatch.setattr(booking, "read_outcome_detail", fake_outcome)
     monkeypatch.setattr(booking, "repress_reserve_button", fake_repress)
     monkeypatch.setattr(booking, "close_result_alert", fake_close)
 
