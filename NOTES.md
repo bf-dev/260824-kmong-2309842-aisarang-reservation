@@ -1554,6 +1554,68 @@ cannot get in. `tests/test_submit_outcome.py` compares it against
 - `ARRIVAL_SAFETY_MS` is still 250. The formula's shape is unchanged.
 - Nothing was ever submitted to childcare.go.kr from this machine.
 
+### 5) Why the first v1.0.12 lane never finished: the test suite HUNG, it did not fail
+
+Read this before you touch `read_outcome*` again. It cost two engineering lanes.
+
+The lane that wrote sections 1-4 above did the work correctly and then died on a
+one-hour grace timeout with everything still uncommitted in the worktree. The reason
+it ran out of time is that `python -m pytest tests/ -q` **never returns**. It stops
+at test 47, `tests/test_booking.py::test_burst_retries_on_too_early_then_succeeds`,
+and spins at 100% CPU forever. CI does the same thing at workflow step `unit tests`,
+which is why run 33825393118 sat `in_progress` for 43 minutes with no failure to
+read. There is no error message anywhere. It just stops.
+
+The mechanism, because it is not obvious and it will recur:
+
+1. v1.0.12 moved the call site: `confirm_once` and `handover.burst` now call
+   `booking.read_outcome_detail`, not `booking.read_outcome`.
+2. `tests/test_booking.py::_burst` and `tests/test_handover.py::_run_burst` still did
+   `monkeypatch.setattr(booking, "read_outcome", fake_outcome)`. The fake was
+   therefore **never called**, and nothing said so.
+3. So the real classifier ran against `FireDriver`, whose `execute_script` returns
+   `None` and whose `page_source` is `<html></html>`. Verdict: `R_UNKNOWN`.
+4. `confirm_burst` loops `while clock.server_now() < deadline`. `R_UNKNOWN` matches
+   none of the terminating branches, and it is not `R_TOO_EARLY`, so the body does
+   not sleep or redrive either.
+5. `FakeClock.server_now()` returns a fixed `_now`. It never advances. Infinite loop.
+
+Note that step 5 is a property of the **test double only**. `ClockSync.server_now()`
+is `time.time() + offset` and always advances, so the shipped program is bounded by
+`retry_seconds` as designed. Do not "fix" `confirm_burst`; the bug was entirely in
+the test seam.
+
+Fixed by patching the name that is actually called and returning a `booking.Outcome`
+rather than a `(code, text)` tuple. The tuple mattered too: `handover.burst` would
+otherwise have put a tuple in `shot.code` and every branch would have quietly
+missed. Plus a guard in `_burst`:
+
+```python
+assert calls["n"] > 0, "confirm_burst 가 가로챈 판정기를 부르지 않았다"
+```
+
+**The lesson is general: a monkeypatch seam that stops matching its callee fails
+silently, and here it fails as a hang rather than a red test.** If you rename or
+re-route a function that tests patch by name, grep `monkeypatch.setattr` for the old
+name in the same commit, and assert the double was actually used.
+
+Two more assertions in the same commit had been pinned to the pre-1.0.12 shape and
+were genuinely red (not hung), hidden behind the hang because pytest never got that
+far:
+
+- `test_diagnostics.py` required `js.count("try {") == 10` exactly. The submit slot
+  (`isSubmit` / `openSubmit` / `closeSubmit`) added three. The property worth
+  guarding is that `try {` and `catch (e)` **pair**, not that there are ten of them,
+  so it now asserts the pairing plus a floor of 13.
+- `test_updater.py` pinned `config.APP_VERSION == "1.0.11"`.
+
+Added `test_the_customer_on_1_0_11_actually_gets_1_0_12`, which exercises the exact
+update path the customer takes: `choose_download` against a **zipUrl-only** manifest
+(no `exeUrl`, deliberately) from installed 1.0.11, and no re-download once on 1.0.12.
+
+Full suite after the fix: **258 passed in 115.81s**. If your local run takes longer
+than about three minutes, it is hung, not slow. Check test 47 first.
+
 ## v1.0.10 (2026-09-01): 늦는 것도 지는 것이었다
 
 Written in English-first house style; the Korean strings quoted below are verbatim
