@@ -1511,6 +1511,13 @@ is.** Measured arrival vs outcome:
   still required: `python ci\swap_check.py dist\aisarang-reservation`, ASCII and
   Korean install paths. Pure-function updater tests are what let the 09-02 outage
   ship; that step is the reason it cannot ship again.
+- **WARNING: a local green from `ci/swap_check.py` proves nothing.** On Linux
+  `main()` hits `if os.name != "nt"`, prints `SKIP: 윈도우에서만 의미가 있다`
+  (`ci/swap_check.py:163`) and **returns 0** without touching the exe. Verified on
+  this host: `python3 ci/swap_check.py dist/aisarang-reservation` -> that SKIP line,
+  exit 0, with no `dist/` present at all. Only the Windows CI step counts, and the
+  evidence is the `OK[ascii]` / `OK[korean]` lines in the run log. Do not cite a
+  local exit 0 as proof the swap works.
 - **New**: `--handovertest` now reproduces 09-04 exactly, in real Chromium, on the
   frozen exe. A page with **no alert and no notice layer at all** fires a real XHR
   POST to a local `InsertOcreqst.html` that replays the real captured body **after
@@ -1925,7 +1932,30 @@ ints, so it is correct, and `test_one_point_ten_is_newer_than_one_point_nine` no
 pins exactly this case. If you ever swap that for a string compare, every customer
 freezes on their current build forever.
 
-## 배포 현황 (v1.0.10, 2026-09-01 01:43Z) ← 지금 서빙 중
+## 배포 현황 (v1.0.12, 2026-09-04 02:20Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.12.zip
+  (29,275,296 bytes, HTTP 200 확인)
+  sha256 `c64dd9403691f83a5eebbb8f6a66d732251ceef2ba292e5e3f962252f6f295a0`
+  (매니페스트에 적힌 값과 실제 내려받은 바이트가 일치).
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.12` / `updatedAt 2026-09-04T02:20:00Z` / `supersedes 1.0.11` /
+  `zipUrl` 만 (**exeUrl 없음**: 1.0.4 이하 업데이터가 ZIP 을 exe 자리에 덮어쓰는
+  사고를 막기 위해서다. 이 규칙은 바꾸지 말 것). 로컬 디스크와 공개 DNS 양쪽에서
+  1.0.12 로 확인했다.
+- CI: GitHub Actions run **33828084456**, `19ce312` 에서 green. 전체 스위트
+  **258 passed**, exit 0.
+- 이 판의 변경 두 가지:
+  1. 예약 제출(InsertOcreqst) **응답 본문 캡처** (`aisarang/booking.py:2068`).
+     이제 결과가 `[unknown]` 으로 남지 않는다.
+  2. **도착 하한 350ms -> 250ms** (`aisarang/config.py:159`,
+     `ARRIVAL_MIN_AFTER_MS = 250.0`). 공식과 여유 250ms 는 그대로다.
+- 전달 경로: **자동 업데이트**. 고객은 1.0.11 을 돌리고 있고 그 업데이터의 스왑은
+  고쳐져 있으므로(CI 필수 단계 `ci/swap_check.py` 가 실제 스왑을 실행) 프로그램을
+  켜기만 하면 1.0.12 로 바뀐다. 손으로 설치할 것이 없고 다운로드 링크도 필요 없다.
+- **다시 빌드하거나 다시 게시하지 말 것.** 서빙 중인 ZIP 과 매니페스트가 정상이다.
+
+## 배포 현황 (v1.0.10, 2026-09-01 01:43Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.10.zip
   (29,256,305 bytes, mode 644, ZIP 안 최상위 폴더 `aisarang-reservation-1.0.10/`)
@@ -2829,6 +2859,9 @@ tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL
 ```
 python ci/swap_check.py dist/aisarang-reservation     # 윈도우에서만 의미 있음
 ```
+리눅스에서는 `SKIP: 윈도우에서만 의미가 있다` 만 찍고 **exit 0** 이다
+(`ci/swap_check.py:163`, `os.name != "nt"`). dist 폴더가 없어도 0 이 나온다.
+여기서 나온 초록은 증거가 아니다. 윈도우 CI 의 `OK[ascii]` / `OK[korean]` 만 센다.
 
 ### v1.0.11 게시 (2026-09-02)
 - ZIP: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.11.zip
@@ -2842,7 +2875,9 @@ python ci/swap_check.py dist/aisarang-reservation     # 윈도우에서만 의�
 - 고객 진단 ZIP 의 `appVersion` 이 `1.0.11` 로 보이면, 그때 매니페스트를
   1.0.11 로 올려도 된다(그때부터 자동 업데이트가 다시 안전하다).
 
-### 매니페스트 1.0.9 -> 1.0.11 (2026-09-03 00:05Z) <- 지금 서빙 중
+### 매니페스트 1.0.9 -> 1.0.11 (2026-09-03 00:05Z) <- 지난 판
+
+(2026-09-04 02:20Z 부터는 1.0.12 를 서빙한다. 위 "배포 현황 (v1.0.12)" 절을 볼 것.)
 
 The precondition above is met, so the 2026-09-02 rollback is lifted. The customer's
 diagnostic uploaded `2026-09-03T00:00:01Z` reports `appVersion 1.0.11`, i.e. the fixed
