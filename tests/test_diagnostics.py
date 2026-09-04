@@ -107,7 +107,11 @@ def test_the_recorder_can_never_break_the_customers_page():
     assert "_fetch.apply(window, arguments)" in js
     assert "_fetch.apply(this" not in js
     # 동기 갈래: try 마다 catch 가 있다 = 감싸지 않은 갈래가 없다.
-    assert js.count("try {") == js.count("catch (e)") == 10
+    # 지키려는 성질은 **짝이 맞는다** 이지 개수가 몇이냐가 아니다. v1.0.12 에서
+    # 예약 제출 전용 칸(openSubmit/closeSubmit/isSubmit)이 붙으면서 10 -> 13 이
+    # 됐고, 못 박아 둔 숫자 하나 때문에 멀쩡한 시험이 깨졌다. 짝과 하한만 본다.
+    assert js.count("try {") == js.count("catch (e)")
+    assert js.count("try {") >= 13
     # 비동기 갈래: .then 마다 .catch 가 붙어 있다(거부가 새어 나가면 페이지에
     # unhandled rejection 이 뜬다).
     assert js.count(".then(") == js.count(".catch(") == 2

@@ -107,8 +107,34 @@ def test_one_point_ten_is_newer_than_one_point_nine():
 
 
 def test_the_shipped_version_matches_what_the_manifest_will_say():
-    assert config.APP_VERSION == "1.0.11"
-    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.10")
+    assert config.APP_VERSION == "1.0.12"
+    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.11")
+
+
+def test_the_customer_on_1_0_11_actually_gets_1_0_12():
+    """고객 PC 에 깔려 있는 판은 1.0.11 이다(손으로 설치). 이 경로가 열려야
+    고객이 아무것도 안 하고 다음 실행에서 1.0.12 를 받는다.
+
+    매니페스트 모양은 지금 서비스 중인 것 그대로다: zipUrl 만 있고 exeUrl 은
+    **없다**. 1.0.4 이하의 옛 업데이터가 ZIP 을 exe 자리에 덮어쓰는 것을 막기
+    위해서다.
+    """
+    manifest = {"version": "1.0.12",
+                "zipUrl": "https://works.insu.ng/works/public/2309842/"
+                          "aisarang-reservation-1.0.12.zip"}
+    assert "exeUrl" not in manifest
+
+    got = updater.choose_download(manifest, "1.0.11")
+    assert got is not None, "1.0.11 -> 1.0.12 갱신 경로가 막혔습니다"
+    kind, url, version = got
+    assert kind == "zip" and version == "1.0.12"
+    assert url.endswith("aisarang-reservation-1.0.12.zip")
+
+    # 1.0.12 를 이미 들고 있으면 다시 받지 않는다(재시작 루프 방지).
+    assert updater.choose_download(manifest, "1.0.12") is None
+    # 그리고 1.0.9 / 1.0.10 에 머물러 있는 판도 한 번에 따라온다.
+    for old in ("1.0.9", "1.0.10"):
+        assert updater.choose_download(manifest, old) is not None, old
 
 
 # ---------------------------------------------------------------- 2026-09-02
