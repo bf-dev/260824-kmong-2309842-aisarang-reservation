@@ -338,3 +338,271 @@ def test_the_evidence_line_still_names_its_source():
         timeout=0.2, submit_timeout=0.5)
     line = handover._evidence_line(q)
     assert "대기열" in line, line
+
+
+# ============================================================ 중복 예약 금지
+#
+# 이 릴리스에서 가장 안전에 직결되는 변경이다. 분류기 수정보다 더하다.
+# 아이사랑은 **취소가 전화로만** 되므로, 같은 자리에 예약이 두 건 들어가는 것은
+# 놓친 예약보다 확실히 나쁘다.
+#
+# 규칙: 판정이 `unknown` 인데 **제출이 이미 나갔거나**(submit_seen) **대기열에
+# 걸려 있으면**(queued) 다시 쏘지 않고 멈춘다. 09-15 이전에는 unknown 이 곧
+# `redrive_confirm`(= [예약하기] 재클릭) 이었다.
+#
+# 아래 셋을 한 묶음으로 못박는다. 셋째가 없으면 "아무것도 안 쏘게 만들어서"
+# 앞의 둘을 통과시킬 수 있다.
+
+OPEN_T = 1000.0
+
+
+class _Clock:
+    """server_now() 가 호출마다 조금씩 흐르는 가짜 시계."""
+
+    def __init__(self, start=OPEN_T + 0.2, step=0.15):
+        self.t = start
+        self.step = step
+
+    def server_now(self):
+        self.t += self.step
+        return self.t
+
+    def arrival_for_local_fire(self, _local):
+        return self.t
+
+    def note_too_early(self, _s):
+        return 0.0
+
+
+def _outcome(code, text="", submit_seen=False, queued=False):
+    return booking.Outcome(code=code, text=text, source="screen",
+                           submit_seen=submit_seen, queued=queued)
+
+
+# ---------------------------------------------------------- 인계 모드 (고객이 쓰는 모드)
+
+def _run_handover(monkeypatch, states, outcomes):
+    from aisarang import handover
+    calls = {"fire": 0, "repress": 0, "close": 0}
+
+    def fake_fire(_d):
+        calls["fire"] += 1
+        return True
+
+    def fake_outcome(_d, timeout=0.0, submit_timeout=None):
+        return outcomes[min(calls["fire"], len(outcomes)) - 1]
+
+    monkeypatch.setattr(handover, "fire", fake_fire)
+    monkeypatch.setattr(booking, "read_outcome_detail", fake_outcome)
+    monkeypatch.setattr(booking, "repress_reserve_button",
+                        lambda d, log=None: calls.__setitem__("repress", calls["repress"] + 1) or True)
+    monkeypatch.setattr(booking, "close_result_alert",
+                        lambda d, log=None: calls.__setitem__("close", calls["close"] + 1) or "")
+
+    class W:
+        def __init__(self, st):
+            self._st = list(st)
+            self.state = self._st[0]
+
+        def poll(self):
+            self.state = self._st[0]
+            if len(self._st) > 1:
+                self._st.pop(0)
+            return self.state
+
+    def ready(**kw):
+        base = dict(modal=True, modal_text="예약하시겠습니까?", confirm=True,
+                    armed=True, rows=1, ticked=1, on_reserve_page=True)
+        base.update(kw)
+        return handover.LiveState(**base)
+
+    res = handover.burst(object(), _Clock(), OPEN_T, W(states),
+                         retry_seconds=3, retry_ms=1, log=lambda *_: None,
+                         reopen_max=2, reopen_seconds=3.0)
+    return res, calls, ready
+
+
+def test_guard_unknown_with_a_submit_already_sent_never_fires_twice(monkeypatch):
+    """조건 1: 제출은 나갔는데 답을 못 읽었다. 두 번째 발은 중복 예약이다."""
+    from aisarang import handover
+    ready = dict(modal=True, modal_text="예약하시겠습니까?", confirm=True,
+                 armed=True, rows=1, ticked=1, on_reserve_page=True)
+    res, calls, _ = _run_handover(
+        monkeypatch,
+        states=[handover.LiveState(**ready)] * 6,
+        outcomes=[_outcome(booking.R_UNKNOWN, "???", submit_seen=True)])
+    assert calls["fire"] == 1, f"제출이 나간 뒤 또 쐈다: {calls}"
+    assert calls["repress"] == 0, calls
+    assert res.reason == "unknown_submitted", res.reason
+    assert res.ok is False
+
+
+def test_guard_unknown_while_queued_never_fires_twice(monkeypatch):
+    """조건 2: 09-15 그대로. 대기열에 선 채로 판정을 못 읽었다."""
+    from aisarang import handover
+    ready = dict(modal=True, modal_text="예약하시겠습니까?", confirm=True,
+                 armed=True, rows=1, ticked=1, on_reserve_page=True)
+    res, calls, _ = _run_handover(
+        monkeypatch,
+        states=[handover.LiveState(**ready)] * 6,
+        outcomes=[_outcome(booking.R_UNKNOWN, "", queued=True)])
+    assert calls["fire"] == 1, f"대기열에 선 채로 또 쐈다: {calls}"
+    assert calls["repress"] == 0, calls
+    assert res.reason == "unknown_submitted", res.reason
+
+
+def test_guard_does_not_block_a_legitimate_first_submit(monkeypatch):
+    """셋째가 본체다. 막기만 하는 코드는 예약을 아예 못 하게 만든다.
+
+    정상 경로는 그대로 한 발 쏘고 성공해야 한다.
+    """
+    from aisarang import handover
+    ready = dict(modal=True, modal_text="예약하시겠습니까?", confirm=True,
+                 armed=True, rows=1, ticked=1, on_reserve_page=True)
+    res, calls, _ = _run_handover(
+        monkeypatch,
+        states=[handover.LiveState(**ready)] * 4,
+        outcomes=[booking.Outcome(code=booking.R_OK, text=booking.OK_REAL,
+                                  source="submit", submit_seen=True,
+                                  submit_done=True)])
+    assert calls["fire"] == 1, calls
+    assert res.ok is True and res.reason == "reserved", (res.ok, res.reason)
+
+
+def test_guard_does_not_block_the_too_early_retry(monkeypatch):
+    """'예약시간전' 은 제출이 **거절된** 것이라 자리가 살아 있다.
+
+    이 경우까지 막아버리면 2026-08-27 의 복구 경로가 죽는다. submit_seen 이
+    켜져 있어도 unknown 이 아니면 가드는 걸리지 않는다.
+    """
+    from aisarang import handover
+    ready = dict(modal=True, modal_text="예약하시겠습니까?", confirm=True,
+                 armed=True, rows=1, ticked=1, on_reserve_page=True)
+    res, calls, _ = _run_handover(
+        monkeypatch,
+        states=[handover.LiveState(**ready)] * 6,
+        outcomes=[_outcome(booking.R_TOO_EARLY, booking.TOO_EARLY_REAL,
+                           submit_seen=True),
+                  booking.Outcome(code=booking.R_OK, text=booking.OK_REAL,
+                                  source="submit", submit_seen=True,
+                                  submit_done=True)])
+    assert calls["fire"] == 2, f"'예약시간전' 재시도가 막혔다: {calls}"
+    assert res.ok is True and res.reason == "reserved"
+
+
+# ---------------------------------------------------------- 자동 모드 (confirm_burst)
+
+def _run_confirm_burst(monkeypatch, outcomes):
+    calls = {"n": 0, "redrive": 0}
+
+    def fake_outcome(_d, timeout=6.0, submit_timeout=None):
+        o = outcomes[min(calls["n"], len(outcomes) - 1)]
+        calls["n"] += 1
+        return o
+
+    fires = {"n": 0}
+
+    monkeypatch.setattr(booking, "read_outcome_detail", fake_outcome)
+    monkeypatch.setattr(booking, "fire_confirm",
+                        lambda _d: fires.__setitem__("n", fires["n"] + 1) or True)
+    monkeypatch.setattr(booking, "redrive_confirm",
+                        lambda d, p, log=None: calls.__setitem__("redrive", calls["redrive"] + 1) or True)
+    monkeypatch.setattr(booking.time, "sleep", lambda *_: None)
+
+    p = booking.Prepared(center={}, target_date="20260929", hours=8)
+    p.modal_open = True
+    p.armed = True
+    p.row_ticked = True
+    p.cell_selected = True
+    p.row_index = 0
+    assert p.ready(), p.blockers()
+
+    res = booking.confirm_burst(object(), p, _Clock(), OPEN_T,
+                                retry_seconds=3, retry_ms=1,
+                                log=lambda *_: None)
+    return res, calls, fires
+
+
+def test_auto_mode_guard_unknown_with_submit_sent_does_not_redrive(monkeypatch):
+    res, calls, fires = _run_confirm_burst(
+        monkeypatch, [_outcome(booking.R_UNKNOWN, "???", submit_seen=True)])
+    assert fires["n"] == 1, fires
+    assert calls["redrive"] == 0, "제출이 나간 뒤 [예약하기] 를 다시 눌렀다"
+    assert res.reason == "unknown_submitted", res.reason
+
+
+def test_auto_mode_guard_unknown_while_queued_does_not_redrive(monkeypatch):
+    res, calls, fires = _run_confirm_burst(
+        monkeypatch, [_outcome(booking.R_UNKNOWN, "", queued=True)])
+    assert fires["n"] == 1, fires
+    assert calls["redrive"] == 0, calls
+    assert res.reason == "unknown_submitted", res.reason
+
+
+def test_auto_mode_guard_leaves_a_plain_unknown_retry_alone(monkeypatch):
+    """제출도 대기열도 없는 unknown 은 예전처럼 재시도한다.
+
+    그래야 '확인창이 그냥 안 떴다' 같은 경우에 한 발로 포기하지 않는다.
+    """
+    res, calls, fires = _run_confirm_burst(
+        monkeypatch, [_outcome(booking.R_UNKNOWN, "???")])
+    assert calls["redrive"] >= 1, "평범한 unknown 까지 막아버렸다"
+    assert fires["n"] >= 2, fires
+
+
+# ============================================================ 픽스처 전수 감사
+#
+# netfunnel_waiting.html 은 08-26 부터 리포에 있었고 test_handover.py 가 그것을
+# **로드까지 했다**. 다만 '대기열로 인식되는가' 만 봤고 '그 글자가 분류기를
+# 오염시키는가' 는 아무도 묻지 않았다. 그래서 3주를 버텼다.
+#
+# 그러니 "아무 테스트도 안 여는 픽스처" 를 찾는 것만으로는 부족하다. 여기서는
+# **모든** 픽스처 HTML 을 분류기에 통과시키고, 성공 판정이 나오는 것은 명시적
+# 허용 목록에 있을 때만 통과시킨다. 새 픽스처가 들어오면 자동으로 걸린다.
+
+# 화면만으로 '예약 성공' 이 나와도 되는 픽스처. 지금은 하나도 없다.
+# 여기에 이름을 추가하려면, 그 파일이 진짜 성공 알림을 담고 있다는 근거가
+# 있어야 한다(고객 PC 캡처의 layer-alert-popup-contents).
+FIXTURES_ALLOWED_TO_SAY_OK: set = set()
+
+
+def _all_fixture_html():
+    import glob
+    root = os.path.join(ROOT, "ci", "fixtures")
+    return sorted(glob.glob(os.path.join(root, "**", "*.html"), recursive=True))
+
+
+def test_no_fixture_in_the_repo_is_read_as_a_reservation_success():
+    """픽스처 하나도 분류기에서 R_OK 를 만들어내지 않는다.
+
+    이것이 09-15 부류의 결함을 **자동으로** 잡는 그물이다. 사이트 마크업을
+    새로 떠 올 때마다 여기서 먼저 걸린다.
+    """
+    checked = 0
+    for path in _all_fixture_html():
+        name = os.path.basename(path)
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            hit = booking._scan_page_source(_PageDriver(fh.read()))
+        checked += 1
+        if hit is not None and hit[0] == booking.R_OK:
+            assert name in FIXTURES_ALLOWED_TO_SAY_OK, (
+                f"{name} 이 화면만으로 '예약 성공' 으로 읽힌다: {hit[1]!r}. "
+                f"진짜 성공 알림이면 FIXTURES_ALLOWED_TO_SAY_OK 에 근거와 함께 "
+                f"추가하고, 아니면 분류기를 고쳐라.")
+    assert checked >= 15, f"픽스처를 {checked}개밖에 못 봤다. 경로가 틀렸나?"
+
+
+def test_the_two_known_result_fixtures_still_classify_the_way_they_should():
+    """그물이 너무 헐거우면 아무것도 못 잡는다. 실물 두 장은 제 값이 나와야 한다."""
+    want = {"taken_alert.html": booking.R_TAKEN,
+            "too_early_alert.html": booking.R_TOO_EARLY}
+    seen = {}
+    for path in _all_fixture_html():
+        name = os.path.basename(path)
+        if name not in want:
+            continue
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            hit = booking._scan_page_source(_PageDriver(fh.read()))
+        assert hit is not None, f"{name} 에서 아무 판정도 못 읽었다"
+        seen[name] = hit[0]
+    assert seen == want, seen
