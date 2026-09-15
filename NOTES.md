@@ -2070,6 +2070,22 @@ InsertOcreqst 응답 본문이 헤더까지 통째로 들어 있다. 회귀는 *
 
 ### 회귀 시험
 
+- `ci/fixtures` **전수 감사** (`test_no_fixture_in_the_repo_is_read_as_a_reservation_success`).
+  netfunnel_waiting.html 은 "아무 테스트도 안 여는 픽스처" 가 아니었다.
+  test_handover.py 가 3주 내내 그것을 **로드했다**. 다만 '대기열로 인식되는가'
+  만 물었고 '그 글자가 분류기를 오염시키는가' 는 아무도 묻지 않았다. 그래서
+  안 열린 파일 목록을 뽑는 것으로는 이 부류를 못 잡는다. 이제 모든 픽스처
+  HTML 을 `_scan_page_source` 에 통과시키고, R_OK 가 나오면 명시적 허용 목록
+  (`FIXTURES_ALLOWED_TO_SAY_OK`, 지금은 **비어 있음**) 에 있어야만 통과시킨다.
+  새 캡처를 떠 올 때 자동으로 걸린다.
+  참고로 진짜 죽은 픽스처는 없다: `centers_11650_{N,Y}.html` 은
+  `ci/fixture_server.py:306` 이 f-string 으로 서빙하고(그래서 이름 grep 에
+  안 걸린다), assets/*.css 9개는 픽스처 HTML 8장이 `<link>` 로 불러온다.
+- **중복 예약 금지 가드**의 회귀 시험 7개. 가드를 꺼서 빨간불을 먼저 확인했다:
+  끄면 자동 모드가 대기열 unknown 한 건에 `fire_confirm` 을 **18번** 부른다.
+  켜면 1번이다. 대조군 3개(정상 첫 발 / '예약시간전' 재시도 / 제출도 대기열도
+  없는 평범한 unknown)는 가드와 무관하게 통과해야 하고, 실제로 통과한다.
+
 - `tests/test_handover.py` 의 `site()` 픽스처에 있던 **선재 플레이크**를 같이
   고쳤다. `driver.get` 이 돌아와도 `document.readyState` 가 'loading' 일 수
   있는데 한 번 찍어 단정하고 있었다. 머신이 바쁘면 전체 스위트에서 무작위로
@@ -2115,11 +2131,27 @@ InsertOcreqst 응답 본문이 헤더까지 통째로 들어 있다. 회귀는 *
 
 ## 배포 현황 (v1.0.12, 2026-09-04 02:20Z) ← 지금 서빙 중
 
-> **리포는 1.0.13, 서빙은 1.0.12 다.** 1.0.13(위 09-15 거짓 성공 수정)은 커밋되어
-> 있지만 **게시하지 않았다**. 게시는 곧 고객 PC 로의 배포이고 그 시점은 소유자가
-> 정한다. `version-aisarang.json` 은 건드리지 않았다(그 파일은 리포에 없고
-> `/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/` 에만 있다).
-> 게시 순서: Windows CI 로 ZIP 빌드 -> `works-publish` -> 매니페스트 갱신.
+> **1.0.13 은 빌드되어 호스팅까지 끝났고, 매니페스트는 아직 1.0.12 다.**
+> 게시(= 매니페스트를 1.0.13 으로 올리는 것)만 남았고 그 시점은 소유자가 정한다.
+> 매니페스트를 올리는 순간 고객 PC 가 다음 실행에서 자동으로 받아간다.
+>
+> - CI: GitHub Actions run **34916061579**, `01bab44` 에서 **success**.
+>   windows-latest. swap check 포함 전 단계 통과.
+> - 패키지: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.13.zip
+>   29,290,511 bytes
+>   sha256 `b5934681b2040e0dbe4dab2835a9d6902f20c2a3d7bb3f78f4e42220870cc515`
+>   (CI 가 찍은 값 = 아티팩트 = Caddy 가 실제로 내려주는 바이트, 셋이 일치).
+> - 프로즌 exe 가 스스로 보고하는 판 번호: **v1.0.13** (GUI 제목표시줄과 머리말,
+>   windows-latest 세션 1 에서 찍은 실제 픽셀). PE 버전 리소스는 1.0.13.0.
+> - `ci\swap_check.py`: `OK[ascii]` / `OK[korean]` / `SWAP CHECK: OK`.
+>   워크플로가 `if ($LASTEXITCODE -ne 0) { throw }` 로 **실제로 게이트한다**.
+>   리눅스에서는 `os.name != "nt"` 가드가 dist 를 보기도 전에 0 을 돌려주므로
+>   (`ci/swap_check.py:163`) 로컬 초록은 증거가 아니다. 윈도우 CI 결과만 센다.
+> - 디펜더 실제 스캔: onedir / zip 둘 다 no threats.
+> - 매니페스트 파일은 리포에 없다
+>   (`/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`).
+>   이번 작업에서 건드리지 않았다(2026-09-04 04:20 그대로, version 1.0.12).
+
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.12.zip
   (29,275,296 bytes, HTTP 200 확인)
