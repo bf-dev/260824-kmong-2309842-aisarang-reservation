@@ -2129,36 +2129,54 @@ InsertOcreqst 응답 본문이 헤더까지 통째로 들어 있다. 회귀는 *
   `SelectDupleTime` 가 돌려준 `{"returnValue":"N"}`(그 시점엔 중복 없음)뿐이다.
   이 질문은 고객의 **예약 내역 화면**만 답할 수 있고, 실제로 그렇게 답이 나왔다.
 
-## 배포 현황 (v1.0.12, 2026-09-04 02:20Z) ← 지금 서빙 중
+## 배포 현황 (v1.0.13, 2026-09-15 01:40Z) ← 지금 서빙 중
 
-> **1.0.13 은 빌드되어 호스팅까지 끝났고, 매니페스트는 아직 1.0.12 다.**
-> 게시(= 매니페스트를 1.0.13 으로 올리는 것)만 남았고 그 시점은 소유자가 정한다.
-> 매니페스트를 올리는 순간 고객 PC 가 다음 실행에서 자동으로 받아간다.
->
-> - CI: GitHub Actions run **34916061579**, `01bab44` 에서 **success**.
->   windows-latest. swap check 포함 전 단계 통과.
-> - 패키지: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.13.zip
->   29,290,511 bytes
->   sha256 `b5934681b2040e0dbe4dab2835a9d6902f20c2a3d7bb3f78f4e42220870cc515`
->   (CI 가 찍은 값 = 아티팩트 = Caddy 가 실제로 내려주는 바이트, 셋이 일치).
-> - 프로즌 exe 가 스스로 보고하는 판 번호: **v1.0.13** (GUI 제목표시줄과 머리말,
->   windows-latest 세션 1 에서 찍은 실제 픽셀). PE 버전 리소스는 1.0.13.0.
-> - `ci\swap_check.py`: `OK[ascii]` / `OK[korean]` / `SWAP CHECK: OK`.
->   워크플로가 `if ($LASTEXITCODE -ne 0) { throw }` 로 **실제로 게이트한다**.
->   리눅스에서는 `os.name != "nt"` 가드가 dist 를 보기도 전에 0 을 돌려주므로
->   (`ci/swap_check.py:163`) 로컬 초록은 증거가 아니다. 윈도우 CI 결과만 센다.
-> - 디펜더 실제 스캔: onedir / zip 둘 다 no threats.
-> - 매니페스트 파일은 리포에 없다
->   (`/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`).
->   이번 작업에서 건드리지 않았다(2026-09-04 04:20 그대로, version 1.0.12).
+09-15 09:00 거짓 성공의 수정판. 소유자 지시로 게시했다.
 
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.13.zip
+  (29,290,511 bytes, HTTP 200 확인)
+  sha256 `b5934681b2040e0dbe4dab2835a9d6902f20c2a3d7bb3f78f4e42220870cc515`
+  네 곳이 전부 같은 값이다: CI 가 찍은 값 = 내려받은 아티팩트 = 로컬 Caddy 가
+  주는 바이트 = Cloudflare 엣지가 주는 바이트. `unzip -t` 도 통과.
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.13` / `updatedAt 2026-09-15T01:40:00Z` / `supersedes 1.0.12` /
+  `zipUrl` 만 (**exeUrl 없음**: 1.0.4 이하 업데이터가 ZIP 을 exe 자리에 덮어쓰는
+  사고를 막기 위해서다. 이 규칙은 바꾸지 말 것).
+  디스크 사본과 서빙 사본이 **바이트 단위로 동일**함을 확인했다
+  (sha256 `5dee17a4cb84348f02b46e0da1bab428bc9597b9a1309d68a415d7bd22bde7f7`,
+  로컬 Caddy 와 공개 DNS 양쪽). 이 JSON 은 `cf-cache-status: DYNAMIC` 이라
+  엣지가 캐시하지 않는다 = 낡은 바이트가 남을 위험이 원래 없다. ZIP 쪽은
+  캐시되지만 파일명에 판 번호가 박혀 있어 덮어쓸 일이 없다.
+- 매니페스트는 원자적으로 썼다(임시파일 → `os.replace`). 반쯤 쓰인 JSON 이
+  서빙되는 순간이 없어야 하고, 그 순간에 고객 업데이터가 읽으면 파싱이 깨진다.
+  1.0.12 사본은 `~/workspace/kmong/tmp/` 에 백업해 두었다(되돌릴 때 쓸 것,
+  단 tmp 는 14일 뒤 청소된다).
+- CI: GitHub Actions run **34916061579**, `01bab44` 에서 **success**.
+  windows-latest. 전체 스위트 **285 passed**.
+- 프로즌 exe 가 스스로 보고하는 판 번호: **v1.0.13** (GUI 제목표시줄과 머리말,
+  windows-latest 세션 1 에서 찍은 실제 픽셀). PE 버전 리소스는 1.0.13.0.
+- `ci\swap_check.py`: `OK[ascii]` / `OK[korean]` / `SWAP CHECK: OK`.
+  워크플로가 `if ($LASTEXITCODE -ne 0) { throw }` 로 **실제로 게이트한다**.
+  리눅스에서는 `os.name != "nt"` 가드가 dist 를 보기도 전에 0 을 돌려주므로
+  (`ci/swap_check.py:163`) 로컬 초록은 증거가 아니다. 윈도우 CI 결과만 센다.
+- 디펜더 실제 스캔: onedir / zip 둘 다 no threats.
+- 게시 후 실제 업데이터 로직에 **서빙 중인 매니페스트를 그대로 먹여** 확인했다
+  (`updater.choose_download`): 1.0.9/1.0.10/1.0.11/1.0.12 → 전부 zip 1.0.13,
+  1.0.13 → `None`(재시작 루프 없음), 종류는 `zip`(exe 아님).
+- 이 판의 변경 세 가지는 위 '2026-09-15 사고' 절에 자세히 있다.
+  (1) 문장 단위 · 부정 인식 성공 판정, (2) 제출 응답을 실제로 기다림,
+  (3) 중복 제출 가드. **조준값은 바꾸지 않았다.**
+- 전달 경로: **자동 업데이트**. 고객은 1.0.12 를 돌리고 있고, 프로그램을 켜면
+  다음 실행에서 1.0.13 으로 바뀐다. 손으로 설치할 것이 없다.
+- **다시 빌드하거나 다시 게시하지 말 것.** 서빙 중인 ZIP 과 매니페스트가 정상이다.
 
+## 배포 현황 (v1.0.12, 2026-09-04 02:20Z) ← 지난 판
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.12.zip
   (29,275,296 bytes, HTTP 200 확인)
   sha256 `c64dd9403691f83a5eebbb8f6a66d732251ceef2ba292e5e3f962252f6f295a0`
   (매니페스트에 적힌 값과 실제 내려받은 바이트가 일치).
-- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
-  `version 1.0.12` / `updatedAt 2026-09-04T02:20:00Z` / `supersedes 1.0.11` /
+- 매니페스트(당시): `version 1.0.12` / `updatedAt 2026-09-04T02:20:00Z` /
+  `supersedes 1.0.11` /
   `zipUrl` 만 (**exeUrl 없음**: 1.0.4 이하 업데이터가 ZIP 을 exe 자리에 덮어쓰는
   사고를 막기 위해서다. 이 규칙은 바꾸지 말 것). 로컬 디스크와 공개 DNS 양쪽에서
   1.0.12 로 확인했다.
@@ -2172,7 +2190,9 @@ InsertOcreqst 응답 본문이 헤더까지 통째로 들어 있다. 회귀는 *
 - 전달 경로: **자동 업데이트**. 고객은 1.0.11 을 돌리고 있고 그 업데이터의 스왑은
   고쳐져 있으므로(CI 필수 단계 `ci/swap_check.py` 가 실제 스왑을 실행) 프로그램을
   켜기만 하면 1.0.12 로 바뀐다. 손으로 설치할 것이 없고 다운로드 링크도 필요 없다.
-- **다시 빌드하거나 다시 게시하지 말 것.** 서빙 중인 ZIP 과 매니페스트가 정상이다.
+- 2026-09-15 01:40Z 에 **1.0.13 으로 교체되었다**(위 절 참고). 이 ZIP 은 계속
+  서빙되지만 매니페스트는 더 이상 이것을 가리키지 않는다. 되돌려야 하면
+  매니페스트를 이 판으로 되돌리면 된다(ZIP 은 그대로 살아 있다).
 
 ## 배포 현황 (v1.0.10, 2026-09-01 01:43Z) ← 지난 판
 
