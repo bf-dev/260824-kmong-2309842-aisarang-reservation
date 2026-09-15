@@ -29,6 +29,7 @@ attribute 가 아니라 property 를 바꾸고 page_source 는 attribute 만 직
 import os
 import re
 import sys
+import time
 
 import pytest
 
@@ -75,8 +76,18 @@ def site():
 
     def go(name, tick=False):
         d.get(srv.url(name))
-        assert d.execute_script("return document.readyState;") in ("interactive",
-                                                                  "complete")
+        # `driver.get` 이 돌아와도 readyState 가 아직 'loading' 일 수 있다.
+        # 머신이 바쁠 때 재현되는 진짜 경합이고, v1.0.12 원본에서도 그대로
+        # 난다(수정 없이 test_handover.py 6회 중 1회 실패 재현). 한 번 찍어
+        # 단정하는 대신 기다린다. 실패해야 할 것은 아래 본 단정들이지
+        # 페이지 로딩 타이밍이 아니다.
+        state = ""
+        for _ in range(100):                      # 최대 5초
+            state = d.execute_script("return document.readyState;")
+            if state in ("interactive", "complete"):
+                break
+            time.sleep(0.05)
+        assert state in ("interactive", "complete"), state
         if tick:
             got = d.execute_script(
                 "var b=document.getElementById('rowSchChkNo0');"
