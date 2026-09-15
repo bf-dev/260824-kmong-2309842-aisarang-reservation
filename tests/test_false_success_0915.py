@@ -606,3 +606,142 @@ def test_the_two_known_result_fixtures_still_classify_the_way_they_should():
         assert hit is not None, f"{name} 에서 아무 판정도 못 읽었다"
         seen[name] = hit[0]
     assert seen == want, seen
+
+
+# ============================================================ 순번을 기록한다 (v1.0.14)
+#
+# 대기열을 이길 수는 없다(2026-09-15 조사 결론: 정각 이후의 순번은 운이다).
+# 이길 수 없다면 **몇 번째로 졌는지는 남겨야 한다.** 고객이 매번 묻는 것은
+# 「우리가 늦었나」 이고, 「앞에 31명」 한 줄이 그 질문에 그날 바로 답한다.
+#
+# v1.0.13 까지 `read_outcome_detail` 은 `queue_info()` 를 부르고 **불린 하나만**
+# 남긴 뒤 숫자를 버렸다. 그래서 09-15 에 31명이라는 숫자가 로그에 없었다.
+#
+# 이 묶음은 판정을 건드리지 않는다. 기록만 본다.
+
+# 2026-09-01 09:00 고객 PC 진단 ZIP 의 meta.json `detail_handoverState` 에
+# 실제로 찍혀 있던 값이다. 지어낸 숫자가 아니다.
+QUEUE_REAL_0901 = {"queue": True, "ahead": 256, "behind": 53,
+                   "eta": "39초", "progress": ""}
+# 2026-09-15 고객 화면의 넷퍼널 팝업이 들고 있던 값.
+QUEUE_REAL_0915 = {"queue": True, "ahead": 31, "behind": 1,
+                   "eta": "03초", "progress": "0 % (0/31)"}
+
+
+class _QueueDriver:
+    """제출은 영영 안 나가고 대기열만 떠 있는 드라이버(09-15 의 모양)."""
+
+    def __init__(self, queue: dict, page_source: str = ""):
+        self._q = queue
+        self.page_source = page_source
+
+    def execute_script(self, script, *args):
+        if "__aisarangSubmit" in script:
+            return None
+        if "NetFunnel_Loading_Popup" in script:
+            return dict(self._q)
+        return []
+
+    @property
+    def switch_to(self):
+        raise RuntimeError("no alert")
+
+
+def test_the_queue_numbers_survive_into_the_outcome():
+    out = booking.read_outcome_detail(_QueueDriver(QUEUE_REAL_0901),
+                                      timeout=0.2, submit_timeout=0.5)
+    assert out.queued is True
+    assert out.queue.get("ahead") == 256
+    assert out.queue.get("behind") == 53
+    assert out.queue.get("eta") == "39초"
+
+
+def test_the_real_0901_numbers_reach_the_emitted_line():
+    """이 줄이 고객 로그에 그대로 찍힌다."""
+    from aisarang import handover
+    out = booking.read_outcome_detail(_QueueDriver(QUEUE_REAL_0901),
+                                      timeout=0.2, submit_timeout=0.5)
+    line = handover._evidence_line(out)
+    assert "앞에 256명" in line, line
+    assert "뒤에 53명" in line, line
+    assert "예상 39초" in line, line
+    assert "가상대기열" in line, line
+
+
+def test_the_numbers_also_reach_the_uploaded_summary():
+    """로그만이 아니라 업로드되는 요약(as_dict)에도 들어가야 한다.
+
+    그래야 다음에 ZIP 을 열지 않고도 진단 목록에서 순번이 보인다.
+    """
+    out = booking.read_outcome_detail(_QueueDriver(QUEUE_REAL_0915),
+                                      timeout=0.2, submit_timeout=0.5)
+    d = out.as_dict()
+    assert d["queued"] is True
+    assert d["queueAhead"] == 31
+    assert d["queueBehind"] == 1
+    assert d["queueEta"] == "03초"
+    assert d["queueProgress"] == "0 % (0/31)"
+
+
+def test_a_queue_with_no_numbers_degrades_instead_of_lying():
+    """숫자가 없으면 괄호를 통째로 뺀다. '앞에 0명' 도 'None' 도 찍지 않는다.
+
+    넷퍼널 스킨이 바뀌거나 숫자가 아직 안 그려진 순간이 실제로 있다.
+    """
+    from aisarang import handover
+    bare = {"queue": True, "ahead": None, "behind": None,
+            "eta": "", "progress": ""}
+    out = booking.read_outcome_detail(_QueueDriver(bare),
+                                      timeout=0.2, submit_timeout=0.5)
+    line = handover._evidence_line(out)
+    assert out.queued is True
+    assert "가상대기열 대기 중" in line, line
+    for liar in ("None", "앞에 0명", "뒤에 0명", "예상 )", "()"):
+        assert liar not in line, (liar, line)
+    d = out.as_dict()
+    assert d["queueAhead"] is None and d["queueEta"] == ""
+
+
+def test_no_queue_at_all_leaves_the_line_and_the_summary_untouched():
+    """대기열이 없으면 v1.0.13 과 글자 그대로 같아야 한다(무행동 변경)."""
+    from aisarang import handover
+    out = booking.read_outcome_detail(
+        _QueueDriver({"queue": False}), timeout=0.2, submit_timeout=0.2)
+    assert out.queued is False and out.queue == {}
+    line = handover._evidence_line(out)
+    assert "대기열" not in line, line
+    assert line == "판정 근거: 없음. 예약 제출이 잡히지 않았습니다."
+    assert "queueAhead" not in out.as_dict()
+
+
+def test_the_0915_capture_replays_to_unknown_with_the_numbers_attached():
+    """내일 지는 날이 있다면 로그가 가져야 할 모양, 그대로.
+
+    09-15 실물 화면 + 그날의 실제 순번을 물려서, 판정은 unknown 이고
+    근거 줄에는 '앞에 31명' 이 붙어 있어야 한다.
+    """
+    from aisarang import handover
+    out = booking.read_outcome_detail(
+        _QueueDriver(QUEUE_REAL_0915, page_source=_loss_html()),
+        timeout=0.2, submit_timeout=0.6)
+    assert out.code == booking.R_UNKNOWN, (out.code, out.text)
+    assert out.code != booking.R_OK
+    line = handover._evidence_line(out)
+    assert "앞에 31명" in line, line
+    assert "예상 03초" in line, line
+    assert out.as_dict()["queueAhead"] == 31
+
+
+def test_logging_the_queue_did_not_change_any_verdict():
+    """무행동 변경임을 못박는다. 판정 경로는 v1.0.13 과 동일해야 한다."""
+    # 대기열이 떠 있어도 성공으로 새지 않는다.
+    out = booking.read_outcome_detail(
+        _QueueDriver(QUEUE_REAL_0915, page_source=_loss_html()),
+        timeout=0.2, submit_timeout=0.4)
+    assert out.code == booking.R_UNKNOWN
+    # 서버 본문이 오면 본문이 이긴다. 순번은 기록으로만 따라붙는다.
+    body = '{"returnmsg":"' + booking.TAKEN_REAL + '","returnval":""}'
+    d = _SubmitDriver(body, delay=0.0, page_source=_loss_html(), queue=True)
+    got = booking.read_outcome_detail(d, timeout=0.3, submit_timeout=1.0)
+    assert got.code == booking.R_TAKEN
+    assert got.source == "submit"

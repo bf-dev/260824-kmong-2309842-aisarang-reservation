@@ -2099,19 +2099,30 @@ class Outcome:
     # 판정을 읽는 동안 가상대기열이 떠 있었는가. 떠 있었다면 화면의 어떤
     # 문구도 이번 발사의 결과가 아니다(2026-09-15).
     queued: bool = False
+    # v1.0.14: 그때 읽은 **순번 전체**. 예전에는 위 불린만 남기고 숫자를
+    # 버렸다. 고객이 매번 묻는 것은 '우리가 늦었나' 이고, 「앞에 31명」 한
+    # 줄이 그 질문에 그날 바로 답한다. 대기열을 이길 수는 없어도 몇 번째로
+    # 졌는지는 남길 수 있다. 판정에는 쓰지 않는다(기록 전용).
+    queue: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        return {"code": self.code, "text": (self.text or "")[:300],
-                "label": outcome_label(self.code),
-                "source": self.source, "status": self.status,
-                "body": (self.body or "")[:1000],
-                "returnval": self.returnval,
-                "serverDate": self.server_date,
-                "elapsedMs": round(self.elapsed_ms, 1),
-                "submitSeen": self.submit_seen,
-                "submitDone": self.submit_done,
-                "queued": self.queued,
-                "waitedMs": round(self.waited_ms, 1)}
+        out = {"code": self.code, "text": (self.text or "")[:300],
+               "label": outcome_label(self.code),
+               "source": self.source, "status": self.status,
+               "body": (self.body or "")[:1000],
+               "returnval": self.returnval,
+               "serverDate": self.server_date,
+               "elapsedMs": round(self.elapsed_ms, 1),
+               "submitSeen": self.submit_seen,
+               "submitDone": self.submit_done,
+               "queued": self.queued,
+               "waitedMs": round(self.waited_ms, 1)}
+        if self.queue:
+            out["queueAhead"] = self.queue.get("ahead")
+            out["queueBehind"] = self.queue.get("behind")
+            out["queueEta"] = self.queue.get("eta") or ""
+            out["queueProgress"] = self.queue.get("progress") or ""
+        return out
 
 
 # 제출 응답을 기다리는 상한(초). 화면 판정 창(timeout)과 따로 둔다.
@@ -2179,7 +2190,7 @@ def read_outcome_detail(driver, timeout: float = 6.0,
                               server_date=sub["date"],
                               elapsed_ms=sub["elapsedMs"],
                               submit_seen=True, submit_done=True,
-                              queued=best.queued,
+                              queued=best.queued, queue=dict(best.queue),
                               waited_ms=(time.time() - started) * 1000.0)
                 if code != R_UNKNOWN:
                     return out
@@ -2192,11 +2203,17 @@ def read_outcome_detail(driver, timeout: float = 6.0,
         queued = False
         if not sub["done"]:
             try:
-                queued = bool((queue_info(driver) or {}).get("queue"))
+                q = queue_info(driver) or {}
             except Exception:
-                queued = False
+                q = {}
+            queued = bool(q.get("queue"))
             if queued:
                 best.queued = True
+                # v1.0.14: 숫자를 통째로 들고 있는다. 순번은 시간이 갈수록
+                # 줄어드니 **처음 본 값**을 남긴다(가장 나쁜 순간이 곧 답이다).
+                # 숫자가 아직 안 그려졌으면 다음 바퀴에 다시 채운다.
+                if not best.queue or best.queue.get("ahead") is None:
+                    best.queue = dict(q)
 
         if (in_flight or queued) and now < hard_end:
             # 답이 오는 중이거나 아직 줄에 서 있다. 화면은 읽지 않는다.
@@ -2347,7 +2364,12 @@ def evidence_line(outcome) -> str:
         # 2026-09-15. 대기열에 선 채로 시간이 끝났다. 화면에 '잠시만
         # 기다리시면 예약이 완료됩니다' 가 떠 있어도 그건 대기열 안내지
         # 결과가 아니다. 그날 우리는 그것을 '예약 성공' 으로 읽었다.
-        return (f"판정 근거: 없음. 가상대기열에 선 채로 "
+        #
+        # v1.0.14: 순번을 같이 적는다. 고객이 매번 묻는 '우리가 늦었나' 에
+        # 「앞에 31명」 이 그날 바로 답한다. `queue_line` 은 숫자가 없으면
+        # 괄호를 통째로 빼므로 '앞에 0명' 같은 거짓말이 나오지 않는다.
+        q = getattr(outcome, "queue", None) or {}
+        return (f"판정 근거: 없음. {queue_line(q)} 인 채로 "
                 f"{outcome.waited_ms / 1000:.1f}초가 지났습니다 "
                 f"(예약 제출이 아직 나가지 않았습니다).")
     return "판정 근거: 없음. 예약 제출이 잡히지 않았습니다."
