@@ -2070,6 +2070,13 @@ InsertOcreqst 응답 본문이 헤더까지 통째로 들어 있다. 회귀는 *
 
 ### 회귀 시험
 
+- `tests/test_handover.py` 의 `site()` 픽스처에 있던 **선재 플레이크**를 같이
+  고쳤다. `driver.get` 이 돌아와도 `document.readyState` 가 'loading' 일 수
+  있는데 한 번 찍어 단정하고 있었다. 머신이 바쁘면 전체 스위트에서 무작위로
+  한 건이 터지고, 공유 픽스처라 **매번 다른 테스트**가 실패하는 것처럼 보인다.
+  수정 전 v1.0.12 원본에서 모듈 6회 중 1회 재현 -> 내 변경 탓이 아님을 확인한
+  뒤 폴링(최대 5초)으로 바꿨다. 이걸 모르면 무관한 실패를 쫓게 된다.
+
 - `tests/test_false_success_0915.py` (18개). 수정 **전 13 failed / 2 passed**,
   수정 **후 전부 통과**. 문자열은 전부 실물이다.
 - `ci/fixtures/real/netfunnel_queue_20260915.html` — 그날 화면에서 글자 그대로
