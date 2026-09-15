@@ -617,26 +617,8 @@ class _Reopen:
 
 
 def _evidence_line(outcome) -> str:
-    """판정의 근거를 사람이 읽을 한 줄로. 이 줄이 09-04 에 없어서 눈이 멀었다."""
-    if outcome is None:
-        return "판정 근거: 없음"
-    if outcome.source == "submit":
-        bits = [f"판정 근거: 서버 응답 본문 (HTTP {outcome.status}"]
-        if outcome.elapsed_ms:
-            bits.append(f", 왕복 {outcome.elapsed_ms:.0f}ms")
-        bits.append(")")
-        line = "".join(bits)
-        if outcome.server_date:
-            line += f" · 서버가 요청을 받은 시각: {outcome.server_date}"
-        if outcome.returnval:
-            line += f" · returnval={outcome.returnval}"
-        return line
-    if outcome.source == "screen":
-        return "판정 근거: 화면 안내 문구 (서버 응답 본문은 못 봤습니다)"
-    if outcome.submit_seen and not outcome.submit_done:
-        return (f"판정 근거: 없음. 예약 제출 응답이 "
-                f"{outcome.waited_ms / 1000:.1f}초 안에 오지 않았습니다.")
-    return "판정 근거: 없음. 예약 제출이 잡히지 않았습니다."
+    """`booking.evidence_line` 그대로. 두 모드가 같은 문장을 쓴다."""
+    return booking.evidence_line(outcome)
 
 
 def burst(driver, clock, open_epoch: float, watcher: Watcher,
@@ -759,6 +741,21 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
                 automation.capture(driver, diag, f"handover_{attempt}_{code}")
             except Exception:
                 pass
+
+        # 판정을 못 읽었는데 **제출은 이미 나갔거나 대기열에 걸려 있다.**
+        # 여기서 한 발 더 쏘면 같은 자리에 예약이 두 건 들어갈 수 있다.
+        # 이 사이트는 취소가 전화로만 되므로, 중복 예약은 놓친 예약보다
+        # 확실히 나쁘다. 모르면 멈춘다(2026-09-15).
+        if code == booking.R_UNKNOWN and (outcome.submit_seen
+                                          or getattr(outcome, "queued", False)):
+            why = ("예약 제출이 이미 나갔습니다" if outcome.submit_seen
+                   else "가상대기열에 서 있습니다")
+            log(f"판정을 읽지 못했지만 {why}. 중복 예약을 막으려고 여기서 "
+                f"멈춥니다. 아이사랑에서 예약 내역을 꼭 확인해 주세요.")
+            return booking.StepResult(
+                False, text or "예약 결과를 확인하지 못했습니다.",
+                "unknown_submitted", None, detail)
+
         time.sleep(max(retry_ms, 20) / 1000.0)
 
     last = shots[-1] if shots else HandoverShot()

@@ -35,6 +35,7 @@
 """
 from __future__ import annotations
 
+import html as _html
 import re
 import time
 from dataclasses import dataclass, field
@@ -135,8 +136,78 @@ OK_REAL = "1건 예약 중 1건 예약되었습니다."
 _RE_TAKEN = re.compile(r"선예약[^.。]{0,16}예약되지\s*않")
 TAKEN_WORDS = ("선예약으로 인해", "선예약으로인해", "선예약 으로 인해")
 
+# '선예약' 은 안 붙었지만 '예약/신청 … 되지 않았' 인 문구. 무엇 때문인지는
+# 모르지만 **성공이 아닌 것만은 확실하다**. `_RE_TAKEN` 보다 넓게 잡아서
+# 성공으로 새는 길을 막는다(09-15 이후 추가).
+_RE_NOT_DONE = re.compile(r"(?:예약|신청)[^.。!?]{0,24}?(?:되지|하지)\s*(?:못|않)")
+
+# ------------------------------------------------------------ 성공 판정
+#
+# 2026-09-15 09:00:00, 고객 PC, v1.0.12. 우리는 `[ok · 예약 성공]` 을 찍었고
+# 고객 화면에는 '선예약' 이 떴다. 그 순간 화면에 있던 것은 결과가 아니라
+# **넷퍼널 가상대기열** 안내였다(진단 ZIP page_source/0002_handover_after.html,
+# `<div id="NetFunnel_Loading_Popup" style="display: block; ... visible">`):
+#
+#   "현재 접속 사용자가 많아 대기 중이며, 잠시만 기다리시면 예약이 완료됩니다."
+#
+# 옛 OK_WORDS 에는 `"예약이 완료"` 라는 **조각**이 있었고, `_scan_page_source`
+# 가 page_source 통짜에서 그 조각을 집어 R_OK 를 돌려줬다. 로그의 '서버 문구'
+# 가 문장이 아니라 조각(`예약이 완료`)이었던 것이 그 증거다.
+#
+# 같은 문장이 2026-08-26 부터 `ci/fixtures/real/netfunnel_waiting.html` 에
+# 들어 있었다. 픽스처는 있었는데 분류기에 물려본 테스트가 없었다.
+#
+# 그래서 규칙을 바꾼다: **조각 일치 금지.** 성공은 '예약/신청' 에 붙은
+# 서술어가 **과거 완료 종결**일 때만이다. 세 형태를 갈라야 한다.
+#
+#   예약이 완료되었습니다      → 성공        (이미 끝났다)
+#   예약이 완료됩니다          → 성공 아님   (앞으로 그럴 것이다 = 대기열)
+#   예약이 완료되지 않았습니다 → 성공 아님   (부정)
+_RE_OK = re.compile(
+    r"(?:예약|신청)\s*(?:이|은|을|를)?\s*"
+    r"(?:정상(?:적)?(?:으로)?\s*)?"
+    r"(?:완료\s*)?"
+    r"(?:되었|됐|하였|했)습니다"
+)
+
+# 같은 문장 안에 이것들이 있으면 완료형이라도 성공이 아니다. `_RE_OK` 만으로도
+# 위 세 형태는 갈리지만, 사이트가 어미를 바꿔도 조용히 틀리지 않도록 한 겹 더
+# 둔다. 확실하지 않으면 성공이 아니라 unknown 이어야 한다.
+_RE_NEGATED = re.compile(r"않|못|불가|실패|거부|반려|취소")
+
+# '아직 일어나지 않았다' 는 결과가 아니다. 대기열 안내가 여기 걸린다.
+_RE_PENDING = re.compile(r"대기\s*중|기다리|예정|진행\s*중|처리\s*중|대기자")
+
+# 문장 나누기. 부정은 **한 문장 안에서만** 본다. 페이지 통짜를 한 덩어리로
+# 보면 옆 문장의 '않' 이 진짜 성공을 지워 버린다.
+_RE_SENTENCE = re.compile(r"(?<=[.。!?])\s+|[\r\n]+|(?:※|\*)\s")
+
+# OK_WORDS 는 이제 **분류용이 아니다.** 통짜 텍스트에서 '결과 문장일 수도 있는
+# 자리' 를 찾는 실마리일 뿐이고, 판정은 반드시 `says_ok` 가 문장 단위로 한다.
 OK_WORDS = ("예약이 완료", "신청이 완료", "정상적으로 신청", "정상적으로 예약",
             "예약되었습니다", "신청되었습니다", "완료되었습니다")
+
+
+def sentences(text: str) -> list:
+    """문장 단위로 쪼갠다. 빈 조각은 버린다."""
+    t = (text or "").replace(" ", " ")
+    return [s.strip() for s in _RE_SENTENCE.split(t) if s and s.strip()]
+
+
+def says_ok(text: str) -> bool:
+    """이 문구가 '예약이 이미 끝났다' 고 말하는가.
+
+    한 문장이라도 부정/대기 없이 완료 종결을 쓰면 성공이다. 반대로 완료형이
+    보여도 그 문장이 부정이거나 대기 안내면 성공이 아니다.
+    """
+    for s in sentences(text):
+        if not _RE_OK.search(s):
+            continue
+        if _RE_NEGATED.search(s) or _RE_PENDING.search(s):
+            continue
+        return True
+    return False
+
 
 # 실측: 사이트가 클릭 시점에 스스로 막는 문구들. '아직 안 열렸다' 가 아니라
 # '이 칸은 안 된다' 이므로 **다시 쏴봐야 소용없다**. 예전에는 이 중
@@ -207,9 +278,9 @@ def classify(text: str) -> str:
     t = (text or "").replace(" ", " ")
     if not t.strip():
         return R_UNKNOWN
-    for w in OK_WORDS:
-        if w in t:
-            return R_OK
+    # 성공은 문장 단위 · 부정 인식으로만 본다. 조각 일치가 09-15 의 사고다.
+    if says_ok(t):
+        return R_OK
     for w in QUESTION_WORDS:
         if w in t:
             return R_UNKNOWN
@@ -222,6 +293,10 @@ def classify(text: str) -> str:
     for w in TAKEN_WORDS:
         if w in t:
             return R_TAKEN
+    # '…예약되지 않았습니다' 인데 '선예약' 이 안 붙은 경우. 뜻은 모르지만
+    # 성공이 아닌 것만은 확실하다. 성공으로 새는 길을 여기서 막는다.
+    if _RE_NOT_DONE.search(t):
+        return R_FAIL
     if _RE_NOT_YET.search(t):
         return R_TOO_EARLY
     for w in NOT_BOOKABLE_WORDS:
@@ -2021,6 +2096,9 @@ class Outcome:
     submit_seen: bool = False
     submit_done: bool = False
     waited_ms: float = 0.0
+    # 판정을 읽는 동안 가상대기열이 떠 있었는가. 떠 있었다면 화면의 어떤
+    # 문구도 이번 발사의 결과가 아니다(2026-09-15).
+    queued: bool = False
 
     def as_dict(self) -> dict:
         return {"code": self.code, "text": (self.text or "")[:300],
@@ -2032,6 +2110,7 @@ class Outcome:
                 "elapsedMs": round(self.elapsed_ms, 1),
                 "submitSeen": self.submit_seen,
                 "submitDone": self.submit_done,
+                "queued": self.queued,
                 "waitedMs": round(self.waited_ms, 1)}
 
 
@@ -2054,6 +2133,25 @@ def read_outcome_detail(driver, timeout: float = 6.0,
 
     제출이 아직 오는 중이면 timeout 이 지나도 submit_timeout 까지는 기다린다.
     답을 기다리지 않고 [unknown] 을 적는 것이 09-04 에 우리가 한 짓이다.
+
+    v1.0.13 에서 '기다린다' 의 뜻을 고쳤다. 09-14 와 09-15 는 둘 다
+    `SUBMIT_WAIT_SECONDS=9.0` 을 켜 놓고도 화면 문구로 먼저 끝냈다.
+
+      09-14  제출은 잡혔는데(`submitSeen: true, submitDone: false`) 응답을
+             기다리지 않고 699ms 에 화면으로 판정했다. 본문은 그 직후 왔다
+             (진단 ZIP 에 `returnval: success` 가 그대로 들어 있다).
+      09-15  넷퍼널 대기열에 서 있어서 제출은 **나가지도 않았고**
+             (`submitSeen: false`), 287ms 만에 대기열 안내 문구를 성공으로
+             읽고 끝냈다.
+
+    그래서 규칙 세 줄:
+      - 제출이 오는 중이면 화면을 아예 읽지 않는다. 본문이 유일한 근거다.
+      - 대기열이 떠 있으면 아직 아무것도 제출되지 않은 것이다. 화면의 어떤
+        문구도 이번 발사의 결과가 아니다.
+      - 화면만 보고 내리는 **성공** 판정은 화면 창(timeout)을 다 쓴 뒤에만
+        받아들인다. 틀린 성공은 고객에게 없는 자리를 있다고 말하는 짓이라
+        정직한 unknown 보다 훨씬 나쁘다. 성공이 아닌 판정은 예전처럼 즉시
+        돌려준다(재시도 타이밍을 잃지 않으려고).
     """
     from . import automation
 
@@ -2064,8 +2162,11 @@ def read_outcome_detail(driver, timeout: float = 6.0,
     hard_end = started + max(float(timeout), float(submit_timeout))
     last_text = ""
     best = Outcome()
+    screen_ok = None          # 화면만 본 '성공' 후보. 화면 창을 다 쓴 뒤에만.
     while True:
+        now = time.time()
         sub = submit_response(driver)
+        in_flight = False
         if sub["seen"]:
             best.submit_seen = True
             best.submit_done = sub["done"]
@@ -2078,14 +2179,29 @@ def read_outcome_detail(driver, timeout: float = 6.0,
                               server_date=sub["date"],
                               elapsed_ms=sub["elapsedMs"],
                               submit_seen=True, submit_done=True,
+                              queued=best.queued,
                               waited_ms=(time.time() - started) * 1000.0)
                 if code != R_UNKNOWN:
                     return out
                 # 본문은 받았는데 문구가 분류되지 않는다. 화면도 마저 본다.
                 best = out
-            elif time.time() < hard_end:
-                # 오는 중이다. 화면 판정 창이 끝나도 이 응답까지는 기다린다.
-                end = max(end, min(hard_end, time.time() + 0.5))
+            else:
+                in_flight = True
+
+        # 대기열은 제출이 아직 안 끝났을 때에만 본다(JS 한 번을 아낀다).
+        queued = False
+        if not sub["done"]:
+            try:
+                queued = bool((queue_info(driver) or {}).get("queue"))
+            except Exception:
+                queued = False
+            if queued:
+                best.queued = True
+
+        if (in_flight or queued) and now < hard_end:
+            # 답이 오는 중이거나 아직 줄에 서 있다. 화면은 읽지 않는다.
+            time.sleep(0.05)
+            continue
 
         texts = []
         a = read_alert(driver)
@@ -2098,49 +2214,143 @@ def read_outcome_detail(driver, timeout: float = 6.0,
             msg = ""
         if msg:
             texts.append(msg)
+
+        hit = None
         for t in texts:
             code = classify(t)
             if code != R_UNKNOWN:
-                best.code, best.text = code, t
-                best.source = best.source or "screen"
-                best.waited_ms = (time.time() - started) * 1000.0
-                return best
+                hit = (code, t)
+                break
             if t and not last_text:
                 last_text = t
-        hit = _scan_page_source(driver)
+        if hit is None:
+            hit = _scan_page_source(driver)
+
         if hit is not None:
-            best.code, best.text = hit
+            code, text = hit
+            if code == R_OK and not (sub["seen"] and sub["done"]):
+                # 서버 본문이 받쳐주지 않는 '성공'. 끝까지 버텨본다.
+                screen_ok = (code, text)
+                if time.time() < end:
+                    time.sleep(0.1)
+                    continue
+            best.code, best.text = code, text
             best.source = best.source or "screen"
             best.waited_ms = (time.time() - started) * 1000.0
             return best
+
         if time.time() >= end:
             break
         time.sleep(0.15)
 
+    if screen_ok is not None:
+        best.code, best.text = screen_ok
+        best.source = best.source or "screen"
     if not best.text:
         best.text = last_text
     best.waited_ms = (time.time() - started) * 1000.0
     return best
 
 
+# 사이트의 실물 알림 컨테이너. 결과 문구는 여기로 들어온다.
+#   <p class="f_18" id="layer-alert-popup-contents2">1건 예약 중 1건 예약되었습니다.</p>
+# 확인창(`layer-confirm-popup-contents*`)은 일부러 뺀다. 그건 결과가 아니라
+# 질문이고, 본문에 '불가'/'초과' 가 들어 있다.
+_RE_ALERT_NODE = re.compile(
+    r"<[^>]*\bid\s*=\s*[\"']layer-alert-popup-contents\d?[\"'][^>]*>(.*?)</",
+    re.I | re.S)
+
+_RE_TAG = re.compile(r"<(?:script|style)\b[^>]*>.*?</(?:script|style)>|<[^>]+>",
+                     re.I | re.S)
+
+
+def _flatten(html_text: str) -> str:
+    """HTML 을 문장으로 읽을 수 있는 평문으로. 태그는 **공백**으로 바꾼다.
+
+    빈 문자열로 바꾸면 `<div>…기다리시면 </div><div>예약이 완료됩니다.</div>`
+    처럼 태그로 갈린 두 조각이 한 단어로 붙는다. 09-15 의 그 문장이 바로
+    그렇게 나뉘어 있었다.
+    """
+    t = _RE_TAG.sub(" ", html_text or "")
+    t = _html.unescape(t)
+    return re.sub(r"[ \t ]+", " ", t)
+
+
 def _scan_page_source(driver):
-    """page_source 통짜 훑기. 분류되면 (코드, 문구), 아니면 None."""
+    """page_source 훑기. 분류되면 (코드, **문장**), 아니면 None.
+
+    v1.0.13 에서 두 가지가 바뀌었다.
+
+    1. 조각이 아니라 **문장**을 돌려준다. 예전에는 일치한 키워드 자체를
+       돌려줘서, 09-15 로그의 '서버 문구' 가 `예약이 완료` 라는 조각이었다.
+       로그만 봐서는 그게 알림인지 대기열 안내인지 알 길이 없었다.
+    2. 먼저 사이트의 **진짜 알림 컨테이너**를 본다. 거기에 아무것도 없을
+       때에만 페이지 평문을 문장 단위로 훑는다. 그리고 그 훑기는 `classify`
+       를 문장에 그대로 물리므로, 대기열 안내는 `_RE_PENDING` 에 걸려
+       R_UNKNOWN 이 된다.
+    """
     try:
         src = driver.page_source or ""
     except Exception:
         src = ""
-    for w in OK_WORDS:
-        if w in src:
-            return R_OK, w
-    for w in TOO_EARLY_WORDS:
-        if w in src:
-            return R_TOO_EARLY, w
-    for w in FULL_WORDS:
-        if w in src:
-            return R_FULL, w
-    if _RE_TAKEN.search(src):
-        return R_TAKEN, TAKEN_REAL
+    if not src:
+        return None
+
+    # 1) 실물 알림 컨테이너가 최우선이다.
+    for raw in _RE_ALERT_NODE.findall(src):
+        msg = _flatten(raw).strip()
+        if not msg:
+            continue
+        code = classify(msg)
+        if code != R_UNKNOWN:
+            return code, msg
+
+    # 2) 알림이 비어 있으면 평문을 문장 단위로. 결과로 받아들이는 코드는
+    #    예전과 같은 네 가지로 묶어 둔다(칸 거절/일반 실패는 화면 읽기
+    #    경로가 따로 본다).
+    wanted = (R_OK, R_TAKEN, R_FULL, R_TOO_EARLY)
+    for s in sentences(_flatten(src)):
+        if len(s) > 200:
+            continue
+        code = classify(s)
+        if code in wanted:
+            return code, s
     return None
+
+
+def evidence_line(outcome) -> str:
+    """판정의 근거를 사람이 읽을 한 줄로. 이 줄이 09-04 에 없어서 눈이 멀었다.
+
+    두 모드(자동 `confirm_burst`, 수동 `handover.burst`)가 같은 문장을 쓴다.
+    예전에는 자동 모드가 '서버 응답 본문' 일 때만 이 줄을 찍어서, 화면으로
+    판정한 발사는 근거가 로그에 아예 없었다.
+    """
+    if outcome is None:
+        return "판정 근거: 없음"
+    if outcome.source == "submit":
+        bits = [f"판정 근거: 서버 응답 본문 (HTTP {outcome.status}"]
+        if outcome.elapsed_ms:
+            bits.append(f", 왕복 {outcome.elapsed_ms:.0f}ms")
+        bits.append(")")
+        line = "".join(bits)
+        if outcome.server_date:
+            line += f" · 서버가 요청을 받은 시각: {outcome.server_date}"
+        if outcome.returnval:
+            line += f" · returnval={outcome.returnval}"
+        return line
+    if outcome.source == "screen":
+        return "판정 근거: 화면 안내 문구 (서버 응답 본문은 못 봤습니다)"
+    if outcome.submit_seen and not outcome.submit_done:
+        return (f"판정 근거: 없음. 예약 제출 응답이 "
+                f"{outcome.waited_ms / 1000:.1f}초 안에 오지 않았습니다.")
+    if getattr(outcome, "queued", False):
+        # 2026-09-15. 대기열에 선 채로 시간이 끝났다. 화면에 '잠시만
+        # 기다리시면 예약이 완료됩니다' 가 떠 있어도 그건 대기열 안내지
+        # 결과가 아니다. 그날 우리는 그것을 '예약 성공' 으로 읽었다.
+        return (f"판정 근거: 없음. 가상대기열에 선 채로 "
+                f"{outcome.waited_ms / 1000:.1f}초가 지났습니다 "
+                f"(예약 제출이 아직 나가지 않았습니다).")
+    return "판정 근거: 없음. 예약 제출이 잡히지 않았습니다."
 
 
 def read_outcome(driver, timeout: float = 6.0,
@@ -2368,9 +2578,7 @@ def confirm_once(driver, p: Prepared, clock, open_epoch: float,
     log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
         f"· 서버: {outcome.text or '(문구 없음)'} "
         f"[{outcome.code} · {outcome_label(outcome.code)}]")
-    if outcome.source == "submit":
-        log(f"판정 근거: 서버 응답 본문 (HTTP {outcome.status}, "
-            f"왕복 {outcome.elapsed_ms:.0f}ms)")
+    log(evidence_line(outcome))
     return shot
 
 
@@ -2468,6 +2676,24 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
             automation.capture(driver, diag, f"confirm_{attempt}_unknown")
         except Exception:
             pass
+
+        # 다만 **제출이 이미 나갔거나 대기열에 걸린 채로** 판정을 못 읽은
+        # 것이라면 다시 쏘지 않는다. 같은 자리에 두 건이 들어가면 이 사이트는
+        # 전화로만 취소된다. 모르면 멈춘다(2026-09-15).
+        out = shot.outcome
+        if out is not None and shot.code == R_UNKNOWN and (
+                out.submit_seen or getattr(out, "queued", False)):
+            why = ("예약 제출이 이미 나갔습니다" if out.submit_seen
+                   else "가상대기열에 서 있습니다")
+            log(f"판정을 읽지 못했지만 {why}. 중복 예약을 막으려고 여기서 "
+                f"멈춥니다. 아이사랑에서 예약 내역을 꼭 확인해 주세요.")
+            return StepResult(
+                False, shot.text or "예약 결과를 확인하지 못했습니다.",
+                "unknown_submitted", p,
+                {"shots": [s.as_dict() for s in shots],
+                 "confirmArrivalOffsetMs": round(shot.arrival_offset_ms, 1),
+                 "confirmAttempts": attempt})
+
         if not redrive_confirm(driver, p, log):
             break
         time.sleep(max(retry_ms, 20) / 1000.0)

@@ -107,8 +107,15 @@ def test_one_point_ten_is_newer_than_one_point_nine():
 
 
 def test_the_shipped_version_matches_what_the_manifest_will_say():
-    assert config.APP_VERSION == "1.0.12"
-    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.11")
+    """리포의 판 번호. 매니페스트는 **아직 여기까지 올라가 있지 않다.**
+
+    1.0.13 은 2026-09-15 거짓 성공(넷퍼널 대기열 안내를 '예약 성공' 으로 읽은
+    건)의 수정판이다. 게시(= 고객 PC 로의 배포)는 소유자가 시점을 정하므로
+    `version-aisarang.json` 은 이 커밋 시점에 여전히 1.0.12 를 서비스한다.
+    그 파일은 리포에 없다(gateway artifacts 아래에만 있다).
+    """
+    assert config.APP_VERSION == "1.0.13"
+    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.12")
 
 
 def test_the_customer_on_1_0_11_actually_gets_1_0_12():

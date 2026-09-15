@@ -1029,7 +1029,11 @@ def read_result(driver) -> tuple[str, str]:
     msg = read_session_message(src)
     if msg:
         return booking.classify(msg), msg
-    for word in (booking.OK_WORDS + booking.TOO_EARLY_WORDS + booking.FULL_WORDS):
-        if word in src:
-            return booking.classify(word), word
+    # 예전에는 여기서 `word in src` 로 **조각**을 찾아 그 조각을 판정에 물렸다.
+    # 그것이 2026-09-15 의 거짓 성공을 만든 바로 그 모양이다(넷퍼널 대기열
+    # 안내의 "…예약이 완료됩니다." 안에 "예약이 완료" 가 들어 있다).
+    # `_scan_page_source` 는 알림 컨테이너를 먼저 보고, 문장 단위로 판정한다.
+    hit = booking._scan_page_source(driver)
+    if hit is not None:
+        return hit
     return booking.R_UNKNOWN, ""

@@ -496,6 +496,9 @@ READ_ONLY_BOOKING = {
     # **읽기만** 한다(클릭/제출/화면 이동 없음). outcome_label 은 사전 조회,
     # SUBMIT_WAIT_SECONDS 는 상수다.
     "read_outcome_detail", "outcome_label", "SUBMIT_WAIT_SECONDS",
+    # v1.0.13: `판정 근거:` 한 줄을 두 모드가 같이 쓴다. 인자로 받은 Outcome
+    # 을 문자열로 만들기만 하는 순수 함수라 드라이버를 만지지 않는다.
+    "evidence_line",
 }
 
 

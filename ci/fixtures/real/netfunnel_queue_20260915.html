@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  2026-09-15 09:00:00 KST, 고객 PC(customerId 2309842), v1.0.12.
+  그날 진단 ZIP 의 `page_source/0002_handover_after.html` 에서 **글자 그대로**
+  잘라낸 두 덩어리다.
+
+    1) 넷퍼널 가상대기열 팝업 (display:block; visibility:visible, 앞에 31명, 3초)
+    2) 사이트의 알림 컨테이너 세 개 - 그날 **전부 비어 있었다**
+
+  그 순간 우리 프로그램은 `[ok, 예약 성공]` 을 찍었고, 고객은 자기 화면에서
+  자리를 뺏겼다는 안내를 읽었다. 예약은 실제로 제3자에게 넘어갔고 고객은
+  20260929 자리를 갖지 못했다(고객이 예약 내역으로 확인). 결과 알림은 비어
+  있었고, 우리가 성공으로 읽은 문장은 대기열 안내의
+  "잠시만 기다리시면 예약이 완료됩니다." 였다.
+
+  이 파일에는 개인정보가 없다(18자리 등록번호/전화/이메일/주민/이름 0건 확인).
+  그 ZIP 에는 서버가 보낸 거절 원문이 **없다**. InsertOcreqst 가 나가기 전에
+  우리가 run 을 끝냈기 때문이다. 서버 원문은 09-04 캡처
+  (`insert_ocreqst_taken.json` = booking.TAKEN_REAL) 쪽에 있다.
+-->
+<html lang="ko"><head><meta charset="utf-8"><title>20260915 090000 loss</title></head>
+<body>
+<div class="popup_wrap s_size wp400 type-alert" id="layer-alert-popup">
+	<div class="popup_inner_wrap maxw525" tabindex="0">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2">
+	<div class="popup_inner_wrap maxw525" tabindex="0">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close2" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents2"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close2">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+<div class="popup_wrap s_size wp400 type-alert3" id="layer-alert-popup3">
+	<div class="popup_inner_wrap maxw525" tabindex="0">
+        <a href="javascript:void(0)" class="popup_close" role="button" id="layer-popup-close3" title="닫기"><span class="hidden">닫기</span></a>
+        <h5>알림</h5>
+        <section class="mt30 pl30 pr30">
+            <p class="f_18" id="layer-alert-popup-contents3"></p>
+            <div class="btn_group">
+                <a href="#none" class="btn" id="layer-popup-close3">확인</a>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="NetFunnel_Loading_Popup" style="display: block; top: 1950px; left: 342px; overflow: visible; white-space: normal; position: absolute; visibility: visible; z-index: 32002;" tabindex="0"><div id="NetFunnel_Skin_Top" style="background-color:#ffffff;border:1px solid #9ab6c4;width:580px;-moz-border-radius: 5px; -webkit-border-radius: 5px; -khtml-border-radius: 5px; border-radius: 5px;"><div style="background-color:#ffffff;border:6px solid #eaeff3;-moz-border-radius: 5px; -webkit-border-radius: 5px; -khtml-border-radius: 5px; border-radius: 5px;"><div style="padding-top:0px;padding-left:25px;padding-right:25px"><div style="text-align:left;font-size:16pt;color:#001f6c;height:22px;margin-top:10px;"><b>시간제 보육 예약 <span style="color:#013dc1"> 대기 중</span>입니다.</b></div><div style="text-align:right;font-size:11pt;color:#4d4b4c;padding-top:4px;width:99%;height:17px"><b>예상대기시간 : <span id="NetFunnel_Loading_Popup_TimeLeft" class="%H시간 %M분 %02S초^ ^false">03초 </span></b></div><div id="Progress_Print" style="display:none;position:absolute;left:0;top:100px;width:100%;text-align:center;font-size:17px;color:gray">0 % (0/31) - 3.9247-****-****-6692 sec</div> <div style="padding-top: 6px; padding-bottom: 6px; height: 20px; visibility: visible;" id="NetFunnel_Loading_Popup_Progressbar"><div style="width: 100%; height: 100%; border-radius: 10px; overflow: hidden; position: relative; background-color: rgb(202, 202, 202);"><div style="width: 0%; height: 100%; overflow: visible; position: relative; border-radius: 10px; background-color: rgb(79, 127, 249);"></div></div></div><div style="background-color:#ededed;padding-bottom:8px;overflow:hidden"><div style="padding:10px;"><div style="text-align:left;font-size:13pt;color:#4d4b4c;padding:5px;height:60%;">현재 앞에 <b><span style="color:#2a509b"><span id="NetFunnel_Loading_Popup_Count" class="다수">31</span></span></b> 명, 뒤에 <b><span style="color:#2a509b"><span id="NetFunnel_Loading_Popup_NextCnt" class="다수">1</span></span></b> 명의 대기자가 있습니다.<br><br><div style="text-align:left;font-size:13pt;color:#4d4b4c;height:10%;">현재 접속 사용자가 많아 대기 중이며, 잠시만 기다리시면 </div><div style="text-align:left;font-size:13pt;color:#4d4b4c;height:10%;">예약이 완료됩니다.</div><div style="text-align:left;font-size:12pt;color:#4d4b4c;height:10%;">*<b><span style="color: red;">시간당 인원이 초과</span>될 경우 예약이 불가할 수 있습니다.</b></div><div style="text-align:center;font-size:10pt;color:#2a509b;padding-top:15px;"><b>※ 재접속하시면 대기시간이 더 길어집니다. <span id="NetFunnel_Countdown_Stop" style="cursor:pointer">[중지]</span></b></div></div></div></div><div style="height:5px;"></div></div></div></div></div>
+</body></html>

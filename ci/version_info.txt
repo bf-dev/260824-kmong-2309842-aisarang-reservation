@@ -20,12 +20,12 @@ VSVersionInfo(
         '041204b0',
         [StringStruct('CompanyName', 'Neoworks'),
          StringStruct('FileDescription', '아이사랑 시간제보육 예약 도우미'),
-         StringStruct('FileVersion', '1.0.12.0'),
+         StringStruct('FileVersion', '1.0.13.0'),
          StringStruct('InternalName', 'aisarang-reservation'),
          StringStruct('LegalCopyright', 'Copyright (c) 2026 Neoworks'),
          StringStruct('OriginalFilename', 'aisarang-reservation.exe'),
          StringStruct('ProductName', '아이사랑 시간제보육 예약'),
-         StringStruct('ProductVersion', '1.0.12.0')])
+         StringStruct('ProductVersion', '1.0.13.0')])
     ]),
     VarFileInfo([VarStruct('Translation', [1042, 1200])])
   ]
