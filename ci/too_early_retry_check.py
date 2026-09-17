@@ -51,6 +51,32 @@ from aisarang import automation, booking, handover  # noqa: E402
 
 REAL = os.path.join(HERE, "fixtures", "real")
 
+
+def _out(line: str = "") -> None:
+    """한글이 섞여도 죽지 않는 출력.
+
+    windows-latest 러너에서 이 스크립트의 stdout 은 cp1252 다. 그대로 한글을
+    찍으면 UnicodeEncodeError 로 **시험 자체가** 죽는다(2026-09-17 CI 실측:
+    제품은 멀쩡한데 이 하네스가 그 이유로 빨간불이었다). main.py 의 `_out` 과
+    같은 처리를 한다: 못 찍는 글자만 대체하고 줄은 반드시 남긴다.
+    판정에 쓰는 `RETRY...` 줄은 전부 ASCII 라 이 대체에 걸리지 않는다.
+    """
+    if sys.stdout is None:
+        return
+    try:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+        return
+    except Exception:
+        pass
+    try:
+        enc = getattr(sys.stdout, "encoding", None) or "ascii"
+        safe = (line + "\n").encode(enc, "replace").decode(enc, "replace")
+        sys.stdout.write(safe)
+        sys.stdout.flush()
+    except Exception:
+        pass
+
 # 서버 원문 그대로. 지어낸 글자를 쓰지 않는다(v1.0.8 의 순환논증을 되돌리지 않기 위해).
 TOO_EARLY_BODY = json.dumps(
     {"returnmsg": booking.TOO_EARLY_REAL, "returnval": ""}, ensure_ascii=False)
@@ -328,7 +354,7 @@ def _case(name: str, server_lag: float, skew: float, want_shots: int,
 
 def main() -> int:
     def log(s):
-        print(str(s), flush=True)
+        _out(str(s))
 
     # 두 시나리오를 돈다. 둘 다 같은 실물 캡처, 같은 실물 서버 원문이다.
     #   early-once   이른 한 발 → 되살리기 → 성공        (브리프가 요구한 그림)
