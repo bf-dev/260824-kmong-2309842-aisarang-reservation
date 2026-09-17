@@ -62,6 +62,12 @@ class Runner:
         들어 있으면 그 값을 쓰되 범위 밖으로는 못 나간다.
         매번 다시 계산하는 이유: 정각 90초 전까지 5분마다 시각을 다시 재고,
         그때마다 오차 폭이 달라지기 때문이다.
+
+        v1.0.15: 여유는 **상수만** 본다. 예전에는 settings 의
+        arrival_safety_ms 를 먼저 봤는데, 그 키는 고객이 화면에서 바꿀 수 없는
+        값인데도 settings.json 에 저장돼 있었다. 그래서 상수를 내려도 고객 PC
+        에서는 파일의 옛 값(250)이 이겨 조준이 바뀌지 않았다.
+        자세한 내용은 config._OBSOLETE 주석.
         """
         try:
             fixed = float(settings.get("arrival_after_ms", 0) or 0)
@@ -71,12 +77,7 @@ class Runner:
             fixed = min(max(fixed, config.ARRIVAL_MIN_AFTER_MS),
                         config.ARRIVAL_MAX_AFTER_MS)
             return fixed / 1000.0
-        try:
-            safety = float(settings.get("arrival_safety_ms",
-                                        config.ARRIVAL_SAFETY_MS))
-        except Exception:
-            safety = config.ARRIVAL_SAFETY_MS
-        return self.clock.safe_arrival_after(safety / 1000.0)
+        return self.clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
 
     # -- 로그 ---------------------------------------------------------
     def log(self, line: str) -> None:
@@ -301,7 +302,7 @@ class Runner:
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
         self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
                  f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
-                 f"{int(settings.get('arrival_safety_ms', config.ARRIVAL_SAFETY_MS))}ms)")
+                 f"{int(config.ARRIVAL_SAFETY_MS)}ms)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -416,9 +417,7 @@ class Runner:
                 self.driver, self.clock, open_epoch, watcher,
                 retry_seconds=int(settings.get("retry_seconds", 20)),
                 retry_ms=int(settings.get("confirm_retry_ms", 90)),
-                log=self.log, diag=self.diag, stop_event=self.stop_event,
-                reopen_max=int(settings.get("reopen_max", 2)),
-                reopen_seconds=float(settings.get("reopen_seconds", 15)))
+                log=self.log, diag=self.diag, stop_event=self.stop_event)
             automation.capture(self.driver, self.diag, "handover_after")
             detail = dict(res.detail)
             detail["reason"] = res.reason
@@ -439,7 +438,7 @@ class Runner:
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
         self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
                  f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
-                 f"{int(settings.get('arrival_safety_ms', config.ARRIVAL_SAFETY_MS))}ms)")
+                 f"{int(config.ARRIVAL_SAFETY_MS)}ms)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -450,9 +449,7 @@ class Runner:
             retry_seconds=int(settings.get("retry_seconds", 20)),
             retry_ms=int(settings.get("confirm_retry_ms", 90)),
             log=self.log, diag=self.diag, stop_event=self.stop_event,
-            preflight=st,
-            reopen_max=int(settings.get("reopen_max", 2)),
-            reopen_seconds=float(settings.get("reopen_seconds", 15)))
+            preflight=st)
         automation.capture(self.driver, self.diag, "handover_after")
 
         detail = dict(res.detail)

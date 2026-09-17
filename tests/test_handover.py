@@ -809,6 +809,37 @@ def test_reopen_is_hard_capped():
     assert _gate(max_times=0).allowed(_closed()) is False
 
 
+# ------------------------------------------- v1.0.15: 조준을 당긴 것의 안전망
+
+def test_the_reopen_defaults_come_from_config_not_a_magic_number():
+    """상한/마감을 인수로 안 주면 config 의 값을 쓴다(6회 / 정각 +2초).
+
+    v1.0.14 까지는 2회 / 15초가 함수 기본값으로 박혀 있었고, 같은 값이
+    settings.json 에도 저장돼 있어서 상수를 고쳐도 고객 PC 에 닿지 않았다.
+    이제 한 곳(config)에서만 정한다.
+    """
+    g = handover._Reopen(_FakeClock(OPEN + 0.5), OPEN)
+    assert g.max_times == config.REOPEN_EARLY_MAX == 6
+    assert g.seconds == config.REOPEN_EARLY_SECONDS == 2.0
+
+
+def test_the_early_window_is_wide_enough_to_retry_but_not_to_spam():
+    """정각 직후 2초 안에서는 여러 번 되살리고, 그 뒤에는 한 번도 안 한다.
+
+    2초를 넘겨서도 '예약시간전' 이 온다면 우리가 이른 것이 아니라 서버 시각
+    추정이 통째로 틀린 것이다. 그때 [예약하기] 를 더 누르면 대기열 순번만
+    뒤로 밀린다(2026-08-26: 72 → 138 → 177명).
+    """
+    for t in (0.0, 0.5, 1.9):
+        g = handover._Reopen(_FakeClock(OPEN + t), OPEN)
+        g.note_outcome(booking.R_TOO_EARLY)
+        assert g.allowed(_closed()) is True, t
+    for t in (2.01, 5.0, 14.0):
+        g = handover._Reopen(_FakeClock(OPEN + t), OPEN)
+        g.note_outcome(booking.R_TOO_EARLY)
+        assert g.allowed(_closed()) is False, t
+
+
 def test_reopen_needs_a_fresh_too_early_for_each_press(monkeypatch):
     """한 번 되살린 뒤에는 새 '예약시간전' 이 있어야 또 누를 수 있다."""
     monkeypatch.setattr(booking, "close_result_alert", lambda *a, **k: "")
@@ -881,7 +912,9 @@ def _run_burst(monkeypatch, states, outcomes, **kw):
 
     opts = dict(retry_seconds=3, retry_ms=20, reopen_max=2, reopen_seconds=3.0)
     opts.update(kw)
-    res = handover.burst(object(), _FakeClock(OPEN + 0.5, step=0.12), OPEN,
+    # 시계를 바꿔 끼울 수 있게 한다(기본은 예전과 같은 가짜 시계).
+    clock = opts.pop("clock", None) or _FakeClock(OPEN + 0.5, step=0.12)
+    res = handover.burst(object(), clock, OPEN,
                          _ScriptedWatcher(states), log=lambda *_: None, **opts)
     return res, calls
 
@@ -902,6 +935,55 @@ def test_burst_recovers_from_a_real_too_early_and_wins_the_second_shot(monkeypat
     assert calls["close"] == 1, "되살리기 전에 결과 알림을 닫는다"
     assert res.detail["reopen"]["used"] == 1
     assert res.detail["confirmAttempts"] == 2
+
+
+def test_every_too_early_answer_corrects_the_estimate_not_just_the_first(monkeypatch):
+    """**이 판의 핵심 수정.** 이른 발마다 도착 추정을 다시 배운다.
+
+    v1.0.14 는 `corrected` 플래그로 첫 '예약시간전' 하나만 보정하고 그 뒤의
+    응답을 버렸다. 한 발 보정하고도 여전히 이르면 두 번째 응답이 바로 그
+    사실을 말해주는데 그것을 흘린 것이다. 여유를 175ms 로 깎은 지금은 이
+    학습이 회복 속도를 정한다.
+
+    `note_too_early` 는 **제품 구현 그대로** 부른다(단조 증가라 매번 불러도
+    조준이 앞으로 가지 않는다).
+    """
+    class _Learning:
+        def __init__(self):
+            self.correction = 0.0
+            self.correction_notes = []
+            self.learned = []
+            self._t = OPEN + 0.1
+
+        def server_now(self):
+            self._t += 0.05
+            return self._t
+
+        def arrival_for_local_fire(self, _local):
+            # 매 발 조금씩 더 늦게 도착했다고 믿는다(추정은 양수로 유지).
+            return self._t
+
+        def note_too_early(self, est, margin=0.03):
+            from aisarang.clock import ClockSync
+            delta = ClockSync.note_too_early(self, est, margin)
+            if delta:
+                self.learned.append(round(delta * 1000, 1))
+            return delta
+
+    clock = _Learning()
+    res, calls = _run_burst(
+        monkeypatch,
+        states=[_ready(), _closed(), _ready(), _closed(), _ready()],
+        outcomes=[(booking.R_TOO_EARLY, booking.TOO_EARLY_REAL),
+                  (booking.R_TOO_EARLY, booking.TOO_EARLY_REAL),
+                  (booking.R_OK, booking.OK_REAL)],
+        clock=clock, reopen_max=6, reopen_seconds=2.0)
+
+    assert res.ok is True and res.reason == "reserved"
+    assert calls["fire"] == 3, calls
+    # 이른 발이 두 번이었으니 보정도 두 번 일어나야 한다. v1.0.14 라면 1 이다.
+    assert len(clock.learned) == 2, clock.learned
+    assert clock.correction > 0
 
 
 def test_burst_never_represses_after_a_capacity_answer(monkeypatch):

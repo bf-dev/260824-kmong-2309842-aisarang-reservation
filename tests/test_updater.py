@@ -109,16 +109,16 @@ def test_one_point_ten_is_newer_than_one_point_nine():
 def test_the_shipped_version_matches_what_the_manifest_will_say():
     """리포의 판 번호와 서빙 중인 매니페스트가 같아야 한다.
 
-    1.0.14 는 **기록 전용** 판이다. 대기열 순번(앞에 N명)을 판정 근거 줄과
-    업로드 요약에 남긴다. 판정/조준/대기 동작은 1.0.13 과 같다.
-    1.0.13(09-15 거짓 성공 수정)은 2026-09-15T01:40:00Z 에 게시했다.
+    1.0.15 는 **조준** 판이다. 여유를 250 → 175ms 로 한 걸음 당기고(09-17
+    조건에서 +275 → +200ms), 그 대가로 '예약시간전' 회복을 단단하게 했다
+    (매 발 보정 + 되살리기 6회 / 정각 +2초). 판정 규칙은 1.0.13/1.0.14 그대로다.
 
     그 파일은 리포에 없다(gateway artifacts 아래에만 있다). 그래서 여기서
     대조할 수 있는 것은 상수뿐이다. 실제 서빙 값은 NOTES.md 의 '배포 현황'
     절과 metadata.json 의 `deploy.manifestServing` 에 적어 둔다.
     """
-    assert config.APP_VERSION == "1.0.14"
-    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.13")
+    assert config.APP_VERSION == "1.0.15"
+    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.14")
 
 
 def test_the_customer_on_1_0_11_actually_gets_1_0_12():

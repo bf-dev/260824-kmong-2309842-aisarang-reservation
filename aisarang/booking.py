@@ -2641,7 +2641,6 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
     shots: list = []
     deadline = open_epoch + max(retry_seconds, 1)
     attempt = 0
-    corrected = False
     while clock.server_now() < deadline:
         if stop_event is not None and stop_event.is_set():
             break
@@ -2681,11 +2680,15 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
                               {"shots": [s.as_dict() for s in shots]})
 
         if shot.code == R_TOO_EARLY:
-            if not corrected:
-                delta = clock.note_too_early(shot.arrival_offset_ms / 1000.0)
-                if delta:
-                    corrected = True
-                    log(f"'예약시간전' 응답으로 도착 추정을 {delta * 1000:+.0f}ms 보정했습니다.")
+            # v1.0.15: 매번 배운다. 예전에는 `corrected` 로 첫 한 번만 배우고
+            # 그 뒤의 '예약시간전' 응답을 버렸다. 한 번 보정하고도 여전히
+            # 이르면 두 번째 응답이 바로 그 사실을 말해주는데 그것을 흘렸다.
+            # `note_too_early` 는 단조 증가라(배운 것보다 작으면 0) 여러 번
+            # 불러도 조준이 앞으로 가지 않는다.
+            delta = clock.note_too_early(shot.arrival_offset_ms / 1000.0)
+            if delta:
+                log(f"'예약시간전' 응답으로 도착 추정을 {delta * 1000:+.0f}ms "
+                    f"보정했습니다(누적 {clock.correction * 1000:+.0f}ms).")
             if not redrive_confirm(driver, p, log):
                 log("확인창을 다시 세우지 못했습니다.")
                 break

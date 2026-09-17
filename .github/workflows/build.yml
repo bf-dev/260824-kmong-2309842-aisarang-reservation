@@ -37,6 +37,16 @@ jobs:
       - name: handover mode fires only on a real human-made setup (real Chromium)
         run: python -m pytest tests/test_handover.py -v
 
+      # v1.0.15 의 안전망. 조준 여유를 250 -> 175ms 로 당긴 대가로, 이른 한 발이
+      # '잃은 아침' 이 아니라 '재시도' 라는 것을 실물로 증명해야 한다.
+      # 실물 캡처 + 진짜 크롬 + 서버 원문(returnmsg)으로 한 브라우저 안에서
+      # [확인] -> '아직 예약 가능한 시간이 아닙니다.' -> 알림 닫기 ->
+      # [예약하기] 재클릭 -> 확인창 되살아남 -> 재발사 -> 성공까지 걷는다.
+      # 두 시나리오를 돈다: 이른 발 1회, 이른 발 여러 회(회복이 '한 번만' 이
+      # 아님을 증명). 여기가 빨간불이면 조준을 당길 근거가 사라진 것이다.
+      - name: a too-early shot recovers and re-fires (real Chromium, real returnmsg)
+        run: python ci/too_early_retry_check.py
+
       # 셀렉터 의존성 전수 감사. 미확인이 늘거나 제품 동작 검증이 하나라도
       # 깨지면 0 이 아닌 코드로 끝나 빌드를 세운다.
       - name: selector dependency audit

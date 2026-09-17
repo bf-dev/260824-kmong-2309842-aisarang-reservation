@@ -78,7 +78,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from . import booking
+from . import booking, config
 
 # ---------------------------------------------------------------- 화면 읽기
 #
@@ -541,18 +541,40 @@ class _Reopen:
       3. 확인창이 지금 화면에 없다(있으면 그냥 다시 쏘면 된다).
       4. 아직 예약 화면 위에 있고 선택표 체크가 그대로 켜져 있다.
       5. 가상대기열 레이어가 떠 있지 않다.
-      6. 정각을 지났고, 마감(reopen_seconds) 전이다.
+      6. 정각을 지났고, 마감(REOPEN_EARLY_SECONDS) 전이다.
       7. 남은 횟수가 있다.
       8. 잠기지 않았다. 한 번이라도 대기열을 보면 영구히 잠근다.
 
     8번이 이 판의 핵심이다. [예약하기] 는 곧 `NetFunnel_Action`, 즉 대기열
     진입이다(실물 스크립트). 대기열이 떴다면 다시 누르는 것은 순번을 맨 뒤로
     보내는 짓이고, 2026-08-26 에 그것이 72명 → 138명 → 177명을 만들었다.
+
+    v1.0.15 에서 상한과 마감이 달라졌다 (조준을 당긴 것의 안전망)
+    ------------------------------------------------------------------
+    여유를 250 → 175ms 로 깎았으니 이른 쪽으로 틀릴 확률이 올라간다. 그
+    방향의 실패가 '아침을 잃는 것' 이 아니라 '한 번 더 쏘는 것' 이어야
+    이 조준이 정당해진다. 그래서 회복을 두 군데 손봤다.
+
+      상한  2회  → config.REOPEN_EARLY_MAX(6회)
+      마감  15초 → config.REOPEN_EARLY_SECONDS(2초)
+
+    마감을 **줄인** 것이 이상해 보이지만 방향이 맞다. 15초는 애초에 근거가
+    없었고, 정각 +2초를 지나서도 '예약시간전' 이 온다면 그것은 우리가 이른
+    것이 아니라 서버 시각 추정이 통째로 틀린 것이다. 그 상황에서 [예약하기]
+    를 계속 누르면 대기열 순번만 뒤로 밀린다. 반대로 진짜 '우리가 이르기만
+    했다' 는 정각 직후 수백 ms 안에서만 일어나고, 거기서는 2회가 아니라
+    창을 다 쓸 만큼 쏴야 한다(한 주기 실측 400~800ms → 2초에 최대 6회).
+    상한이 올라간 대신 창이 좁아져서, 총 '재클릭 가능 시간' 은 오히려 줄었다.
     """
 
-    def __init__(self, clock, open_epoch: float, max_times: int, seconds: float):
+    def __init__(self, clock, open_epoch: float,
+                 max_times: int = None, seconds: float = None):
         self.clock = clock
         self.open_epoch = open_epoch
+        if max_times is None:
+            max_times = config.REOPEN_EARLY_MAX
+        if seconds is None:
+            seconds = config.REOPEN_EARLY_SECONDS
         self.max_times = max(int(max_times), 0)
         self.seconds = max(float(seconds), 0.0)
         self.used = 0
@@ -625,7 +647,8 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
           retry_seconds: int = 20, retry_ms: int = 90,
           log=lambda *_: None, diag=None, stop_event=None,
           preflight: "LiveState | None" = None,
-          reopen_max: int = 2, reopen_seconds: float = 15.0) -> booking.StepResult:
+          reopen_max: int = None, reopen_seconds: float = None
+          ) -> booking.StepResult:
     """정각에 [확인] 을 쏘고, 필요하면 다시 쏜다. 그 외에는 아무것도 누르지 않는다.
 
     자동 모드의 `booking.confirm_burst` 와 판정은 같다.
@@ -643,11 +666,20 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
     `preflight` 는 발사 직전(수십 ms 전)에 이미 다시 읽어둔 상태다. 첫 발은
     그것을 그대로 쓴다. 첫 발만은 화면을 한 번 더 읽느라 조준 시각을 늦출 수
     없기 때문이다. 그 뒤로는 매 발마다 다시 읽는다.
+
+    v1.0.15: 이른 쪽 회복이 이 함수의 핵심이 됐다(여유를 175ms 로 깎았다).
+    바뀐 것은 둘이다.
+      - '예약시간전' 을 맞을 때마다 **매번** 도착 추정을 다시 보정한다.
+        예전에는 `corrected` 플래그 때문에 첫 번째 한 번만 배웠다. 한 발
+        보정하고도 여전히 이르면 두 번째 응답이 그 사실을 말해주는데 그것을
+        버리고 같은 자리에 다시 쏘고 있었다. `note_too_early` 는 단조 증가라
+        (배운 것보다 작은 값은 무시) 매번 불러도 뒤로만 간다.
+      - 되살리기 상한/마감은 config 의 REOPEN_EARLY_* 를 기본값으로 쓴다
+        (6회 / 정각 +2초). 인수로 넘기면 그것이 이긴다(테스트용).
     """
     shots: list = []
     deadline = open_epoch + max(retry_seconds, 1)
     attempt = 0
-    corrected = False
     told_closed = False
     pending = preflight
     reopen = _Reopen(clock, open_epoch, reopen_max, reopen_seconds)
@@ -729,12 +761,14 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         if code == booking.R_NOT_BOOKABLE:
             return booking.StepResult(False, text or "예약할 수 없는 시간대입니다.",
                                       "not_bookable", None, detail)
-        if code == booking.R_TOO_EARLY and not corrected:
+        if code == booking.R_TOO_EARLY:
+            # 매번 배운다. `note_too_early` 는 이미 배운 값보다 작으면 0 을
+            # 돌려주므로(단조 증가) 여러 번 불러도 조준이 앞으로 가지 않는다.
             delta = clock.note_too_early(shot.arrival_offset_ms / 1000.0)
             if delta:
-                corrected = True
                 log(f"'예약시간전' 응답으로 도착 추정을 {delta * 1000:+.0f}ms "
-                    f"보정했습니다.")
+                    f"보정했습니다(누적 "
+                    f"{clock.correction * 1000:+.0f}ms).")
         if code not in (booking.R_TOO_EARLY, booking.R_UNKNOWN):
             try:
                 from . import automation
