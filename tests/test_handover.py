@@ -343,7 +343,7 @@ def test_taken_never_reopens_the_reserve_button():
     새 결과 코드에도 그대로 적용되는지 여기서 못박는다.
     """
     gate = handover._Reopen(_FakeClock(OPEN + 1.0), OPEN, 2, 15.0)
-    gate.note_outcome(booking.R_TAKEN)
+    gate.note_outcome(booking.R_TAKEN, _submit_outcome(booking.R_TAKEN))
     assert gate.locked is True
     st = handover.LiveState(on_reserve_page=True, ticked=1, modal=False,
                             confirm=False, queue=False)
@@ -373,7 +373,7 @@ def test_recovery_closes_the_real_alert_and_presses_the_real_reserve_button(site
         "    window.__confirmClick++; }); });")
 
     gate = handover._Reopen(_FakeClock(OPEN + 1.0), OPEN, 2, 15.0)
-    gate.note_outcome(booking.R_TOO_EARLY)
+    gate.note_outcome(booking.R_TOO_EARLY, _submit_outcome(booking.R_TOO_EARLY))
     st = handover.read_state(d)
     assert gate.allowed(st) is True, gate.why_not(st)
     assert gate.do(d, lambda *_: None) is True
@@ -741,10 +741,24 @@ def _closed(**kw) -> "handover.LiveState":
     return handover.LiveState(**base)
 
 
-def _gate(code=booking.R_TOO_EARLY, now=OPEN + 2.0, max_times=2, seconds=15.0):
+def _submit_outcome(code):
+    """서버 **응답 본문**에서 나온 판정. v1.0.16 의 되살리기 문은 이것만 받는다.
+
+    2026-09-18 09:00:00 이 이 구분을 만들었다. 그날의 `too_early` 는 화면에
+    14분간 남아 있던 죽은 알림이었고(우리 발사는 성공했다), 그 근거로 문을
+    열어 대기열 표를 새로 뽑았다. 이제 서버 원문만 문을 연다.
+    """
+    return booking.Outcome(code=code, text="", source="submit",
+                           status=200, submit_seen=True, submit_done=True)
+
+
+def _gate(code=booking.R_TOO_EARLY, now=OPEN + 2.0, max_times=2, seconds=15.0,
+          source="submit"):
     g = handover._Reopen(_FakeClock(now), OPEN, max_times, seconds)
     if code is not None:
-        g.note_outcome(code)
+        out = _submit_outcome(code) if source == "submit" else \
+            booking.Outcome(code=code, text="", source="screen")
+        g.note_outcome(code, out)
     return g
 
 
@@ -778,7 +792,7 @@ def test_reopen_locks_forever_once_a_queue_shows_up():
     """되살린 뒤 대기열이 뜨면 기다린다. 다시 누르면 맨 뒤로 간다."""
     g = _gate()
     g.lock("가상대기열에 섰습니다(다시 누르면 맨 뒤로 갑니다)")
-    g.note_outcome(booking.R_TOO_EARLY)
+    g.note_outcome(booking.R_TOO_EARLY, _submit_outcome(booking.R_TOO_EARLY))
     assert g.allowed(_closed()) is False
     assert "대기열" in g.why_not(_closed())
 
@@ -832,11 +846,11 @@ def test_the_early_window_is_wide_enough_to_retry_but_not_to_spam():
     """
     for t in (0.0, 0.5, 1.9):
         g = handover._Reopen(_FakeClock(OPEN + t), OPEN)
-        g.note_outcome(booking.R_TOO_EARLY)
+        g.note_outcome(booking.R_TOO_EARLY, _submit_outcome(booking.R_TOO_EARLY))
         assert g.allowed(_closed()) is True, t
     for t in (2.01, 5.0, 14.0):
         g = handover._Reopen(_FakeClock(OPEN + t), OPEN)
-        g.note_outcome(booking.R_TOO_EARLY)
+        g.note_outcome(booking.R_TOO_EARLY, _submit_outcome(booking.R_TOO_EARLY))
         assert g.allowed(_closed()) is False, t
 
 
@@ -847,7 +861,7 @@ def test_reopen_needs_a_fresh_too_early_for_each_press(monkeypatch):
     g = _gate(max_times=2)
     assert g.do(object(), lambda *_: None) is True
     assert g.allowed(_closed()) is False        # 아직 새 답을 못 들었다
-    g.note_outcome(booking.R_TOO_EARLY)
+    g.note_outcome(booking.R_TOO_EARLY, _submit_outcome(booking.R_TOO_EARLY))
     assert g.allowed(_closed()) is True
 
 
@@ -856,7 +870,7 @@ def test_reopen_locks_when_the_reserve_button_is_gone(monkeypatch):
     monkeypatch.setattr(booking, "repress_reserve_button", lambda *a, **k: False)
     g = _gate()
     assert g.do(object(), lambda *_: None) is False
-    g.note_outcome(booking.R_TOO_EARLY)
+    g.note_outcome(booking.R_TOO_EARLY, _submit_outcome(booking.R_TOO_EARLY))
     assert g.allowed(_closed()) is False
 
 
@@ -894,8 +908,14 @@ def _run_burst(monkeypatch, states, outcomes, **kw):
         # handover.burst 가 부르는 이름은 v1.0.12 부터 read_outcome_detail 이고,
         # 돌려주는 것은 (코드, 원문) 이 아니라 Outcome 이다. 여기서 튜플을 계속
         # 돌려주면 shot.code 에 튜플이 들어가 모든 분기가 조용히 빗나간다.
+        #
+        # v1.0.16: `source` 는 **서버 응답 본문**이다. 되살리기 문이 그
+        # 근거만 받기 때문이다(화면 문구로는 열리지 않는다). 이 하네스가
+        # 재현하는 것은 서버가 정말 '예약시간전' 을 답한 2026-08-27 이다.
+        # 화면 문구만 있는 경로는 아래 별도 시험이 본다.
         code, text = outcomes[min(calls["fire"], len(outcomes)) - 1]
-        return booking.Outcome(code=code, text=text, source="screen")
+        return booking.Outcome(code=code, text=text, source="submit",
+                               status=200, submit_seen=True, submit_done=True)
 
     def fake_repress(_driver, log=lambda *_: None):
         calls["repress"] += 1
