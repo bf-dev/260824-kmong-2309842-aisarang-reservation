@@ -2302,7 +2302,189 @@ childcare 요청이 기록되어 있다(09-15 는 33초 앞, 09-09 는 20초 앞
 **대기열을 이길 수는 없어도, 졌다는 사실과 이유는 남길 수 있다.**
 (이번 조사는 읽기 전용이라 고치지 않았다. 소유자 판단 사항.)
 
-## 배포 현황 (v1.0.15, 2026-09-17 02:00Z) ← 지금 서빙 중
+## 2026-09-18 사고: 우리가 **거짓 실패**를 찍었다 (v1.0.16 에서 수정)
+
+09-15 의 **거짓 성공**과 정확한 거울상이다. 그때는 이겼는데 `unknown` 을
+적었고, 이번에는 **이겼는데 `fail` 을 적었다.** 같은 병이다: 화면 문구를
+이번 발사의 답으로 믿는 것.
+
+### 그날 고객 PC 로그 (v1.0.15)
+
+```
+[09:00:00] 지금 [확인] 을 누릅니다!
+[09:00:01] [확인] 1발째 · 도착 추정 정각 +199ms
+           · 서버: 아직 예약 가능한 시간이 아닙니다. [too_early]
+[09:00:01] 판정 근거: 화면 안내 문구 (서버 응답 본문은 못 봤습니다)
+[09:00:01] '예약시간전' 응답으로 도착 추정을 +229ms 보정했습니다
+[09:00:01] [예약하기] 를 다시 눌러 확인창을 되살립니다 (#timecareConfirm).
+[09:00:01] 확인창 되살리기 1/6회차.
+[09:00:21] result=fail
+```
+
+**예약은 성공했다.** 고객이 그렇게 말했고, 진단 ZIP 이 네 겹으로 받쳐준다.
+
+```
+artifacts/private/05788f12-b025-48ba-bb01-7c45121013d8/
+  1789689621061-aisarang-reservation-2309842-20260918-090021.zip  191,402 B
+```
+
+1. **대기열 표가 우리 클릭과 같은 ms 에 나갔다.** `ts.wseq?opcode=5101&…&1789689600971`
+   의 꼬리 숫자가 `window.__aisarang_fired_at`(1789689600971)과 **정확히 같다.**
+   즉 우리 클릭이 사이트의 제출 경로(`fnSave` → `NetFunnel_Action`)를 탔다.
+2. **695ms 뒤 `opcode=5004` = `NetFunnel_Complete()`** (`…&1789689601666`).
+   실물 스크립트에서 이 호출은 `fnSubmit` 의 **ajax success 콜백 안에만** 있다.
+3. **곧바로 `/?menuno=245` 로 이동했다.** 실물 스크립트는
+   `if (data.returnval == "success")` 분기에서만 그 이동을 한다.
+   (`page_source/0002_handover_after.html` 의 `<title>` 이
+   `시간제 보육 신청 현황…`, 주석 `<!-- https://www.childcare.go.kr/?menuno=245 -->`.)
+4. **신청현황에 새 줄이 생겼다.** 09:00:05.574 에 받은
+   `OccasionChildResSlPL.html` 본문에
+   `2026-10-02 | 09:00 ~ 17:00 | 박** | 서초구육아종합지원센터(신반포) | 독립반 | 해*** | 8시간 | - | 예약`
+   한 줄이 있다. 08:45:56 의 중복확인은 `{"returnValue":"N"}` 이었으므로
+   그 줄은 그날 우리가 만들었다.
+
+### 원인 두 개
+
+**결함 1. 화면에 14분 묵은 알림이 남아 있었다.**
+08:46:00 에 **고객이 손으로** 한 번 더 이른 제출이 나갔고(그날 아침 고객이
+[예약하기]→[확인] 을 한 번 눌러봤다), 서버가
+`{"returnmsg":"아직 예약 가능한 시간이 아닙니다.","returnval":""}` 를 돌려줬다.
+사이트는 그 글자를 **지우지 않는다.** 껍데기만 `display:none` 으로 숨긴다.
+발사 직전 캡처(`page_source/0001_handover_preflight.html`)에 그대로 있다:
+
+```html
+<div class="popup_wrap s_size wp400 type-alert2" id="layer-alert-popup2" style="display: none;">
+  <p class="f_18" id="layer-alert-popup-contents2">아직 예약 가능한 시간이 아닙니다.</p>
+```
+
+우리 `_scan_page_source` 는 `driver.page_source` 를 본다. 그것은 **숨은
+글자까지 포함한 통짜 HTML** 이다. 그래서 14분 전에 받은 남의 답을 이번
+발사의 답으로 읽었다.
+→ **발사 직전에 이미 있던 문구는 이번 발사의 답이 아니다.**
+
+**결함 2. 제출이 시작되기도 전에 판정을 끝냈다.** `waitedMs` 가 **77.9** 다.
+사이트 경로는 `[확인] → confirm2 콜백 → NetFunnel_Action(대기열 표) → fnSubmit
+→ customAjax.ajax(InsertOcreqst)` 라서 제출은 수백 ms 뒤에 시작한다
+(그날 실측 695ms). 옛 코드는 `submit_seen == False` 를 '아무것도 안 보냈다'
+로 읽고 곧바로 화면 판정으로 내려갔다.
+→ **우리가 방금 쐈다면, 제출이 시작될 시간을 준다.**
+
+### 두 번째 피해: 성공한 예약 뒤에 대기열 표를 새로 뽑았다
+
+`[확인]` 이 `too_early` 로 읽히자 되살리기 문이 열려 09:00:01 에
+`#timecareConfirm`([예약하기]) 를 **다시 눌렀다.** 그 한 번이 08-26 에
+72명을 177명으로 만들었던 바로 그 동작이다.
+
+**중복 예약은 생기지 않았다.** 근거 셋, 전부 같은 ZIP 안에 있다.
+
+1. **우리 발사 뒤에 나간 `InsertOcreqst` 는 정확히 한 건이다.**
+   `network_handover_after.json` 463개 요청 전체에서 `InsertOcreqst` 는
+   2건뿐이고, 하나는 08:46:00(고객이 손으로 누른 그 건), 다른 하나가
+   `1789689600971`(우리 발사)다. 그 뒤로 `ts.wseq` 도 `InsertOcreqst` 도 없다
+   (다음 id 들은 이미 `menuno=245` 페이지의 CSS/JS 로딩이다).
+2. **신청현황이 09:00:05 에 `2026-10-02` 줄을 하나만 보여준다.**
+   이 조회는 문제의 재클릭(09:00:01)보다 **뒤**다. 두 건이면 줄이 둘이었을
+   것이다(같은 날 다른 시간도 각각 한 줄씩 나온다).
+3. **[예약하기] 는 그 자체로 예약을 보내지 않는다.** 실물 스크립트에서
+   POST 는 `fnSubmit()` 안에 있고, `fnSubmit` 은 확인창의 [확인] 콜백에서만
+   불린다. 게다가 `fnSave` 첫머리에 사이트 자신의 잠금이 있다:
+   ```js
+   if(frm.resYn.value == "Y"){ icmsLayerPopup.alert({contents:"처리중입니다."}); return; }
+   ```
+   `frm.resYn` 은 `fnSubmit` 이 `"Y"` 로 세우고 응답이 오면 `"N"` 으로
+   되돌린다. 그날 재클릭(09:00:01)은 응답(09:00:01.666) **전**이었으므로
+   이 잠금에 걸려 아무것도 보내지 않았다. (설령 시점이 달랐어도 위 1·2 가
+   결과를 못박는다: 표를 새로 뽑지도, 보내지도 않았다.)
+
+> 남은 불확실성: 캡처는 드라이버가 그 세션에서 받은 네트워크 전부이므로
+> "그 뒤로 없다" 는 그 세션 범위에서 완전하다. 그 이상(예: 서버 쪽 로그)은
+> 우리가 볼 수 없다. 신청현황 화면이 고객이 직접 확인할 수 있는 최종 근거다.
+
+### 조준은 **되돌리지 않았다** (175 유지)
+
+이 사고는 처음에 이렇게 읽혔다: "+199ms 로 도착했는데 확정 거절당했다 →
+175 로 깎은 것이 너무 이르다 → 250 으로 되돌리자." **그 판정이 틀렸다.**
+`too_early` 는 서버가 이번 발사에 준 답이 아니었다(위 결함 1). +199ms 는
+**이긴 조준**이다. 되돌리면 이긴 값을 버린다.
+
+`ARRIVAL_SAFETY_MS` 와 `ARRIVAL_MIN_AFTER_MS` 는 둘 다 **175.0 그대로**다.
+09-18 조건(오차 반폭 22ms, 최소왕복 46ms, 보정 -781ms)에서 조준은 그날과
+같은 줄을 찍는다:
+
+```
+조준 확정: 도착 목표 정각 +197ms (시각 오차 ±22ms + 여유 175ms)
+```
+
+지금까지 관측된 도착 대 결과 전체:
+
+| 도착 | 결과 | 날짜 |
+|---|---|---|
+| -296 | 거절(too_early) | 08-27 |
+| +686 | 패 | |
+| +793 | 승 | |
+| +686 | 패 | |
+| +803 | 패 | |
+| +363 | 승 | |
+| +352 | 패 | |
+| +279 | 패 (고객이 손으로 먼저) | 09-17 |
+| **+199** | **승 (거짓 실패로 기록됨)** | **09-18** |
+
++199 가 지금까지 **가장 이른 승리**다. 다음 걸음(더 깎기)은 이번 판정
+고침이 실전 한 번을 더 통과한 뒤에 본다.
+
+### v1.0.16 이 바꾼 것 (전부 booking.py / handover.py, 조준은 손대지 않았다)
+
+| 바뀐 것 | 어디 | 왜 |
+|---|---|---|
+| 발사 직전 안내 문구 스냅샷 → 판정에서 제외 | `booking._JS_ARM` 의 `__aisarang_prefire_texts`, `booking.prefire_texts()`, `_scan_page_source(stale=…)` | 결함 1 |
+| 방금 쐈으면 제출이 시작될 시간을 준다 (`SUBMIT_START_GRACE = 1.2`) | `booking.read_outcome_detail` | 결함 2 |
+| `/?menuno=245` 이동을 성공 근거로 읽는다 (`navigated`) | `booking.navigated_to_status` | 성공 분기에서만 일어난다 |
+| 되살리기는 **서버 응답 본문**의 '예약시간전' 에만 열린다 | `handover._Reopen.note_outcome(code, outcome)` / `allowed` / `why_not` | 두 번째 피해 |
+| 되살리기 횟수는 **실제로 누른 회차만** 센다 | `handover._Reopen.do` (`skipped` 분리) | 고객 로그의 `되살리기 n/6` 이 실제 클릭을 뜻하게 |
+| 판정에 `confident` 를 붙이고, 화면-only 판정은 로그에 "확실하지 않습니다" 라고 적는다 | `booking.Outcome.confident`, `evidence_line` | 09-18 의 그 로그 줄이 그대로 있었다 |
+| 확인창이 사라진 채 이미 쐈다면 "신청현황에서 확인하라" 고 적는다 | `handover.burst` | 그날 고객은 "다시 열어주세요" 만 20초 읽었다 |
+
+**성공 키워드 규칙(`says_ok` / `OK_WORDS` / `_RE_OK` / `classify`)은 한 글자도
+건드리지 않았다.** v1.0.13/1.0.14 그대로다
+(`tests/test_false_failure_0918.py::test_the_success_keyword_rules_were_not_touched`).
+
+### 새 CI 게이트 (필수 단계)
+
+`ci/stale_notice_check.py` 가 `.github/workflows/build.yml` 에 들어갔다
+(`a stale pre-fire notice no longer decides the verdict`). 실물 캡처 마크업
++ 진짜 크롬으로 네 가지를 본다.
+
+```
+python ci/stale_notice_check.py
+stale text in live DOM : 아직 예약 가능한 시간이 아닙니다.
+stale shell height     : 0  (0 = hidden)
+CHECK old-verdict      : code=too_early source=screen     ← 스냅샷 없으면 그날 버그가 그대로 재현
+CHECK new-verdict      : code=unknown confident=False
+CHECK real-too-early   : code=too_early source=submit confident=True
+CHECK reopen-gate      : allowed=True                     ← 회복은 죽지 않았다
+CHECK reopen-screen    : allowed=False (must be False)
+CHECK success-body     : code=ok returnval=success confident=True
+STALE NOTICE CHECK: OK
+```
+
+`old-verdict` 가 `too_early` 로 나오지 않으면 **하네스가 아무것도 시험하지
+않는 것**이므로 그 자체를 실패로 만든다("the 09-18 bug no longer reproduces").
+
+픽스처는 `ci/build_stale_alert_fixture.py` 가 만든다
+(`ci/fixtures/real/stale_alert_after_reopen.html`). 이미 개인정보가 지워진
+`grid_selected_row_added.html` 위에 **숨은 채로 글자가 남아 있는 알림 껍데기**
+만 얹는다. 오늘 캡처 본문에는 아동 실명이 평문이라 본문은 쓰지 않았다.
+
+### 픽스처가 실물과 같은지 (확인함)
+
+```
+stale_alert_after_reopen.html : <div … id="layer-alert-popup2" style="display: none;">
+                                <p … id="layer-alert-popup-contents2">아직 예약 가능한 시간이 아닙니다.</p>
+0001_handover_preflight.html  : layer-alert-popup2" style="display: none;"
+                                layer-alert-popup-contents2">아직 예약 가능한 시간이 아닙니다.
+```
+
+## 배포 현황 (v1.0.15, 2026-09-17 02:00Z) ← 지난 판
 
 조준을 한 걸음 당긴 판이다. **여유 250 → 175ms**, 그리고 그 대가로
 '예약시간전' 회복을 안전망 수준으로 올렸다.
