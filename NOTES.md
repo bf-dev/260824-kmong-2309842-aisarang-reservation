@@ -11,7 +11,7 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 227 passed (v1.0.10, 크롬 있으면 브라우저 포함)
+.venv/bin/python -m pytest tests/ -q        # 318 passed (v1.0.16, 크롬 있으면 브라우저 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
@@ -26,6 +26,11 @@ python3 main.py --handovertest               # 인계 모드를 실물 캡처에
 python3 ci/build_netfunnel_fixture.py <ZIP>  # 대기열 픽스처 재생성 (v1.0.8)
 python3 ci/build_too_early_fixture.py <ZIP>  # '예약시간전' 픽스처 재생성 (v1.0.9)
 python3 ci/build_taken_fixture.py <ZIP>     # '선예약'(자리 뺏김) 픽스처 재생성 (v1.0.10)
+python3 ci/stale_notice_check.py            # 09-18 거짓실패 재현/수정 검증 (v1.0.16, CI 필수)
+                                             #   기대: STALE NOTICE CHECK: OK
+python3 ci/build_stale_alert_fixture.py     # 위 픽스처 재생성 (v1.0.16)
+python3 ci/too_early_retry_check.py         # 이른 발 회복 (v1.0.15, CI 필수)
+                                             #   주의: 이 호스트가 부하면 거짓 빨간불이 난다
 ```
 
 빌드는 GitHub Actions `windows-latest` (`.github/workflows/build.yml`).
@@ -2483,6 +2488,61 @@ stale_alert_after_reopen.html : <div … id="layer-alert-popup2" style="display:
 0001_handover_preflight.html  : layer-alert-popup2" style="display: none;"
                                 layer-alert-popup-contents2">아직 예약 가능한 시간이 아닙니다.
 ```
+
+## 배포 현황 (v1.0.16, 2026-09-18 01:45Z) ← 지금 서빙 중
+
+**판정** 판이다. 조준(여유 175ms)은 한 글자도 안 건드렸다.
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.16.zip
+  (29,301,975 bytes, HTTP 200 확인)
+  sha256 `3c948d038959bbb3f544577e0d42edb6e5305e9b5e876f4077dbc1816e402f67`
+  네 곳이 전부 같은 값이다: CI 가 찍은 값 = 내려받은 아티팩트 = 로컬 Caddy 가
+  주는 바이트 = 공개 엣지가 주는 바이트. `unzip -t` 도 통과.
+  exe 버전 리소스 **1.0.16.0**, GUI 제목표시줄 v1.0.16
+  (`out/ci-1.0.16/screenshots/gui.png`).
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.16` / `updatedAt 2026-09-18T01:45:00Z` / `supersedes 1.0.15` /
+  `zipUrl` 만 (**exeUrl 없음**). 원자적으로 썼다(임시파일 → `os.replace`, 0644).
+  사본을 `deploy/manifests/version-aisarang-1.0.16.json` 에 커밋했다.
+- 게시 후 **서빙 중인 매니페스트를 실제 업데이터 로직에 그대로 먹여** 확인:
+  1.0.8 / 1.0.9 / 1.0.10 / 1.0.11 / 1.0.12 / 1.0.13 / 1.0.14 / **1.0.15 → zip 1.0.16**,
+  1.0.16 → `None`(재시작 루프 없음).
+- CI: GitHub Actions run **35295272443**, `543d365` 에서 **success**.
+  windows-latest, 전체 스위트 **318 passed**. Defender onedir/zip 둘 다 CLEAN.
+  새 필수 단계 `a stale pre-fire notice no longer decides the verdict` 가
+  runner 에서 **STALE NOTICE CHECK: OK**
+  (`old-verdict code=too_early source=screen` = 그날 버그가 스냅샷 없이는 재현된다,
+  `new-verdict` 는 더 이상 too_early 아님, `reopen-gate allowed=True`,
+  `reopen-screen allowed=False`, `success-body code=ok`).
+  `too_early` 회복도 그대로다: `early-once ['too_early','too_early','ok'] reopenUsed=2`,
+  `early-repeat ['too_early' x4,'ok'] reopenUsed=4`, `RETRY ALL OK`.
+- 전달 경로: **자동 업데이트**. 고객은 1.0.15 를 돌리고 있고, 프로그램을 켜면
+  다음 실행에서 1.0.16 으로 바뀐다. 손으로 설치할 것이 없다.
+- Artifacts: 릴리스 진단 업로드 `status=200 matched=true`
+  (`source=aisarang-reservation-diag`, id `85d2445b-d05b-4186-a8f1-8ae8a90e2227`),
+  그리고 dev note `source=aisarang-reservation-devnote`
+  (id `2de56dbd-2f36-4836-941b-abb4d6effc1e`).
+- 되돌리기: 1.0.15 ZIP 은 계속 서빙된다.
+  `deploy/manifests/version-aisarang-1.0.15.json` 을 그 경로에
+  `install -m 0644` 로 다시 쓰면 끝이다.
+
+### 이 판에서 로컬로 못 믿은 것 (다음 사람이 같은 데서 헤매지 않도록)
+
+이 개발 호스트는 다른 고객 작업과 공유된다. 이번 세션의 **load average 가
+60~70**(8 코어)이었고, 그 상태에서는 두 종류의 시험이 벽시계에 기대어
+**거짓 빨간불**을 낸다. 둘 다 CI(전용 러너)에서는 초록이었다.
+
+- `ci/too_early_retry_check.py`: `early-repeat` 는 **최소 3발**을 요구한다.
+  부하가 높으면 회복 주기가 길어져 2발에 성공해 버려 `len(codes) >= 3` 이
+  깨진다. 저장소 HEAD(v1.0.15, 이번 수정 전)에서도 똑같이 깨지는 것을
+  확인했으므로 **이번 판의 회귀가 아니다.** 같은 하네스가 `early-once` 에서
+  1발로 끝나 실패하기도 했다. CI 러너(무부하)에서는 두 시나리오 모두 OK.
+- `tests/test_clock.py::test_sleep_until_is_accurate` 는 `drift < 50ms` 를
+  요구하는데, 부하 상태에서 103ms 가 나와 깨진다. 단독 실행은 3/3 통과(0.6초).
+  제품 코드와 무관하다.
+
+> 규칙: 이 호스트에서 벽시계 기반 시험이 빨간불이면 먼저 `uptime` 을 보라.
+> 판정은 CI 러너의 결과로 한다.
 
 ## 배포 현황 (v1.0.15, 2026-09-17 02:00Z) ← 지난 판
 
