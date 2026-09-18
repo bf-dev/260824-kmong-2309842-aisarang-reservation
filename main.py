@@ -83,7 +83,15 @@ def _reopen_probe(drv, expect_code: str = "") -> dict:
 
     gate = handover._Reopen(_Now(), 1000.0, 2, 15.0)
     # 실제 경로와 똑같이, 방금 읽어낸 판정 결과를 그대로 문에 먹인다.
-    gate.note_outcome(expect_code or booking.R_TOO_EARLY)
+    #
+    # v1.0.16: 근거까지 같이 먹인다. 문은 **서버 응답 본문**의 '예약시간전'
+    # 에만 열린다(2026-09-18: 14분 묵은 화면 문구로 문이 열려, 성공한 예약
+    # 뒤에 대기열 표를 새로 뽑았다). 이 하네스가 재현하는 것은 서버가 정말
+    # 그렇게 답한 경우다. 화면 문구만인 경우는 ci/stale_notice_check.py 가 본다.
+    _code = expect_code or booking.R_TOO_EARLY
+    gate.note_outcome(_code, booking.Outcome(
+        code=_code, text=want, source="submit", status=200,
+        submit_seen=True, submit_done=True))
     st = handover.read_state(drv)
     allowed = gate.allowed(st)
     if allowed:

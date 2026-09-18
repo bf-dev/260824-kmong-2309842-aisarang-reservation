@@ -511,8 +511,14 @@ def product_checks(p: Probe) -> list:
         def server_now(self):
             return 1001.0
 
+    # v1.0.16: 되살리기 문은 **서버 응답 본문**의 '예약시간전' 에만 열린다.
+    # 화면 문구만으로 대기열 표를 새로 뽑던 것이 2026-09-18 의 두 번째 피해다.
+    _server_early = booking.Outcome(
+        code=booking.R_TOO_EARLY, text=booking.TOO_EARLY_REAL,
+        source="submit", status=200, submit_seen=True, submit_done=True)
+
     gate = handover._Reopen(_Now(), 1000.0, 2, 15.0)
-    gate.note_outcome(booking.R_TOO_EARLY)
+    gate.note_outcome(booking.R_TOO_EARLY, _server_early)
     allowed = gate.allowed(st)
     if allowed:
         gate.do(d, lambda *_: None)
@@ -524,6 +530,16 @@ def product_checks(p: Probe) -> list:
         and got.get("confirm") == 0,
         f"allowed={allowed} fnSave={got.get('save')} "
         f"alertClosed={got.get('alert')} confirmClicked={got.get('confirm')}")
+
+    # 2026-09-18 의 두 번째 피해를 못박는다. 같은 `too_early` 코드인데
+    # 근거가 화면 문구뿐이면 문이 열리지 않아야 한다.
+    gate_screen = handover._Reopen(_Now(), 1000.0, 2, 15.0)
+    gate_screen.note_outcome(
+        booking.R_TOO_EARLY,
+        booking.Outcome(code=booking.R_TOO_EARLY,
+                        text=booking.TOO_EARLY_REAL, source="screen"))
+    add("화면 문구만인 '예약시간전' 으로는 되살리지 않는다 (2026-09-18)",
+        gate_screen.allowed(st) is False, gate_screen.why_not(st))
 
     gate2 = handover._Reopen(_Now(), 1000.0, 2, 15.0)
     gate2.note_outcome(booking.R_FULL)

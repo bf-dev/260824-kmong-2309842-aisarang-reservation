@@ -949,11 +949,31 @@ if (!btn) {
 if (!btn) return false;
 window.__aisarang_ok = btn;
 window.__aisarang_fired_at = null;
+// v1.0.16: 발사 **직전**에 화면에 이미 있던 안내 문구를 통째로 찍어 둔다.
+// 2026-09-18 09:00:00 이 왜 필요한지 보여줬다. 고객이 08:46 에 손으로 한 번
+// [확인] 을 눌러 '아직 예약 가능한 시간이 아닙니다.' 를 받았고, 그 문구가
+// display:none 껍데기 안에 14분간 그대로 남아 있었다. 우리 09시 발사는
+// 성공했는데, 판정이 그 죽은 문구를 읽고 too_early 를 적었다.
+// 발사 전에 이미 있던 글자는 이번 발사의 답이 아니다. 그것이 전부다.
+window.__aisarang_prefire_texts = [];
+function _snapPrefire() {
+  var seen = [];
+  try {
+    var nodes = document.querySelectorAll("[id^='layer-alert-popup-contents']");
+    for (var i = 0; i < nodes.length; i++) {
+      var t = ((nodes[i].innerText || nodes[i].textContent || '')
+               .replace(/\s+/g, ' ')).trim();
+      if (t) seen.push(t);
+    }
+  } catch (e) {}
+  return seen;
+}
 window.__aisarang_fire = function () {
   var b = window.__aisarang_ok;
   if (!b) return false;
   var r = b.getBoundingClientRect();
   if (r.width <= 0 || r.height <= 0) return false;   // 창이 닫혔으면 쏘지 않는다
+  try { window.__aisarang_prefire_texts = _snapPrefire(); } catch (e) {}
   window.__aisarang_fired_at = Date.now();
   b.click();
   return true;
@@ -1943,6 +1963,63 @@ def read_notices(driver) -> list:
     return [str(x) for x in out]
 
 
+# 발사 직전 스냅샷을 읽는다. `_JS_ARM` 이 `__aisarang_prefire_texts` 에 넣어둔
+# 것으로, **이번 발사 전에 이미 화면에 있던** 안내 문구들이다.
+_JS_PREFIRE_TEXTS = (
+    "return (window.__aisarang_prefire_texts || []);")
+
+
+def prefire_texts(driver) -> list:
+    """이번 발사 **직전**에 이미 화면에 있던 안내 문구들.
+
+    2026-09-18 09:00:00 의 오판이 여기서 막힌다. 고객이 08:46 에 손으로
+    [확인] 을 한 번 눌러 '아직 예약 가능한 시간이 아닙니다.' 를 받았고,
+    사이트는 그 글자를 `<div id="layer-alert-popup2" style="display:none">`
+    안에 **지우지 않고** 남긴다. 14분 뒤 우리 발사는 예약을 성공시켰는데
+    (서버가 `/?menuno=245` 로 보냈고 신청현황에 새 줄이 생겼다) 판정은 그
+    죽은 글자를 읽어 `too_early` 를 적었다.
+
+    규칙 한 줄: **발사 전에 이미 있던 문구는 이번 발사의 답이 아니다.**
+    """
+    try:
+        out = _js(driver, _JS_PREFIRE_TEXTS, default=None) or []
+        return [str(x).strip() for x in out if str(x).strip()]
+    except Exception:
+        return []
+
+
+def _norm_notice(text: str) -> str:
+    """스냅샷 비교용 정규화. 공백만 접는다(글자는 건드리지 않는다)."""
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+# 사이트가 **성공했을 때만** 보내는 화면. 실물 스크립트 원문:
+#   if (data.returnval == "success") { ... location.href = "/?menuno=245"; }
+#   else                            { ... 이동하지 않는다 }
+# (ci/fixtures/real/modal_open.raw.html 의 fnSubmit, 2026-09-18 캡처로 재확인)
+#
+# 즉 **우리가 신청현황 화면에 서 있다는 사실 자체가 성공의 증거**다. 읽기만
+# 하는 신호이고, 클릭도 요청도 만들지 않는다.
+_JS_ON_STATUS_PAGE = r"""
+try {
+  var u = String(location.href || '');
+  if (u.indexOf('menuno=245') < 0) return false;
+  return true;
+} catch (e) { return false; }
+"""
+
+
+def navigated_to_status(driver) -> bool:
+    """사이트가 우리를 신청현황(`?menuno=245`)으로 보냈는가.
+
+    v1.0.16. 2026-09-18 09:00:00 에 이것이 있었다면 오판이 없었다. 그날
+    사이트는 우리 발사 695ms 뒤에 `/?menuno=245` 로 이동했고(= 성공 분기),
+    신청현황에 `2026-10-02 09:00~17:00 ... 예약` 이 새로 생겼다. 그런데 우리
+    판정은 그 사실을 보지 않고 죽은 알림 문구를 읽었다.
+    """
+    return bool(_js(driver, _JS_ON_STATUS_PAGE, default=False))
+
+
 def read_alert(driver) -> str:
     """브라우저 기본 alert 이 떠 있으면 글자를 읽고 닫는다."""
     try:
@@ -2104,6 +2181,22 @@ class Outcome:
     # 줄이 그 질문에 그날 바로 답한다. 대기열을 이길 수는 없어도 몇 번째로
     # 졌는지는 남길 수 있다. 판정에는 쓰지 않는다(기록 전용).
     queue: dict = field(default_factory=dict)
+    # v1.0.16: 발사 전부터 화면에 있던 문구를 몇 개 걸러냈는가. 0 이 아니면
+    # 화면에 죽은 알림이 남아 있었다는 뜻이고, 그것이 2026-09-18 의 오판이다.
+    stale_skipped: int = 0
+    # v1.0.16: 사이트가 우리를 신청현황(`?menuno=245`)으로 보냈는가.
+    # 실물 스크립트는 성공 분기에서만 이동한다. 즉 이것도 확실한 근거다.
+    navigated: bool = False
+
+    @property
+    def confident(self) -> bool:
+        """이 판정을 믿을 수 있는가.
+
+        확실한 근거는 둘이다: 서버 응답 본문, 그리고 사이트가 성공 분기에서만
+        하는 신청현황 이동. 화면 문구는 이번 발사의 답이라는 보장이 없다
+        (2026-09-18 에 14분 묵은 문구를 읽었다).
+        """
+        return self.source in ("submit", "navigated") or self.navigated
 
     def as_dict(self) -> dict:
         out = {"code": self.code, "text": (self.text or "")[:300],
@@ -2116,6 +2209,9 @@ class Outcome:
                "submitSeen": self.submit_seen,
                "submitDone": self.submit_done,
                "queued": self.queued,
+               "confident": self.confident,
+               "staleSkipped": self.stale_skipped,
+               "navigated": self.navigated,
                "waitedMs": round(self.waited_ms, 1)}
         if self.queue:
             out["queueAhead"] = self.queue.get("ahead")
@@ -2128,6 +2224,39 @@ class Outcome:
 # 제출 응답을 기다리는 상한(초). 화면 판정 창(timeout)과 따로 둔다.
 # 2026-09-04 의 실측 왕복은 3,418ms 였다. 09시의 서버는 느리다.
 SUBMIT_WAIT_SECONDS = 9.0
+
+# 발사 시각을 읽는다. 발사가 있었는지 / 방금인지를 판정 쪽에서 알아야
+# '제출이 시작되기를 기다릴지' 를 정할 수 있다(v1.0.16).
+_JS_FIRED_AT = "return (window.__aisarang_fired_at || 0);"
+
+
+def fired_at_ms(driver) -> float:
+    """마지막 [확인] 발사 시각(브라우저 Date.now(), ms). 없으면 0."""
+    try:
+        return float(_js(driver, _JS_FIRED_AT, default=0) or 0)
+    except Exception:
+        return 0.0
+
+
+# 발사 뒤 **제출이 시작되기를** 기다리는 최소 시간(초). v1.0.16.
+#
+# 2026-09-18 09:00:00 이 이 상수를 만들었다. 우리 [확인] 은 성공했는데 판정은
+# `too_early` 였고, 그 판정을 발사 **78ms** 뒤에 적었다. 그때 제출은 아직
+# 나가지도 않았다. 사이트의 실제 경로가 길기 때문이다(실물 스크립트):
+#
+#   [확인] → confirm2 콜백 → NetFunnel_Action(대기열 표) → fnSubmit()
+#          → customAjax.ajax(InsertOcreqst)
+#
+# 그날 대기열 표(opcode=5101)는 발사와 같은 ms 에 나갔지만, ajax 성공 콜백
+# (opcode=5004 = NetFunnel_Complete)은 발사 **695ms** 뒤였다. 즉 제출은
+# 수백 ms 뒤에 시작한다. 그전에 화면을 읽으면 이번 발사와 무관한 글자를
+# 읽게 된다. 옛 코드는 `submit_seen == False` 를 "아무것도 안 보냈다" 로
+# 읽고 곧바로 화면 판정으로 넘어갔다.
+#
+# 그래서 규칙을 하나 더 둔다: **발사 직후 이 시간 안에는, 제출이 아직 안
+# 잡혔더라도 화면만으로 판정을 끝내지 않는다.** 제출이 잡히면 즉시 그쪽으로
+# 넘어가므로 정상 경로에서는 이 대기가 비용이 되지 않는다.
+SUBMIT_START_GRACE = 1.2
 
 
 def read_outcome_detail(driver, timeout: float = 6.0,
@@ -2174,6 +2303,11 @@ def read_outcome_detail(driver, timeout: float = 6.0,
     last_text = ""
     best = Outcome()
     screen_ok = None          # 화면만 본 '성공' 후보. 화면 창을 다 쓴 뒤에만.
+    # 발사 직전 화면에 있던 문구들. 처음 화면을 읽을 때 한 번만 채운다
+    # (발사 순간에 JS 를 한 번 더 부르지 않으려고 여기서 늦게 읽는다).
+    stale = None
+    # 우리가 방금 [확인] 을 눌렀는가. 눌렀다면 제출이 시작될 시간을 준다.
+    fired_recently = fired_at_ms(driver) > 0
     while True:
         now = time.time()
         sub = submit_response(driver)
@@ -2220,6 +2354,36 @@ def read_outcome_detail(driver, timeout: float = 6.0,
             time.sleep(0.05)
             continue
 
+        # v1.0.16: 사이트가 우리를 신청현황으로 보냈다면 그것이 성공이다.
+        # 실물 스크립트는 `returnval == "success"` 일 때만 이동한다. 이
+        # 신호는 화면 문구보다 강하다(사이트의 분기 그 자체다).
+        if navigated_to_status(driver):
+            best.code = R_OK
+            best.text = best.text or OK_REAL
+            best.source = best.source or "navigated"
+            best.navigated = True
+            best.waited_ms = (time.time() - started) * 1000.0
+            return best
+
+        # v1.0.16: 제출이 아직 **시작조차** 안 했다면 조금 기다린다.
+        # 사이트는 [확인] → 대기열 표 → fnSubmit → ajax 순서라 제출이
+        # 수백 ms 뒤에 시작한다(2026-09-18 실측 695ms). 그전에 화면을 읽으면
+        # 이번 발사와 무관한 글자를 읽는다.
+        #
+        # 단, **우리가 방금 쏜 경우에만** 기다린다. 발사 기록이 없으면
+        # (누른 적이 없거나 조준조차 안 된 화면) 기다릴 이유가 없다.
+        if (not sub["seen"]) and (now - started) < SUBMIT_START_GRACE \
+                and now < hard_end and fired_recently:
+            time.sleep(0.05)
+            continue
+
+        # v1.0.16: 발사 **직전**에 이미 화면에 있던 문구는 이번 발사의 답이
+        # 아니다. 2026-09-18 09:00:00 에 그 한 줄이 성공한 예약을 too_early 로
+        # 뒤집었다(고객이 08:46 에 손으로 받은 '아직 예약 가능한 시간이
+        # 아닙니다.' 가 display:none 껍데기 안에 14분간 남아 있었다).
+        if stale is None:
+            stale = {_norm_notice(t) for t in prefire_texts(driver)}
+
         texts = []
         a = read_alert(driver)
         if a:
@@ -2234,6 +2398,10 @@ def read_outcome_detail(driver, timeout: float = 6.0,
 
         hit = None
         for t in texts:
+            if _norm_notice(t) in stale:
+                # 발사 전에 이미 있던 글자다. 세어만 두고 판정에 쓰지 않는다.
+                best.stale_skipped += 1
+                continue
             code = classify(t)
             if code != R_UNKNOWN:
                 hit = (code, t)
@@ -2241,7 +2409,7 @@ def read_outcome_detail(driver, timeout: float = 6.0,
             if t and not last_text:
                 last_text = t
         if hit is None:
-            hit = _scan_page_source(driver)
+            hit = _scan_page_source(driver, stale=stale)
 
         if hit is not None:
             code, text = hit
@@ -2293,8 +2461,13 @@ def _flatten(html_text: str) -> str:
     return re.sub(r"[ \t ]+", " ", t)
 
 
-def _scan_page_source(driver):
+def _scan_page_source(driver, stale=None):
     """page_source 훑기. 분류되면 (코드, **문장**), 아니면 None.
+
+    `stale` 은 발사 직전에 이미 화면에 있던 문구들이다(v1.0.16). 이 훑기는
+    `display:none` 껍데기까지 포함한 통짜 HTML 을 보기 때문에, 이 걸러내기가
+    없으면 14분 전에 받은 죽은 알림이 이번 발사의 판정이 된다
+    (2026-09-18 09:00:00 에 실제로 그랬다).
 
     v1.0.13 에서 두 가지가 바뀌었다.
 
@@ -2313,11 +2486,15 @@ def _scan_page_source(driver):
     if not src:
         return None
 
+    dead = set(stale or ())
+
     # 1) 실물 알림 컨테이너가 최우선이다.
     for raw in _RE_ALERT_NODE.findall(src):
         msg = _flatten(raw).strip()
         if not msg:
             continue
+        if _norm_notice(msg) in dead:
+            continue          # 발사 전에 이미 있던 글자다(v1.0.16)
         code = classify(msg)
         if code != R_UNKNOWN:
             return code, msg
@@ -2328,6 +2505,8 @@ def _scan_page_source(driver):
     wanted = (R_OK, R_TAKEN, R_FULL, R_TOO_EARLY)
     for s in sentences(_flatten(src)):
         if len(s) > 200:
+            continue
+        if _norm_notice(s) in dead:
             continue
         code = classify(s)
         if code in wanted:
@@ -2355,8 +2534,20 @@ def evidence_line(outcome) -> str:
         if outcome.returnval:
             line += f" · returnval={outcome.returnval}"
         return line
+    if outcome.source == "navigated" or outcome.navigated:
+        return ("판정 근거: 사이트가 예약 성공 뒤에만 보내는 "
+                "'시간제보육 신청현황' 화면으로 이동했습니다.")
     if outcome.source == "screen":
-        return "판정 근거: 화면 안내 문구 (서버 응답 본문은 못 봤습니다)"
+        # v1.0.16: 이 근거는 **약한 근거**다. 그렇게 적는다. 2026-09-18 에
+        # 이 줄이 로그에 그대로 있었는데(`서버 응답 본문은 못 봤습니다`),
+        # 그 판정은 틀렸다(성공한 예약을 too_early 로 적었다). 화면 문구는
+        # 이번 발사의 답이라는 보장이 없다.
+        line = ("판정 근거: 화면 안내 문구뿐입니다 (서버 응답 본문을 못 봤습니다). "
+                "**이 판정은 확실하지 않습니다**")
+        if outcome.stale_skipped:
+            line += (f" · 발사 전부터 있던 안내 문구 {outcome.stale_skipped}개는 "
+                     f"판정에서 제외했습니다")
+        return line + " · 아이사랑 '시간제보육 신청현황' 에서 직접 확인해 주세요."
     if outcome.submit_seen and not outcome.submit_done:
         return (f"판정 근거: 없음. 예약 제출 응답이 "
                 f"{outcome.waited_ms / 1000:.1f}초 안에 오지 않았습니다.")

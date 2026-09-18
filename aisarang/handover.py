@@ -582,14 +582,31 @@ class _Reopen:
         self.lock_reason = ""
         self.pressed = False
         self.last_code = ""
+        # 그 last_code 가 **서버 응답 본문**에서 나왔는가(v1.0.16).
+        self.last_confident = False
+        # 되살리려 했지만 실제로 누르지 못한 회차. `used` 와 섞지 않는다.
+        self.skipped = 0
 
     def lock(self, why: str) -> None:
         if not self.locked:
             self.locked = True
             self.lock_reason = why
 
-    def note_outcome(self, code: str) -> None:
+    def note_outcome(self, code: str, outcome=None) -> None:
+        """방금 쏜 한 발의 결과를 기록한다.
+
+        v1.0.16: 코드만으로는 문을 열지 않는다. **서버 응답 본문**이 그
+        `too_early` 를 말했을 때에만 연다(`outcome.source == "submit"`).
+
+        왜. 2026-09-18 09:00:00 에 우리는 `too_early` 를 적었고 문을 열어
+        [예약하기] 를 다시 눌렀는데, 그 `too_early` 는 서버가 이번 발사에
+        답한 것이 아니었다. 14분 전 알림이 화면에 남아 있었던 것이고, 우리
+        발사는 **성공**했다. 즉 성공한 예약 뒤에 대기열 표를 새로 뽑았다.
+        화면 문구로 대기열 표를 새로 뽑는 짓은 두 번 하지 않는다.
+        """
         self.last_code = code or ""
+        self.last_confident = bool(
+            outcome is not None and getattr(outcome, "source", "") == "submit")
         if code and code != booking.R_TOO_EARLY:
             self.lock(f"결과가 {code} 입니다")
 
@@ -597,6 +614,9 @@ class _Reopen:
         if self.locked or self.used >= self.max_times:
             return False
         if self.last_code != booking.R_TOO_EARLY:
+            return False
+        # 서버 원문이 받쳐주지 않는 '예약시간전' 으로는 누르지 않는다(v1.0.16).
+        if not self.last_confident:
             return False
         if st.queue or st.modal:
             return False
@@ -612,6 +632,9 @@ class _Reopen:
             return f"확인창 되살리기를 {self.max_times}번 다 썼습니다"
         if self.last_code != booking.R_TOO_EARLY:
             return "'예약시간전' 응답이 아닙니다"
+        if not self.last_confident:
+            return ("'예약시간전' 을 화면 문구로만 읽었습니다(서버 응답 본문이 "
+                    "아닙니다). 이 근거로는 대기열 표를 새로 뽑지 않습니다")
         if st.queue:
             return "가상대기열이 떠 있습니다"
         if not st.on_reserve_page or st.ticked <= 0:
@@ -619,15 +642,24 @@ class _Reopen:
         return "되살리기 마감 시각을 지났습니다"
 
     def do(self, driver, log) -> bool:
-        """알림을 닫고 [예약하기] 를 정확히 한 번 다시 누른다."""
-        self.used += 1
+        """알림을 닫고 [예약하기] 를 정확히 한 번 다시 누른다.
+
+        v1.0.16: **실제로 누른 뒤에만** 횟수를 센다. 예전에는 첫 줄에서
+        `used += 1` 을 하고 나서 눌렀기 때문에, 버튼을 못 찾아 아무것도
+        누르지 않은 회차까지 '되살리기 1회' 로 세고 그 숫자를 로그에 찍었다.
+        고객 로그에 남는 `되살리기 1/6회차` 가 실제 클릭을 뜻하지 않으면
+        다음 사람이 그 줄을 읽고 틀린 결론을 낸다.
+        """
         self.last_code = ""          # 다음 되살리기는 새 '예약시간전' 이 있어야 한다
         booking.close_result_alert(driver, log)
         ok = booking.repress_reserve_button(driver, log)
-        self.pressed = True
         if not ok:
+            # 누르지 못했다. 세지 않는다.
+            self.skipped += 1
             self.lock("[예약하기] 를 찾지 못했습니다")
             return False
+        self.used += 1
+        self.pressed = True
         log(f"확인창 되살리기 {self.used}/{self.max_times}회차. "
             f"대기열이 뜨면 그대로 기다리고 다시 누르지 않습니다.")
         return True
@@ -635,6 +667,7 @@ class _Reopen:
     def as_dict(self) -> dict:
         return {"used": self.used, "max": self.max_times,
                 "locked": self.locked, "lockReason": self.lock_reason,
+                "skipped": self.skipped,
                 "pressedReserveAgain": self.pressed}
 
 
@@ -711,6 +744,16 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
                 log("이 모드는 [예약하기] 를 대신 누르지 않습니다(대기열 맨 뒤로 "
                     f"갑니다: {reopen.why_not(st)}). 크롬 창에서 확인창을 다시 "
                     "열어주시면 곧바로 누릅니다.")
+                # v1.0.16: 확인창이 사라진 채로 제출이 이미 나갔다면, 그것은
+                # '못 쐈다' 가 아니라 '쐈고 답을 못 읽었다' 다. 2026-09-18 에
+                # 이 자리에서 고객은 "다시 열어주세요" 만 20초 읽었는데,
+                # 예약은 그때 이미 성공해 있었다. 사람이 2초 안에 할 수 있는
+                # 행동으로 한 줄 적는다.
+                if shots and shots[-1].fired:
+                    log("다만 [확인] 은 이미 눌렸습니다. 확인창이 사라진 것은 "
+                        "제출이 나갔다는 뜻일 수 있습니다. 예약이 되었는지는 "
+                        "아이사랑 '시간제보육 신청현황' 화면에서 확인해 주세요. "
+                        "예약이 이미 되었다면 [예약하기] 를 다시 누르지 마세요.")
             time.sleep(max(retry_ms, 50) / 1000.0)
             continue
         told_closed = False
@@ -733,7 +776,7 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         code, text = outcome.code, outcome.text
         shot.code, shot.text, shot.outcome = code, text, outcome
         shots.append(shot)
-        reopen.note_outcome(code)
+        reopen.note_outcome(code, outcome)
         log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
             f"· 서버: {text or '(문구 없음)'} "
             f"[{code} · {booking.outcome_label(code)}]")
