@@ -109,16 +109,23 @@ def test_one_point_ten_is_newer_than_one_point_nine():
 def test_the_shipped_version_matches_what_the_manifest_will_say():
     """리포의 판 번호와 서빙 중인 매니페스트가 같아야 한다.
 
-    1.0.15 는 **조준** 판이다. 여유를 250 → 175ms 로 한 걸음 당기고(09-17
-    조건에서 +275 → +200ms), 그 대가로 '예약시간전' 회복을 단단하게 했다
-    (매 발 보정 + 되살리기 6회 / 정각 +2초). 판정 규칙은 1.0.13/1.0.14 그대로다.
+    1.0.16 은 **판정** 판이다. 조준(여유 175ms)은 한 글자도 안 건드렸다.
+    09-18 09:00:00 의 +199ms 발사는 예약을 **성공**시켰고(신청현황에 새 줄이
+    생겼다), 프로그램만 그것을 `too_early` 로 읽었다. 원인은 화면에 14분간
+    남아 있던 죽은 알림 문구다. 고친 것:
+      - 발사 직전에 이미 있던 문구는 판정에서 제외한다
+      - 우리가 방금 쐈다면 제출이 시작될 시간을 준다(그날 실측 695ms)
+      - 성공 뒤에만 일어나는 `/?menuno=245` 이동을 성공 근거로 읽는다
+      - 되살리기는 **서버 응답 본문**의 '예약시간전' 에만 열린다
+      - 되살리기 횟수는 실제로 누른 회차만 센다
+    판정 규칙(성공 키워드 / classify)은 1.0.13/1.0.14 그대로다.
 
     그 파일은 리포에 없다(gateway artifacts 아래에만 있다). 그래서 여기서
     대조할 수 있는 것은 상수뿐이다. 실제 서빙 값은 NOTES.md 의 '배포 현황'
     절과 metadata.json 의 `deploy.manifestServing` 에 적어 둔다.
     """
-    assert config.APP_VERSION == "1.0.15"
-    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.14")
+    assert config.APP_VERSION == "1.0.16"
+    assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.15")
 
 
 def test_the_customer_on_1_0_11_actually_gets_1_0_12():
