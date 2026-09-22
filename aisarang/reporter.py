@@ -163,6 +163,13 @@ class Diagnostics:
             # 서버에서 좁힐 수가 없었다. 비밀이 아니고 진단에 결정적이다.
             "installDir": _install_dir(),
             "updateState": _update_state(),
+            # v1.0.17: 실제로 쓰인 조준 상수. 2026-09-17 에 고객 PC 의
+            # settings.json 이 옛 여유값을 그림자처럼 덮어써서 조준이 안
+            # 바뀐 적이 있다. 그때 서버에서 이걸 확인할 방법이 없었다.
+            # 이제 매 실행의 meta 에 찍히므로 진단 ZIP 하나면 끝난다.
+            "aimSafetyMs": config.ARRIVAL_SAFETY_MS,
+            "aimFloorMs": config.ARRIVAL_MIN_AFTER_MS,
+            "aimCeilMs": config.ARRIVAL_MAX_AFTER_MS,
         }
         if extra:
             for k, v in extra.items():

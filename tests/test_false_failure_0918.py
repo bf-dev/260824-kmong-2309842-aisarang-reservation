@@ -342,13 +342,16 @@ def test_the_success_keyword_rules_were_not_touched():
     assert booking.classify(booking.TAKEN_REAL) == booking.R_TAKEN
 
 
-def test_the_aim_stayed_at_175_because_199ms_won():
-    """09-18 의 +199ms 는 이긴 조준이다. 되돌리지 않는다.
+def test_the_aim_never_goes_backwards_from_199ms():
+    """09-18 의 +199ms 는 이긴 조준이다. **뒤로** 되돌리지 않는다.
 
     브리프는 처음에 250 으로 되돌리라고 했다. 캡처를 열어보니 그 발사는
-    성공이었고, 되돌리면 이긴 값을 버리는 것이었다.
+    성공이었고, 되돌리면 이긴 값을 버리는 것이었다. 앞으로 당기는 것은
+    다른 문제다. v1.0.17 은 고객 요청으로 140 까지 당겼고, 이 시험이 막는
+    것은 어디까지나 **뒤로 가는** 변경이다.
     """
-    assert config.ARRIVAL_SAFETY_MS == 175.0
-    assert config.ARRIVAL_MIN_AFTER_MS == 175.0
+    assert config.ARRIVAL_SAFETY_MS <= 175.0
+    assert config.ARRIVAL_SAFETY_MS == 140.0
+    assert config.ARRIVAL_MIN_AFTER_MS == 140.0
     # 하한과 여유는 항상 같이 움직인다(v1.0.15 의 교훈).
     assert config.ARRIVAL_MIN_AFTER_MS == config.ARRIVAL_SAFETY_MS

@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.16"
+APP_VERSION = "1.0.17"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -222,9 +222,43 @@ KST_OFFSET_SECONDS = 9 * 3600
 #   +279 패(09-17, 고객이 손으로 먼저) / **+199 승 (09-18)**
 # 지금까지 관측된 승리 중 가장 이른 도착이다. 다음 걸음(더 깎기)은 이 판의
 # 판정 고침이 실전 한 번을 더 통과한 뒤에 본다. 하한도 175 로 유지한다.
-ARRIVAL_MIN_AFTER_MS = 175.0
+#
+# v1.0.17 (2026-09-22): **여유 175 → 140ms.** v1.0.16 이 기다리라고 한
+# "실전 한 번 더" 가 통과했다. 09-22 09:00:00 실전 로그:
+#   조준 확정: 도착 목표 정각 +203ms (시각 오차 ±28ms + 여유 175ms)
+# 판정기(InsertOcreqst / menuno=245 응답 본문 읽기)도 이 판에서 그대로
+# 맞게 돌았다. 즉 09-18 의 +199 승리가 우연이 아니었고, 고친 판정이
+# 실전을 한 번 더 통과했다. 고객이 직접 "조금만 더 앞으로" 를 요청했다.
+#
+# 140 의 산수(175 와 같은 방식, 왕복 흔들림 항만 더 깎는다):
+#   발사 경로 지연   50ms → 남긴다 (셀레니움→크롬→네트워크).
+#   서버 Date 찍기   50ms → 남긴다.
+#   왕복 흔들림      40ms → v1.0.15 는 146.5 의 절반인 75 를 얹었다. 그
+#                          146.5 는 초 단위 서버시각을 쓰던 v1.0.9 까지의
+#                          숫자다. v1.0.10 부터 밀리초 서버시각을 쓰고
+#                          고객 PC 실측 최소왕복은 50~62ms(편도 ~31ms)이며,
+#                          편도는 이미 one_way 로 따로 빠져 있다. 게다가
+#                          측정 오차 자체는 앞의 uncertainty/2 항이 매
+#                          아침 따로 실어 준다. 여기 남길 몫은 그 절반의
+#                          절반이면 충분하다: 75 → 40.
+# 즉 140 = 50 + 50 + 40. 이것도 반올림한 숫자가 아니다.
+#
+# ±28ms 아침이면 조준은 14 + 140 = 정각 +154ms... 가 아니라 +168ms 다
+# (uncertainty/2 = 28, 로그의 ±28 은 uncertainty*500 = 반폭 표기라서
+# uncertainty=0.056s → half=28ms). 실전 기준 203 → 168ms.
+# 이른 쪽 최악(오차가 통째로 이른 쪽으로 몰릴 때)은 +140ms 로 여전히
+# 정각 뒤다. 그리고 이르러도 회복이 있다: 서버는 정각 전 요청을 전부
+# 거절하므로(2026-08-27 실측) '예약시간전' 은 자리가 아직 아무에게도
+# 안 갔다는 뜻이고, REOPEN_EARLY_* 가 확인창을 되살려 다시 쏜다.
+# 늦는 쪽에는 회복이 없다(09-16 / 09-17 실측). 이 판도 회복이 있는
+# 방향으로 틀리게 두는 것은 같다.
+#
+# **하한도 같이 140 으로 내린다.** 하한이 여유보다 크면 하한이 조준점을
+# 혼자 정해 버려서 여유를 깎은 것이 아무 일도 안 한다. v1.0.12 에서 이미
+# 한 번 그랬다. 상수 둘은 항상 같이 움직인다.
+ARRIVAL_MIN_AFTER_MS = 140.0
 ARRIVAL_MAX_AFTER_MS = 1200.0
-ARRIVAL_SAFETY_MS = 175.0
+ARRIVAL_SAFETY_MS = 140.0
 
 # '예약시간전' 회복 창(초). 정각 이후 이 시간 안에는 확인창 되살리기를
 # 넉넉하게 허용한다. 근거: 서버는 자기 시계로 정각 전에 닿은 요청을 **전부**
@@ -333,6 +367,7 @@ def profile_dir() -> Path:
 def load_settings() -> dict:
     data = dict(DEFAULT_SETTINGS)
     data["center"] = dict(DEFAULT_CENTER)
+    stale = []
     try:
         p = settings_path()
         if p.exists():
@@ -340,6 +375,7 @@ def load_settings() -> dict:
             if isinstance(saved, dict):
                 for k, v in saved.items():
                     if k in _OBSOLETE:
+                        stale.append(k)
                         continue
                     if k in data:
                         data[k] = v
@@ -351,6 +387,18 @@ def load_settings() -> dict:
         data["run_mode"] = normalize_run_mode(data.get("run_mode"))
     except Exception:
         pass
+    # v1.0.17: 죽은 키가 파일에 남아 있으면 **그 자리에서 파일을 다시 쓴다.**
+    # 읽는 쪽은 이미 위에서 건너뛰므로 동작에는 영향이 없지만, 고객 PC 의
+    # settings.json 에 arrival_safety_ms: 250 / 175 같은 옛 값이 계속 박혀
+    # 있으면 다음 사람이 파일만 보고 "조준이 175 로 돌고 있다" 고 잘못 읽는다.
+    # 실제로 09-17 에 그렇게 한 번 헤맸다. 한 번 지우면 끝이다.
+    # 지우는 것은 우리가 만든 죽은 키뿐이고, 고객이 화면에서 정한 값은
+    # save_settings 가 그대로 다시 쓴다.
+    if stale:
+        try:
+            save_settings(data)
+        except Exception:
+            pass
     return data
 
 

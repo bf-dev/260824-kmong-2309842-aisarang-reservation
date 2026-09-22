@@ -115,16 +115,16 @@ def test_the_aim_is_computed_from_the_measured_uncertainty():
     """2026-08-27 의 실측값으로 산수를 그대로 확인한다.
 
         마지막 재측정  uncertaintyMs = 869.2  → 한쪽 오차 434.6ms
-        여유           ARRIVAL_SAFETY_MS = 175ms (v1.0.15, was 250)
-        목표 도착      434.6 + 175 = 609.6ms  (정각 뒤)
+        여유           ARRIVAL_SAFETY_MS = 140ms (v1.0.17, was 175)
+        목표 도착      434.6 + 140 = 574.6ms  (정각 뒤)
     """
     got = _measured(869.2).safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
-    assert abs(got * 1000.0 - 609.6) < 0.5, got * 1000.0
+    assert abs(got * 1000.0 - 574.6) < 0.5, got * 1000.0
 
     # 그날 네 번의 측정 전부. 어느 것도 -296ms 근처로 돌아가지 않는다.
     for u in (868.1, 843.0, 847.3, 869.2):
         ms = _measured(u).safe_arrival_after() * 1000.0
-        assert 585.0 < ms < 615.0, (u, ms)
+        assert 550.0 < ms < 580.0, (u, ms)
 
 
 def test_a_tighter_clock_aims_closer_to_the_hour():
@@ -134,10 +134,10 @@ def test_a_tighter_clock_aims_closer_to_the_hour():
     assert mid < loose
     assert abs(mid * 1000.0 - (250.0 + config.ARRIVAL_SAFETY_MS)) < 0.5
 
-    # uncertainty 133.2ms → 66.6 + 175 = 241.6ms. 하한(175)보다 크므로
+    # uncertainty 133.2ms → 66.6 + 140 = 206.6ms. 하한(140)보다 크므로
     # 계산값이 그대로 쓰인다.
     tight = _measured(133.2).safe_arrival_after()
-    assert abs(tight * 1000.0 - 241.6) < 0.5, tight * 1000.0
+    assert abs(tight * 1000.0 - 206.6) < 0.5, tight * 1000.0
     assert tight < mid
     assert tight * 1000.0 >= config.ARRIVAL_MIN_AFTER_MS
 
@@ -146,19 +146,19 @@ def test_the_customers_measured_clock_now_drives_the_aim_not_the_floor():
     """조준점을 정하는 것은 하한이 아니라 실측이어야 한다.
 
     v1.0.12 에서 하한을 350 → 250 으로 내려 이 성질을 만들었고, v1.0.15 는
-    여유와 하한을 함께 175 로 내렸다. 하한이 여유보다 크면 하한이 조준점을
-    혼자 정해버리므로 둘은 항상 같이 움직인다.
+    여유와 하한을 함께 175 로, v1.0.17 은 140 으로 내렸다. 하한이 여유보다
+    크면 하한이 조준점을 혼자 정해버리므로 둘은 항상 같이 움직인다.
 
     고객 PC 실측(로그 원문):
-      09-03  "시각 오차 ±27ms"   → 27 + 175 = 202ms
-      09-04  "시각 오차 ±24ms"   → 24 + 175 = 199ms
-      09-17  "시각 오차 ±25ms"   → 25 + 175 = 200ms  (그날은 275 였다)
+      09-03  "시각 오차 ±27ms"   → 27 + 140 = 167ms
+      09-04  "시각 오차 ±24ms"   → 24 + 140 = 164ms
+      09-22  "시각 오차 ±28ms"   → 28 + 140 = 168ms  (그날은 203 이었다)
     """
-    assert config.ARRIVAL_SAFETY_MS == 175.0
-    assert config.ARRIVAL_MIN_AFTER_MS == 175.0     # 여유와 같이 내려야 한다
+    assert config.ARRIVAL_SAFETY_MS == 140.0
+    assert config.ARRIVAL_MIN_AFTER_MS == 140.0     # 여유와 같이 내려야 한다
     assert config.ARRIVAL_MAX_AFTER_MS == 1200.0
 
-    for half_ms, want in ((27.0, 202.0), (24.0, 199.0), (25.0, 200.0)):
+    for half_ms, want in ((27.0, 167.0), (24.0, 164.0), (28.0, 168.0)):
         got = _measured(half_ms * 2).safe_arrival_after() * 1000.0
         assert abs(got - want) < 0.5, (half_ms, got)
         # 그래도 정각 뒤다. 최악(한쪽 오차만큼 이른 쪽)이어도 정각을 넘는다.
@@ -166,16 +166,26 @@ def test_the_customers_measured_clock_now_drives_the_aim_not_the_floor():
 
 
 def test_the_0917_aim_actually_moved_earlier():
-    """09-17 의 그 조건에서 조준이 실제로 75ms 당겨졌는지 못박는다.
+    """09-17 의 그 조건에서 조준이 250 → 175 → 140 으로 당겨졌는지 못박는다.
 
-    고객 로그 원문: "조준 확정: 도착 목표 정각 +275ms (시각 오차 ±25ms + 여유
-    250ms)". 같은 측정값으로 이제 +200ms 가 나와야 한다. 이 시험이 이번 판의
-    요청 그 자체다.
+    고객 로그 원문(09-17): "조준 확정: 도착 목표 정각 +275ms (시각 오차 ±25ms
+    + 여유 250ms)". 같은 측정값으로 v1.0.15 는 +200ms, v1.0.17 은 +165ms.
     """
     got = _measured(50.0).safe_arrival_after() * 1000.0     # ±25ms
-    assert abs(got - 200.0) < 0.5, got
-    assert got < 275.0, "조준이 당겨지지 않았다"
-    assert abs((275.0 - got) - 75.0) < 0.5, got              # 한 걸음 = 75ms
+    assert abs(got - 165.0) < 0.5, got
+    assert got < 200.0, "조준이 당겨지지 않았다"
+    assert abs((200.0 - got) - 35.0) < 0.5, got              # 이번 걸음 = 35ms
+
+
+def test_the_0922_aim_moves_to_168ms():
+    """이번 판의 요청 그 자체. 09-22 실전과 같은 조건에서 +168ms 여야 한다.
+
+    고객 로그 원문(09-22 09:00): "조준 확정: 도착 목표 정각 +203ms (시각 오차
+    ±28ms + 여유 175ms)". 여유만 140 으로 내렸으니 같은 아침에 +168ms.
+    """
+    got = _measured(56.0).safe_arrival_after() * 1000.0     # ±28ms
+    assert abs(got - 168.0) < 0.5, got
+    assert abs((203.0 - got) - 35.0) < 0.5, got
 
 
 def test_a_worse_morning_pushes_the_aim_back_up_by_itself():
@@ -184,7 +194,7 @@ def test_a_worse_morning_pushes_the_aim_back_up_by_itself():
     앞쪽 항(uncertainty/2)이 살아 있어서, 시각이 덜 맞은 아침에는 조준점이
     자동으로 다시 뒤로 간다. 하한은 측정이 아주 좋게 나왔을 때의 바닥일 뿐이다.
     """
-    pairs = [(24.0, 199.0), (100.0, 275.0), (200.0, 375.0), (435.0, 610.0)]
+    pairs = [(24.0, 164.0), (100.0, 240.0), (200.0, 340.0), (435.0, 575.0)]
     last = 0.0
     for half_ms, want in pairs:
         got = _measured(half_ms * 2).safe_arrival_after() * 1000.0
@@ -237,6 +247,9 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
     이겨서 조준이 275ms 에 그대로 머물렀을 것이다.
 
     그래서 세 키를 죽은 키로 만들었다. 이 시험이 그 회귀를 막는다.
+
+    v1.0.17: 파일에 남아 있을 수 있는 옛 값이 250 하나가 아니다. v1.0.15/16
+    을 한 번이라도 돌린 PC 라면 175 가 들어 있다. 둘 다 못박는다.
     """
     import json
 
@@ -244,24 +257,33 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
 
     monkeypatch.setattr(config, "settings_path",
                         lambda: tmp_path / "settings.json")
-    (tmp_path / "settings.json").write_text(
-        json.dumps({"arrival_safety_ms": 250, "reopen_max": 2,
-                    "reopen_seconds": 15, "use_hours": 9},
-                   ensure_ascii=False), encoding="utf-8")
-    data = config.load_settings()
-    for dead in ("arrival_safety_ms", "reopen_max", "reopen_seconds"):
-        assert dead not in data, dead
-    assert data["use_hours"] == 9                 # 진짜 고객 설정은 그대로 산다
 
-    # 그리고 조준은 파일이 아니라 상수를 따른다. ±25ms → 200ms (275 아님).
-    r = Runner()
-    r.clock = _measured(50.0)
-    assert abs(r._arrival_aim(data) * 1000.0 - 200.0) < 0.5
+    for old in (250, 175):
+        (tmp_path / "settings.json").write_text(
+            json.dumps({"arrival_safety_ms": old, "reopen_max": 2,
+                        "reopen_seconds": 15, "use_hours": 9},
+                       ensure_ascii=False), encoding="utf-8")
+        data = config.load_settings()
+        for dead in ("arrival_safety_ms", "reopen_max", "reopen_seconds"):
+            assert dead not in data, (old, dead)
+        assert data["use_hours"] == 9             # 진짜 고객 설정은 그대로 산다
 
-    # 파일의 값을 억지로 다시 끼워 넣어도 이제 무시된다.
-    stale = dict(data)
-    stale["arrival_safety_ms"] = 250
-    assert abs(r._arrival_aim(stale) * 1000.0 - 200.0) < 0.5
+        # 그리고 조준은 파일이 아니라 상수를 따른다. ±25ms → 165ms.
+        r = Runner()
+        r.clock = _measured(50.0)
+        assert abs(r._arrival_aim(data) * 1000.0 - 165.0) < 0.5, old
+
+        # 파일의 값을 억지로 다시 끼워 넣어도 이제 무시된다.
+        stale = dict(data)
+        stale["arrival_safety_ms"] = old
+        assert abs(r._arrival_aim(stale) * 1000.0 - 165.0) < 0.5, old
+
+        # 그리고 읽고 나면 죽은 키는 디스크에서도 지워진다(v1.0.17).
+        on_disk = json.loads((tmp_path / "settings.json").read_text(
+            encoding="utf-8"))
+        for dead in ("arrival_safety_ms", "reopen_max", "reopen_seconds"):
+            assert dead not in on_disk, (old, dead)
+        assert on_disk["use_hours"] == 9
 
 
 def test_the_runner_turns_the_measurement_into_an_aim():
@@ -271,7 +293,7 @@ def test_the_runner_turns_the_measurement_into_an_aim():
     r = Runner()
     r.clock = _measured(869.2)
     auto = r._arrival_aim(dict(config.DEFAULT_SETTINGS))
-    assert abs(auto * 1000.0 - 609.6) < 0.5
+    assert abs(auto * 1000.0 - 574.6) < 0.5      # 434.6 + 140 (v1.0.17)
 
     assert r._arrival_aim({"arrival_after_ms": 900}) == 0.9
     # 범위 밖 값은 잘린다. 사용자가 실수로 -300 을 넣어도 정각 앞으로 못 간다.
