@@ -11,7 +11,7 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 318 passed (v1.0.16, 크롬 있으면 브라우저 포함)
+.venv/bin/python -m pytest tests/ -q        # 319 passed (v1.0.17, 크롬 있으면 브라우저 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
@@ -2489,7 +2489,75 @@ stale_alert_after_reopen.html : <div … id="layer-alert-popup2" style="display:
                                 layer-alert-popup-contents2">아직 예약 가능한 시간이 아닙니다.
 ```
 
-## 배포 현황 (v1.0.16, 2026-09-18 01:45Z) ← 지금 서빙 중
+## v1.0.17 (2026-09-22): the aim moves 175 -> 140ms, and the stale setting dies
+
+Customer request after the 2026-09-22 live run: pull the click aim slightly earlier.
+That morning the shot landed at +205.1ms and the server answered `선예약` (taken) with 21
+people ahead in the NetFunnel queue. Early is recoverable (the reopen loop), late is not,
+so the margin moves toward early.
+
+What changed (and what did NOT):
+
+| Item | Where | What |
+|---|---|---|
+| Safety margin 175 -> 140 | `config.ARRIVAL_SAFETY_MS = 140.0` | the only number the customer asked for |
+| Floor moves with it 175 -> 140 | `config.ARRIVAL_MIN_AFTER_MS = 140.0` | v1.0.12 lesson: if only the margin moves, the floor silently decides the aim |
+| Stale key purge on load | `config.load_settings()` | if a dead key (`arrival_safety_ms` 250/175, `reopen_max`, `reopen_seconds`, `prefire_ms`, `arrival_lead_ms`) is in settings.json, the file is **rewritten right there**, so the shadow cannot come back |
+| Aim stamps in every diagnostic | `reporter.meta()` -> `aimSafetyMs` / `aimFloorMs` / `aimCeilMs` | the 09-17 blind spot (we could not see what margin the customer's PC was really using) closes: one ZIP answers it |
+| Clock measurement, reopen loop, verdict logic | untouched | all validated in the 2026-09-22 live run |
+
+The 140 budget: 50ms launch-path delay + 50ms until the server stamps Date + 40ms round-trip
+jitter (was 75). Under the 09-22 conditions (시각 오차 ±28ms) the log line becomes
+`조준 확정: 도착 목표 정각 +168ms (시각 오차 ±28ms + 여유 140ms)`, i.e. 203 - 35 = +168ms.
+Note the log prints HALF the uncertainty: `±28ms` in the log means the full-width
+uncertainty is 56ms, so tests feed `_measured(56.0)`.
+
+Tests: the shadowing regression now pins BOTH old values (250 and 175) at three layers
+(dead key absent from loaded settings, aim unchanged even if the key is force-injected
+back, dead key physically gone from the rewritten file). The 09-18 pinned test that said
+"the margin stays 175" was reframed, not deleted:
+`test_the_aim_never_goes_backwards_from_199ms` (never regress past 175, currently 140).
+319 passed locally; the same number on the runner.
+
+## 배포 현황 (v1.0.17, 2026-09-22 01:20Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.17.zip
+  (29,302,445 bytes, HTTP 200)
+  sha256 `5ef16fdb716b94764d66e119b271888c6fdac57a573ffe42df9928d1a44b98af`.
+  Three places agree: CI log value = downloaded artifact = bytes Caddy serves. `unzip -t` clean.
+  GUI screenshot `out/ci-1.0.17/screenshots/gui.png` shows v1.0.17 in the titlebar and header.
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.17` / `updatedAt 2026-09-22T01:20:00Z` / `supersedes 1.0.16` / `zipUrl` only
+  (no `exeUrl`). Written atomically (temp file + `os.replace`, 0644). Copy committed at
+  `deploy/manifests/version-aisarang-1.0.17.json`.
+- Live manifest fed to the shipped `updater.choose_download` after publishing:
+  1.0.8 ... 1.0.16 -> zip 1.0.17, and **1.0.17 -> None** (no restart loop).
+- CI: GitHub Actions run **35673596397**, commit `1b43305`, **success** in 15m38s.
+  319 passed, Defender onedir and zip both CLEAN
+  (`Scanning ... aisarang-reservation-1.0.17.zip found no threats` / `VERDICT zip: CLEAN`),
+  stale notice check OK, retry check OK, frozen-exe steps OK.
+- Resolved-margin proof, run against the shipped code with a stale settings.json present
+  (`~/workspace/kmong/tmp/a17proof/final_upload.py`):
+
+  ```
+  APP_VERSION            = 1.0.17
+  ARRIVAL_SAFETY_MS      = 140.0
+  stale file arrival_safety_ms = 175 -> in loaded settings? False
+  effective safety on disk after load = GONE (purged)
+  resolved aim at ±28ms  = +168ms (09-22 live was +203ms)
+  ```
+
+  Same result for a stale 250 (test `test_the_saved_safety_margin_can_no_longer_shadow_the_constant`).
+- Artifacts upload re-proven through the shipped `Diagnostics.upload(..., blocking=True)`:
+  `진단 업로드 status=200`, `진단 업로드 matched=True`, ZIP stored server-side as
+  `1790039649635-aisarang-reservation-2309842-20260922-031409.zip`. Dev note posted with
+  `source=aisarang-reservation-devnote`, id `4e2bc2d8-ddfa-47bf-a004-c1bed6baf555`, `matched: true`.
+- 전달 경로: **자동 업데이트**. The customer runs 1.0.16 (or older); the next launch picks up 1.0.17.
+- 되돌리기: 1.0.16 ZIP stays served.
+  Reinstall `deploy/manifests/version-aisarang-1.0.16.json` over the manifest path with
+  `install -m 0644` to roll back.
+
+## 배포 현황 (v1.0.16, 2026-09-18 01:45Z) ← 지난 판
 
 **판정** 판이다. 조준(여유 175ms)은 한 글자도 안 건드렸다.
 
