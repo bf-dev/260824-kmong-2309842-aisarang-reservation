@@ -199,6 +199,21 @@ document.getElementById('ok').onclick = function () {
   // 이 문구는 고객 진술이고, 실물을 보면 여기부터 고쳐라.
   else if (a === 'full') show('정원초과');
   else show('예약이 완료되었습니다.');
+  // v1.0.18: 실제 사이트는 [확인] → InsertOcreqst.html ajax 제출이고,
+  // 판정의 1순위 근거는 그 **응답 본문**이다(2026-09-18 이후 화면 문구는
+  // 살아 있는 근거가 아니다). 이 fixture 도 그 순서를 흉내 낸다: 같은
+  // 문구를 InsertOcreqst.html 응답 본문으로 내보낸다. net recorder 가
+  // 심어 있으면 __aisarangSubmit 에 잡힌다. 없으면 화면 문구만 있는 옛
+  // 형태로 남는다(본문 훅이 없는 옛 시험도 계속 도는 이유다).
+  try {
+    if (window.XMLHttpRequest && !location.search.match(/nosubmit/)) {
+      var body = '{"returnmsg":"' + document.getElementById('notice').textContent +
+                 '","returnval":""}';
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/icms/occasion/InsertOcreqst.html', true);
+      xhr.send(body);
+    }
+  } catch (e) {}
 };
 
 function show(msg) {

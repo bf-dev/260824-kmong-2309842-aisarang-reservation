@@ -128,7 +128,7 @@ def test_the_shipped_version_matches_what_the_manifest_will_say():
     대조할 수 있는 것은 상수뿐이다. 실제 서빙 값은 NOTES.md 의 '배포 현황'
     절과 metadata.json 의 `deploy.manifestServing` 에 적어 둔다.
     """
-    assert config.APP_VERSION == "1.0.17"
+    assert config.APP_VERSION == "1.0.18"
     assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.16")
 
 

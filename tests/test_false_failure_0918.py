@@ -266,7 +266,10 @@ def test_a_screen_only_too_early_does_not_take_a_new_queue_ticket():
     """**09-18 의 두 번째 피해.** 화면 문구로 대기열 표를 새로 뽑지 않는다.
 
     그날 우리는 성공한 예약 뒤에 [예약하기] 를 다시 눌러 새 표를 받았다.
-    근거는 묵은 화면 문구 하나였다.
+    근거는 묵은 화면 문구 하나였다. v1.0.18 부터는 문이 아예 달라졌다:
+    제출 응답 본문 + 서버 원문('아직 예약 가능한 시간이 아닙니다.') 이
+    둘 다 있어야 회복한다. 화면 문구(source="screen") 는 원문과 같더라도
+    문을 열지 못한다.
     """
     g = handover._Reopen(_Clk(OPEN + 0.5), OPEN)
     g.note_outcome(booking.R_TOO_EARLY,
@@ -274,7 +277,11 @@ def test_a_screen_only_too_early_does_not_take_a_new_queue_ticket():
                                    text=STALE_TEXT, source="screen"))
     assert g.allowed(_closed_state()) is False
     why = g.why_not(_closed_state())
-    assert "화면 문구" in why, why
+    # v1.0.18: 거절 사유에 '원문 없음' 이 들어간다(화면 문구/대기열 문구 모두).
+    assert "원문" in why, why
+    assert handover.is_genuine_too_early(
+        booking.Outcome(code=booking.R_TOO_EARLY, text=STALE_TEXT,
+                        source="screen")) is False
 
 
 def test_a_server_body_too_early_still_opens_the_gate():

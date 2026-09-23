@@ -78,7 +78,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from . import booking, config
+from . import booking, clock as clockmod, config
 
 # ---------------------------------------------------------------- 화면 읽기
 #
@@ -603,10 +603,17 @@ class _Reopen:
         답한 것이 아니었다. 14분 전 알림이 화면에 남아 있었던 것이고, 우리
         발사는 **성공**했다. 즉 성공한 예약 뒤에 대기열 표를 새로 뽑았다.
         화면 문구로 대기열 표를 새로 뽑는 짓은 두 번 하지 않는다.
+
+        v1.0.18: `source == "submit"` 만으로는 부족했다. 분류기는 넓은
+        「아직 …」 꼴(`booking._RE_NOT_YET`)도 too_early 로 분류하는데,
+        그 꼴이 제출 응답 본문에서 나올 수도 있다. 이 실험은 정각 **전**
+        발사라 한 번의 허위 too_early 가 곧 두 번째 발사이고, 두 번째 발사는
+        대기열 순번을 잡아먹는다. 그래서 **서버의 진짜 문구 원문**
+        (booking.TOO_EARLY_REAL = "아직 예약 가능한 시간이 아닙니다.") 이
+        본문에 그대로 있을 때만 문을 연다. 공백은 정규화해서 비교한다.
         """
         self.last_code = code or ""
-        self.last_confident = bool(
-            outcome is not None and getattr(outcome, "source", "") == "submit")
+        self.last_confident = is_genuine_too_early(outcome)
         if code and code != booking.R_TOO_EARLY:
             self.lock(f"결과가 {code} 입니다")
 
@@ -615,7 +622,8 @@ class _Reopen:
             return False
         if self.last_code != booking.R_TOO_EARLY:
             return False
-        # 서버 원문이 받쳐주지 않는 '예약시간전' 으로는 누르지 않는다(v1.0.16).
+        # 서버 원문이 받쳐주지 않는 '예약시간전' 으로는 누르지 않는다(v1.0.16,
+        # v1.0.18 은 원문까지 요구한다).
         if not self.last_confident:
             return False
         if st.queue or st.modal:
@@ -633,8 +641,9 @@ class _Reopen:
         if self.last_code != booking.R_TOO_EARLY:
             return "'예약시간전' 응답이 아닙니다"
         if not self.last_confident:
-            return ("'예약시간전' 을 화면 문구로만 읽었습니다(서버 응답 본문이 "
-                    "아닙니다). 이 근거로는 대기열 표를 새로 뽑지 않습니다")
+            return ("'예약시간전' 을 서버 원문('아직 예약 가능한 시간이 "
+                    "아닙니다.') 없이 읽었습니다. 화면 문구거나 대기열 문구"
+                    "라서 이 근거로는 대기열 표를 새로 뽑지 않습니다")
         if st.queue:
             return "가상대기열이 떠 있습니다"
         if not st.on_reserve_page or st.ticked <= 0:
@@ -668,7 +677,33 @@ class _Reopen:
         return {"used": self.used, "max": self.max_times,
                 "locked": self.locked, "lockReason": self.lock_reason,
                 "skipped": self.skipped,
-                "pressedReserveAgain": self.pressed}
+                "pressedReserveAgain": self.pressed,
+                "genuineTooEarly": self.last_confident}
+
+
+def is_genuine_too_early(outcome) -> bool:
+    """서버가 **진짜** 문구로 too_early 를 말했는가 (v1.0.18 회복의 문).
+
+    두 가지를 다 요구한다. 첫째, 이번 발사의 제출 **응답 본문**에서 나온
+    것이다(`source == "submit"`). 화면에 남아 있던 옛 알림은 여기서 걸러진다
+    (2026-09-18 실측). 둘째, 본문 안에 서버의 원문 그대로
+    "아직 예약 가능한 시간이 아닙니다." 가 있다. 분류기는 넓은 「아직 …」 꼴도
+    too_early 로 분류하므로(`booking._RE_NOT_YET`) 코드만으로는 부족하다.
+
+    대기열 문구는 여기서 절대 통과하지 못한다. 대기열 본문에는
+    TOO_EARLY_REAL 가 없고, 넷퍼널 대기는 제출 응답이 아니기 때문이다.
+    """
+    if outcome is None:
+        return False
+    if getattr(outcome, "source", "") != "submit":
+        return False
+    text = _norm(getattr(outcome, "text", "") or "")
+    return bool(text) and booking.TOO_EARLY_REAL in text
+
+
+def _norm(text: str) -> str:
+    """문구 비교용 공백 정규화. 서버가 넣는 개행/공백 변주를 흡수한다."""
+    return " ".join(str(text or "").split())
 
 
 def _evidence_line(outcome) -> str:
@@ -680,13 +715,18 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
           retry_seconds: int = 20, retry_ms: int = 90,
           log=lambda *_: None, diag=None, stop_event=None,
           preflight: "LiveState | None" = None,
-          reopen_max: int = None, reopen_seconds: float = None
+          reopen_max: int = None, reopen_seconds: float = None,
+          recovery_aim: float = None
           ) -> booking.StepResult:
     """정각에 [확인] 을 쏘고, 필요하면 다시 쏜다. 그 외에는 아무것도 누르지 않는다.
 
     자동 모드의 `booking.confirm_burst` 와 판정은 같다.
-      예약시간전 → 아직 안 열렸다. 자리는 살아 있으니 곧바로 다시 쏜다.
-                   그리고 이 응답으로 도착 추정을 보정한다.
+      예약시간전 → 아직 안 열렸다. 자리는 살아 있으니 다시 쏜다.
+                   v1.0.18: 다시 쏘는 시각은 **표준 조준**이다. 서버의 진짜
+                   원문이 받쳐줄 때만 여기 온다(_Reopen), 발사 시각은
+                   open_epoch + recovery_aim (정각 +140ms) 까지 기다렸다가
+                   정각 +140ms 에 도착하도록 쏜다. 정각 전에 두들기는 것은
+                   없다. 그리고 이 응답으로 도착 추정을 보정한다.
       정원초과   → 그 칸은 나갔다. 두들기지 않고 멈춘다.
       칸 거절    → 사이트가 그 칸 자체를 막았다. 멈춘다.
 
@@ -700,15 +740,17 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
     그것을 그대로 쓴다. 첫 발만은 화면을 한 번 더 읽느라 조준 시각을 늦출 수
     없기 때문이다. 그 뒤로는 매 발마다 다시 읽는다.
 
-    v1.0.15: 이른 쪽 회복이 이 함수의 핵심이 됐다(여유를 175ms 로 깎았다).
-    바뀐 것은 둘이다.
+    v1.0.18 (하루 실험): 첫 발은 정각 **전** 500ms 에 도착한다
+    (config.CONFIRM_PREHOUR_LEAD_MS). 이른 쪽 회복이 이 함수의 핵심이다.
       - '예약시간전' 을 맞을 때마다 **매번** 도착 추정을 다시 보정한다.
-        예전에는 `corrected` 플래그 때문에 첫 번째 한 번만 배웠다. 한 발
-        보정하고도 여전히 이르면 두 번째 응답이 그 사실을 말해주는데 그것을
-        버리고 같은 자리에 다시 쏘고 있었다. `note_too_early` 는 단조 증가라
-        (배운 것보다 작은 값은 무시) 매번 불러도 뒤로만 간다.
-      - 되살리기 상한/마감은 config 의 REOPEN_EARLY_* 를 기본값으로 쓴다
-        (6회 / 정각 +2초). 인수로 넘기면 그것이 이긴다(테스트용).
+        `note_too_early` 는 단조 증가라(배운 것보다 작은 값은 무시) 정각 전
+        발사의 음수 추정은 0 을 돌려주고 아무것도 배우지 않는다. 회복 발사의
+        양수 추정만 배운다.
+      - 회복(되살리기)은 **서버 원문** 이 있을 때만 문을 연다
+        (`is_genuine_too_early`). 대기열 문구는 원문이 없으므로 문이 열리지
+        않고, 대기열이 보이면 두 번 누르지 않는다.
+      - 회복 발사는 `recovery_aim`(기본 config.ARRIVAL_SAFETY_MS = 정각
+        +140ms)까지 기다렸다가 쏜다. 정각 전에 두 번째 발사가 나가지 않는다.
     """
     shots: list = []
     deadline = open_epoch + max(retry_seconds, 1)
@@ -716,6 +758,8 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
     told_closed = False
     pending = preflight
     reopen = _Reopen(clock, open_epoch, reopen_max, reopen_seconds)
+    recovery_aim_s = (config.ARRIVAL_SAFETY_MS / 1000.0
+                      if recovery_aim is None else max(float(recovery_aim), 0.0))
 
     while clock.server_now() < deadline:
         if stop_event is not None and stop_event.is_set():
@@ -735,7 +779,17 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
                 continue
             if reopen.allowed(st):
                 told_closed = False
-                reopen.do(driver, log)
+                if reopen.do(driver, log):
+                    # v1.0.18: 회복 발사는 표준 조준(정각 +140ms)까지 기다린다.
+                    # 정각 전 두 번째 발사는 이 실험이 아무리 나빠도 있으면 안
+                    # 되는 것(대기열 순번 낭비)이라, 되살리기 직후 곧바로 누르지
+                    # 않는다. 대기열이 이 사이에 뜨면 위 queue 분기가 잠근다.
+                    fire_local = clock.local_fire_for_arrival(
+                        open_epoch + recovery_aim_s)
+                    log(f"회복 발사는 표준 조준까지 기다립니다: 정각 "
+                        f"{recovery_aim_s * 1000:+.0f}ms 도착 목표.")
+                    clockmod.sleep_until_local(fire_local, stop_event,
+                                               spin_ms=20)
                 time.sleep(max(retry_ms, 50) / 1000.0)
                 continue
             if not told_closed:

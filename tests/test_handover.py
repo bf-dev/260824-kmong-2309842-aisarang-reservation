@@ -726,6 +726,9 @@ class _FakeClock:
     def arrival_for_local_fire(self, local_epoch: float) -> float:
         return self._now
 
+    def local_fire_for_arrival(self, arrival_epoch: float) -> float:
+        return self._now
+
     def note_too_early(self, *_a, **_kw) -> float:
         return 0.0
 
@@ -748,7 +751,8 @@ def _submit_outcome(code):
     14분간 남아 있던 죽은 알림이었고(우리 발사는 성공했다), 그 근거로 문을
     열어 대기열 표를 새로 뽑았다. 이제 서버 원문만 문을 연다.
     """
-    return booking.Outcome(code=code, text="", source="submit",
+    text = booking.TOO_EARLY_REAL if code == booking.R_TOO_EARLY else ""
+    return booking.Outcome(code=code, text=text, source="submit",
                            status=200, submit_seen=True, submit_done=True)
 
 
@@ -899,6 +903,15 @@ def _ready(**kw):
 
 def _run_burst(monkeypatch, states, outcomes, **kw):
     calls = {"fire": 0, "repress": 0, "close": 0}
+    # v1.0.18: 회복 발사는 clockmod.sleep_until_local 로 정각 +140ms 까지
+    # **실제 시각** 을 본다. 테스트가 몇 초씩 멈추지 않게 가짜로 끼우고,
+    # 목표 시각을 기록해 별도 시험이 증명한다.
+    calls["waits"] = []
+
+    def fake_wait(local_epoch, stop_event=None, spin_ms=40):
+        calls["waits"].append(local_epoch)
+
+    monkeypatch.setattr(handover.clockmod, "sleep_until_local", fake_wait)
 
     def fake_fire(_driver):
         calls["fire"] += 1
@@ -981,6 +994,9 @@ def test_every_too_early_answer_corrects_the_estimate_not_just_the_first(monkeyp
 
         def arrival_for_local_fire(self, _local):
             # 매 발 조금씩 더 늦게 도착했다고 믿는다(추정은 양수로 유지).
+            return self._t
+
+        def local_fire_for_arrival(self, _arrival):
             return self._t
 
         def note_too_early(self, est, margin=0.03):

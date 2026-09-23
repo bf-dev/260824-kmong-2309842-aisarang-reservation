@@ -232,7 +232,7 @@ def test_the_dead_setting_cannot_come_back_from_an_old_settings_file(tmp_path,
     data = config.load_settings()
     assert "arrival_lead_ms" not in data
     assert "prefire_ms" not in data
-    assert data["arrival_after_ms"] == 0          # 0 = 측정값으로 자동
+    assert "arrival_after_ms" not in data         # v1.0.18: 죽은 키
     assert data["use_hours"] == 9                 # 나머지 설정은 그대로 산다
 
 
@@ -246,10 +246,12 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
     settings.get("arrival_safety_ms", 상수) 로 읽었으므로 파일의 250 이
     이겨서 조준이 275ms 에 그대로 머물렀을 것이다.
 
-    그래서 세 키를 죽은 키로 만들었다. 이 시험이 그 회귀를 막는다.
-
     v1.0.17: 파일에 남아 있을 수 있는 옛 값이 250 하나가 아니다. v1.0.15/16
     을 한 번이라도 돌린 PC 라면 175 가 들어 있다. 둘 다 못박는다.
+
+    v1.0.18: `arrival_after_ms` 도 같은 죽은 키다. 2026-09-17 에 이 키 하나가
+    새 조준을 그림자처럼 덮어써서 250ms 로 머문 사건이 있었다. 이번 판의
+    -500ms 하루 실험도 같은 방식으로 무너질 수 있으므로 함께 못박는다.
     """
     import json
 
@@ -260,43 +262,97 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
 
     for old in (250, 175):
         (tmp_path / "settings.json").write_text(
-            json.dumps({"arrival_safety_ms": old, "reopen_max": 2,
+            json.dumps({"arrival_safety_ms": old, "arrival_after_ms": 250,
+                        "reopen_max": 2,
                         "reopen_seconds": 15, "use_hours": 9},
                        ensure_ascii=False), encoding="utf-8")
         data = config.load_settings()
-        for dead in ("arrival_safety_ms", "reopen_max", "reopen_seconds"):
+        for dead in ("arrival_safety_ms", "arrival_after_ms",
+                     "reopen_max", "reopen_seconds"):
             assert dead not in data, (old, dead)
         assert data["use_hours"] == 9             # 진짜 고객 설정은 그대로 산다
 
-        # 그리고 조준은 파일이 아니라 상수를 따른다. ±25ms → 165ms.
+        # 조준은 파일이 아니라 상수(정각 -500ms) 를 따른다. 측정값도 무관하다.
         r = Runner()
         r.clock = _measured(50.0)
-        assert abs(r._arrival_aim(data) * 1000.0 - 165.0) < 0.5, old
+        assert abs(r._arrival_aim(data) * 1000.0
+                   - config.CONFIRM_PREHOUR_LEAD_MS) < 1e-9, old
 
         # 파일의 값을 억지로 다시 끼워 넣어도 이제 무시된다.
         stale = dict(data)
+        stale["arrival_after_ms"] = old
         stale["arrival_safety_ms"] = old
-        assert abs(r._arrival_aim(stale) * 1000.0 - 165.0) < 0.5, old
+        assert abs(r._arrival_aim(stale) * 1000.0
+                   - config.CONFIRM_PREHOUR_LEAD_MS) < 1e-9, old
 
         # 그리고 읽고 나면 죽은 키는 디스크에서도 지워진다(v1.0.17).
         on_disk = json.loads((tmp_path / "settings.json").read_text(
             encoding="utf-8"))
-        for dead in ("arrival_safety_ms", "reopen_max", "reopen_seconds"):
+        for dead in ("arrival_safety_ms", "arrival_after_ms",
+                     "reopen_max", "reopen_seconds"):
             assert dead not in on_disk, (old, dead)
         assert on_disk["use_hours"] == 9
 
 
-def test_the_runner_turns_the_measurement_into_an_aim():
-    """Runner._arrival_aim: 기본은 자동, 고객이 고정값을 넣으면 그 값(범위 안)."""
+def test_the_default_settings_do_not_carry_a_dead_aim_key():
+    """v1.0.18: DEFAULT_SETTINGS 에 arrival_after_ms 가 없어야 한다.
+
+    save_settings 는 DEFAULT_SETTINGS 의 모든 키를 파일로 쓴다. 여기 남아
+    있으면 다음 실행의 load_settings 가 다시 그림자 키를 만들어 낸다.
+    """
+    assert "arrival_after_ms" not in config.DEFAULT_SETTINGS
+    assert "arrival_after_ms" in config._OBSOLETE
+    assert "arrival_safety_ms" in config._OBSOLETE
+
+
+def test_the_prehour_experiment_aim_is_minus_500ms():
+    """이번 판의 요청 그 자체(2026-09-23 고객 요구 하루 실험).
+
+    첫 발 [확인] 은 정각 500ms 전에 도착시킨다. 고객 3대 실험에서 정각 전
+    클릭이 이겼고, 모바일 앱도 정각 직전 발사로 대기화면 없이 성공했다.
+    서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 회복 발사가
+    표준 조준(정각 +140ms)으로 다시 누른다.
+    """
+    from aisarang.runner import Runner
+
+    assert config.CONFIRM_PREHOUR_LEAD_MS == -500.0
+    assert config.ARRIVAL_SAFETY_MS == 140.0
+
+    r = Runner()
+    for u in (0.0, 50.0, 133.2, 869.2, 5000.0):
+        # 측정값이 아무리 나빠도 조준은 상수다. 산술이 조준을 다시 정하지 않는다.
+        r.clock = _measured(u)
+        assert r._arrival_aim({}) * 1000.0 == -500.0, u
+        assert r._arrival_aim(dict(config.DEFAULT_SETTINGS)) * 1000.0 == -500.0
+
+    # 음수 조준이어도 발사 시각 변환은 정상(정각보다 이른 로컬 발사)이다.
+    c = _clock(offset=0.0, rtt=0.040)
+    open_epoch = 1_800_000_000.0
+    fire = c.local_fire_for_arrival(open_epoch - 0.5)
+    assert abs(fire - (open_epoch - 0.520)) < 1e-9
+    assert abs(c.arrival_for_local_fire(fire) - (open_epoch - 0.5)) < 1e-9
+
+
+def test_the_recovery_aim_stays_after_the_hour():
+    """회복 발사의 조준은 정각 뒤(+140ms) 여야 한다. 정각 전 재발사를 못박는다."""
+    assert config.ARRIVAL_SAFETY_MS == 140.0
+    c = _clock(offset=0.0, rtt=0.040)
+    open_epoch = 1_800_000_000.0
+    recovery = c.local_fire_for_arrival(
+        open_epoch + config.ARRIVAL_SAFETY_MS / 1000.0)
+    assert c.arrival_for_local_fire(recovery) > open_epoch
+
+
+def test_the_runner_ignores_any_setting_when_it_aims():
+    """Runner._arrival_aim 은 settings 를 아예 읽지 않는다(상수 전용)."""
     from aisarang.runner import Runner
 
     r = Runner()
     r.clock = _measured(869.2)
-    auto = r._arrival_aim(dict(config.DEFAULT_SETTINGS))
-    assert abs(auto * 1000.0 - 574.6) < 0.5      # 434.6 + 140 (v1.0.17)
-
-    assert r._arrival_aim({"arrival_after_ms": 900}) == 0.9
-    # 범위 밖 값은 잘린다. 사용자가 실수로 -300 을 넣어도 정각 앞으로 못 간다.
-    assert r._arrival_aim({"arrival_after_ms": -300}) == auto
-    assert r._arrival_aim({"arrival_after_ms": 99999}) \
-        == config.ARRIVAL_MAX_AFTER_MS / 1000.0
+    for junk in ({"arrival_after_ms": 900},
+                 {"arrival_after_ms": -300},
+                 {"arrival_after_ms": 99999},
+                 {"arrival_safety_ms": 250},
+                 {"arrival_lead_ms": 300, "prefire_ms": 300}):
+        assert r._arrival_aim(junk) == config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
+    assert r._arrival_aim(None) == config.CONFIRM_PREHOUR_LEAD_MS / 1000.0

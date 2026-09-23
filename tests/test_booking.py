@@ -139,6 +139,9 @@ class FakeClock:
     def arrival_for_local_fire(self, local_epoch):
         return local_epoch
 
+    def local_fire_for_arrival(self, arrival_epoch):
+        return arrival_epoch
+
     def note_too_early(self, est, margin=0.03):
         return 0.0
 
@@ -214,7 +217,7 @@ def test_open_modal_refuses_when_cell_not_selected(monkeypatch):
 
 # ---------------------------------------------------------------- 재시도 규칙
 
-def _burst(monkeypatch, codes, clock=None):
+def _burst(monkeypatch, codes, clock=None, source="screen"):
     """판정을 정해진 순서로 답하게 만들고 confirm_burst 를 돌린다.
 
     가로채는 이름은 confirm_burst 가 **실제로 부르는** 것이어야 한다.
@@ -223,6 +226,9 @@ def _burst(monkeypatch, codes, clock=None):
     않았다. 그러면 진짜 판정기가 FireDriver 를 읽어 [unknown] 을 돌려주고,
     FakeClock.server_now() 는 값이 늘지 않으므로 `while server_now() < deadline`
     이 영원히 돈다. 실제로 테스트가 47번째에서 멈춰 섰다.
+
+    v1.0.18: source="screen" 은 화면 문구(원문 없음), source="submit" 은 제출
+    응답 본문(원문 있음)이다. 회복의 문은 본문 원문만 연다.
     """
     seq = list(codes)
     calls = {"n": 0}
@@ -233,11 +239,28 @@ def _burst(monkeypatch, codes, clock=None):
         code = seq[i]
         text = {"too_early": "예약시간전", "full": "정원초과",
                 "ok": "예약이 완료되었습니다.", "unknown": "???"}[code]
-        return booking.Outcome(code=code, text=text, source="screen")
+        if source == "submit" and code == "too_early":
+            text = booking.TOO_EARLY_REAL
+        return booking.Outcome(code=code, text=text, source=source,
+                               status=200 if source == "submit" else None,
+                               submit_seen=source == "submit",
+                               submit_done=source == "submit")
 
     monkeypatch.setattr(booking, "read_outcome_detail", fake_outcome)
     monkeypatch.setattr(booking, "redrive_confirm", lambda d, p, log=None: True)
     monkeypatch.setattr(booking.time, "sleep", lambda *_: None)
+    # v1.0.18: 재발사 대기가 clockmod.sleep_until_local 로 실제 시각을 본다.
+    # 가짜 시계(에포크 0 근처)와 섞이면 몇 초씩 멈출 수 있으니 여기서도
+    # 가짜로 끼운다. 대기가 '정각 +140ms 이후' 로 미뤄졌는지는 별도 시험이
+    # 기록으로 본다.
+    waits = {"n": 0, "target": None}
+
+    def fake_sleep_until(local_epoch, stop_event=None, spin_ms=40):
+        waits["n"] += 1
+        waits["target"] = local_epoch
+
+    from aisarang import clock as clockmod
+    monkeypatch.setattr(clockmod, "sleep_until_local", fake_sleep_until)
     d = FireDriver([])
     p = _ready()
     res = booking.confirm_burst(d, p, clock or FakeClock(-0.4), 0.0,
@@ -245,11 +268,12 @@ def _burst(monkeypatch, codes, clock=None):
     # 가짜가 정말로 불렸는가. 이 한 줄이 없으면 판정기의 이름이 다음에 또 바뀔 때
     # 테스트가 실패하는 대신 **멈춰 선다**(위 docstring 의 47번째 사건).
     assert calls["n"] > 0, "confirm_burst 가 가로챈 판정기를 부르지 않았다"
-    return d, res, calls
+    return d, res, calls, waits
 
 
 def test_burst_retries_on_too_early_then_succeeds(monkeypatch):
-    d, res, _ = _burst(monkeypatch, ["too_early", "too_early", "ok"])
+    d, res, _, _ = _burst(monkeypatch, ["too_early", "too_early", "ok"],
+                          source="submit")
     assert res.ok
     assert d.fires == 3
     assert res.detail["confirmAttempts"] == 3
@@ -257,16 +281,52 @@ def test_burst_retries_on_too_early_then_succeeds(monkeypatch):
     assert codes == ["too_early", "too_early", "ok"]
 
 
+def test_burst_stops_on_a_screen_only_too_early(monkeypatch):
+    """v1.0.18: 서버 원문 없는 '예약시간전' 은 재발사의 근거가 아니다.
+
+    2026-09-15/18 의 실수가 이 문구였다. 화면에 남은 죽은 알림을 근거로
+    대기열 위에서 다시 누를 뻔했다. 이제 한 발에서 끝난다.
+    """
+    d, res, _, waits = _burst(monkeypatch, ["too_early", "ok"], source="screen")
+    assert not res.ok
+    assert d.fires == 1
+    assert res.detail["confirmAttempts"] == 1
+    assert waits["n"] == 0, "재발사 대기조차 서면 안 된다"
+
+
+def test_burst_waits_for_the_standard_posthour_aim_before_the_second_press(monkeypatch):
+    """v1.0.18: 진짜 too_early 의 재발사는 정각 +140ms 도착 목표까지 기다린다.
+
+    첫 발은 정각 -500ms(하루 실험). 회복 발사가 정각 전에 또 도착하면
+    서버는 계속 '아직 예약 가능한 시간이 아닙니다' 를 돌려줄 뿐이다.
+    """
+    class JustAfterTheFirstShot(FakeClock):
+        """재시도 창 안이지만 아직 표준 조준 시각에 못 미치는 시계."""
+
+        def server_now(self):
+            return 0.05              # 정각 +50ms: 회복 목표(+140ms) 전
+
+    d, res, calls, waits = _burst(monkeypatch, ["too_early", "ok"],
+                                  clock=JustAfterTheFirstShot(0.05),
+                                  source="submit")
+    assert waits["n"] == 1, "회복 발사 전에 정확히 한 번 기다린다"
+    target = waits["target"]
+    assert target is not None
+    # local_fire_for_arrival 이 항등이므로 대기 목표 = 회복 도착 목표 그 자체.
+    assert abs(target - 0.140) < 1e-6, f"회복 목표가 정각 +140ms 이어야 한다: {target}"
+    assert d.fires == 2
+
+
 def test_burst_stops_immediately_on_full(monkeypatch):
     """정원초과는 이미 나간 자리다. 두들기면 안 된다."""
-    d, res, _ = _burst(monkeypatch, ["full", "ok", "ok"])
+    d, res, _, _ = _burst(monkeypatch, ["full", "ok", "ok"])
     assert not res.ok
     assert res.reason == "full"
     assert d.fires == 1
 
 
 def test_burst_records_arrival_offset_of_each_confirm(monkeypatch):
-    d, res, _ = _burst(monkeypatch, ["too_early", "ok"])
+    d, res, _, _ = _burst(monkeypatch, ["too_early", "ok"], source="submit")
     for s in res.detail["shots"]:
         assert "arrivalOffsetMs" in s
         assert s["text"]
@@ -279,7 +339,8 @@ def test_burst_stops_when_window_passes(monkeypatch):
             self._now += 1.0
             return self._now
 
-    d, res, _ = _burst(monkeypatch, ["too_early"], clock=Ticking(-2.0))
+    d, res, _, _ = _burst(monkeypatch, ["too_early"], clock=Ticking(-2.0),
+                          source="submit")
     assert not res.ok
     assert res.reason == "exhausted"
     assert d.fires <= 8

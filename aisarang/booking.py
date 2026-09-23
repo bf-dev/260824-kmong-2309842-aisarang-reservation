@@ -2820,22 +2820,51 @@ def redrive_confirm(driver, p: Prepared, log=lambda *_: None) -> bool:
     return p.armed
 
 
+def handover_is_genuine(outcome) -> bool:
+    """진짜 too_early 인가(제출 응답 본문 + 서버 원문). handover.is_genuine_too_early
+    가 import 사이클 없이 필요해서 여기 복제해 둔다. 한 곳(handover)에서 테스트한다."""
+    if outcome is None:
+        return False
+    if getattr(outcome, "source", "") != "submit":
+        return False
+    text = " ".join(str(getattr(outcome, "text", "") or "").split())
+    return bool(text) and TOO_EARLY_REAL in text
+
+
 def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
                   retry_seconds: int = 20, retry_ms: int = 90,
-                  log=lambda *_: None, diag=None, stop_event=None) -> StepResult:
-    """정각에 [확인] 을 쏘고, '예약시간전' 이면 열릴 때까지 즉시 재시도한다.
+                  log=lambda *_: None, diag=None, stop_event=None,
+                  recovery_aim: float = None) -> StepResult:
+    """정각에 [확인] 을 쏘고, '예약시간전' 이면 열릴 때까지 재시도한다.
 
-    - 예약시간전 → 아직 안 열렸다. 자리는 살아 있으니 곧바로 다시 쏜다.
-                   그리고 이 문구로 남은 도착 추정을 보정한다.
+    - 예약시간전 → 아직 안 열렸다. 자리는 살아 있으니 다시 쏜다.
+                   v1.0.18: 다시 쏘는 시각은 **표준 조준**이다. 첫 발이 정각
+                   전에 도착했으면(하루 실험) 정각 +140ms 도착 목표까지
+                   기다렸다가 재발사한다. 정각 전에 두들기지 않는다. 그리고
+                   이 문구로 남은 도착 추정을 보정한다. 다만 `note_too_early`
+                   는 음수(정각 전) 추정을 배우지 않으므로 첫 발의 음수 추정은
+                   아무것도 바꾸지 않는다. 회복 발사의 양수 추정만 배운다.
+                   또한 서버 원문 없는 '예약시간전' 으로는 재발사하지 않는다
+                   (대기열 문구는 원문이 없다).
     - 정원초과   → 그 칸은 나갔다. 두들기지 않고 멈춘다.
     """
     shots: list = []
     deadline = open_epoch + max(retry_seconds, 1)
     attempt = 0
+    from . import automation
+    recovery_aim_s = ((automation.config.ARRIVAL_SAFETY_MS / 1000.0)
+                      if recovery_aim is None
+                      else max(float(recovery_aim), 0.0))
     while clock.server_now() < deadline:
         if stop_event is not None and stop_event.is_set():
             break
         attempt += 1
+        if attempt > 1 and clock.server_now() < open_epoch + recovery_aim_s:
+            fire_local = clock.local_fire_for_arrival(open_epoch + recovery_aim_s)
+            log(f"재발사는 표준 조준까지 기다립니다: 정각 "
+                f"{recovery_aim_s * 1000:+.0f}ms 도착 목표.")
+            from . import clock as clockmod
+            clockmod.sleep_until_local(fire_local, stop_event, spin_ms=20)
         shot = confirm_once(driver, p, clock, open_epoch, attempt, log)
         shots.append(shot)
 
@@ -2876,10 +2905,18 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
             # 이르면 두 번째 응답이 바로 그 사실을 말해주는데 그것을 흘렸다.
             # `note_too_early` 는 단조 증가라(배운 것보다 작으면 0) 여러 번
             # 불러도 조준이 앞으로 가지 않는다.
+            # v1.0.18: 재발사 문은 **서버 원문** 이 있을 때만 연다
+            # (is_genuine_too_early: 제출 응답 본문 + "아직 예약 가능한 시간이
+            # 아닙니다."). 대기열 문구는 원문이 없어 여기서 걸러진다.
+            genuine = handover_is_genuine(shot.outcome)
             delta = clock.note_too_early(shot.arrival_offset_ms / 1000.0)
             if delta:
                 log(f"'예약시간전' 응답으로 도착 추정을 {delta * 1000:+.0f}ms "
                     f"보정했습니다(누적 {clock.correction * 1000:+.0f}ms).")
+            if not genuine:
+                log("서버 원문('아직 예약 가능한 시간이 아닙니다.') 없는 "
+                    "'예약시간전' 입니다. 다시 누르지 않습니다.")
+                break
             if not redrive_confirm(driver, p, log):
                 log("확인창을 다시 세우지 못했습니다.")
                 break

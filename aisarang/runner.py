@@ -51,33 +51,24 @@ class Runner:
 
     # -- 조준 ---------------------------------------------------------
     def _arrival_aim(self, settings: dict) -> float:
-        """[확인] 요청을 정각 **뒤** 몇 초에 도착시킬지. 초 단위, 항상 양수.
+        """[확인] 요청의 목표 도착시각. 정각 기준 초 단위(음수 = 정각 전).
 
-        v1.0.8 까지는 정각 300ms **전** 이 목표였고, 2026-08-27 09:00:00 에
-        서버가 그 한 발을 "아직 예약 가능한 시간이 아닙니다." 로 버렸다.
-        서버는 자기 시계로 정각 전에 닿은 요청을 거절한다.
+        v1.0.18 (하루 실험): 정각 **전** 500ms. 고객이 2026-09-23 에 실측을
+        들고 요구한 값이다. 앱은 08:59:59.x 발사로 성공했고, 서버가 정각
+        전 요청을 무조건 버리던 옛 동작도(2026-08-27 실측) 최근 대기열
+        화면으로 바뀌었다. 안전망: 이 발사가 서버 응답 본문의 진짜 문구
+        「아직 예약 가능한 시간이 아닙니다.」 로 too_early 면, 자리는 아직
+        아무에게도 안 갔다는 뜻이므로 표준 조준(정각 +140ms)으로 다시
+        누른다(handover._Reopen).
 
-        기본은 자동이다. 그때그때 잰 시각 오차의 절반에 여유를 더한다
-        (`clock.safe_arrival_after`). 고객 설정에 arrival_after_ms 가 양수로
-        들어 있으면 그 값을 쓰되 범위 밖으로는 못 나간다.
-        매번 다시 계산하는 이유: 정각 90초 전까지 5분마다 시각을 다시 재고,
-        그때마다 오차 폭이 달라지기 때문이다.
-
-        v1.0.15: 여유는 **상수만** 본다. 예전에는 settings 의
-        arrival_safety_ms 를 먼저 봤는데, 그 키는 고객이 화면에서 바꿀 수 없는
-        값인데도 settings.json 에 저장돼 있었다. 그래서 상수를 내려도 고객 PC
-        에서는 파일의 옛 값(250)이 이겨 조준이 바뀌지 않았다.
-        자세한 내용은 config._OBSOLETE 주석.
+        조준은 **상수만** 본다. settings 는 읽지 않는다. 예전에
+        arrival_safety_ms: 250 (v1.0.14), 그리고 모든 버전이 쓴
+        save_settings 특성상 파일에 남는 옛 키가 상수를 그림자처럼 덮어쳐서
+        조준이 안 바뀐 적이 있다(2026-09-17 실측). 그래서 arrival_after_ms
+        는 v1.0.18 에서 죽은 키가 됐다(config._OBSOLETE). 이 실험도 상수 한
+        줄(CONFIRM_PREHOUR_LEAD_MS)로 고객 PC 에 도달한다.
         """
-        try:
-            fixed = float(settings.get("arrival_after_ms", 0) or 0)
-        except Exception:
-            fixed = 0.0
-        if fixed > 0:
-            fixed = min(max(fixed, config.ARRIVAL_MIN_AFTER_MS),
-                        config.ARRIVAL_MAX_AFTER_MS)
-            return fixed / 1000.0
-        return self.clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
+        return config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
 
     # -- 로그 ---------------------------------------------------------
     def log(self, line: str) -> None:
@@ -212,12 +203,14 @@ class Runner:
         self.status(f"대상: {center.get('name')} / 이용일 {target_date} / {hours}시간"
                     + (f" / 시작 우선순위 {', '.join(slots)}" if slots else ""))
         self.log(f"실행 방식: {config.RUN_MODE_LABELS[mode]}")
-        self.log(f"[확인] 목표 도착: 정각 {aim * 1000:.0f}ms 뒤 / "
+        self.log(f"[확인] 목표 도착: 정각 {aim * 1000:+.0f}ms / "
                  f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사"
                  + ("" if mode == config.MODE_HANDOVER
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
-        self.log("정각보다 먼저 도착한 요청은 서버가 그냥 버립니다"
-                 "(2026-08-27 09:00:00 실측). 그래서 늦는 쪽으로 조준합니다.")
+        self.log("2026-09-23 고객 요구 실험: 정각 500ms 전에 도착시킨다. "
+                 "서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
+                 "표준 조준(정각 +140ms)으로 다시 누른다. 대기열 화면이 "
+                 "뜨면 다시 누르지 않고 기다린다.")
 
         self.status("크롬을 실행합니다...")
         self.driver = automation.build_driver(log=self.log, diag=self.diag)
@@ -300,9 +293,10 @@ class Runner:
         # --- 9단계: [확인] 만 정각에 쏜다. ---
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
-                 f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
-                 f"{int(config.ARRIVAL_SAFETY_MS)}ms)")
+        self.log(f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
+                 f"(하루 실험: 정각 전 발사. 서버가 '아직 예약 가능한 시간이 "
+                 f"아닙니다' 로 거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms "
+                 f"로 다시 누른다)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -436,9 +430,10 @@ class Runner:
 
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
-                 f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
-                 f"{int(config.ARRIVAL_SAFETY_MS)}ms)")
+        self.log(f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
+                 f"(하루 실험: 정각 전 발사. 서버가 '아직 예약 가능한 시간이 "
+                 f"아닙니다' 로 거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms "
+                 f"로 다시 누른다)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -748,6 +743,8 @@ class Runner:
     def _finish(self, ok: bool, message: str, center: dict, target_date: str,
                 slots: list, detail: dict | None = None) -> dict:
         self.status(message)
+        aim = self._arrival_aim(self.settings)
+        recovery_ms = config.ARRIVAL_SAFETY_MS
         meta = {
             "mode": "dry_run" if detail and detail.get("reason") == "dry_run" else "live",
             "center": f"{center.get('name')} ({center.get('stcode')})",
@@ -760,6 +757,12 @@ class Runner:
             "clockResyncIntervalSec": config.RESYNC_SECONDS,
             "clockAgeSec": (round(self.clock.age_seconds(), 1)
                             if self.clock.last_sync_local else None),
+            # v1.0.18 하루 실험: 어떤 조준으로 쐈는지를 업로드에 그대로 찍는다.
+            "resolvedAimMs": round(aim * 1000, 1),
+            "aimPlan": (f"첫 발 정각 {aim * 1000:+.0f}ms (하루 실험), "
+                        f"회복 발사 정각 +{recovery_ms:.0f}ms "
+                        f"(서버 원문 too_early 일 때만)"),
+            "aimSource": "constant CONFIRM_PREHOUR_LEAD_MS",
             "result": "success" if ok else "fail",
         }
         if detail:
@@ -774,7 +777,8 @@ class Runner:
                          f"· [{s.get('code')}] {s.get('text', '')}")
             try:
                 self.diag.add_json("confirm_shots.json", {
-                    "openTargetLeadMs": None,
+                    "openTargetLeadMs": round(aim * 1000, 1),
+                    "recoveryAimMs": recovery_ms,
                     "clockCorrectionMs": round(self.clock.correction * 1000, 1),
                     "correctionNotes": self.clock.correction_notes,
                     "shots": shots,

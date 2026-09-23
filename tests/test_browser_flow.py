@@ -110,8 +110,14 @@ def test_full_flow_to_the_modal_and_a_successful_confirm(drv):
 
 
 def test_too_early_then_open_is_retried_until_it_takes(drv):
-    """'예약시간전' 두 번 → 세 번째에 성공. 확인 경로만 다시 세운다."""
+    """'예약시간전' 두 번 → 세 번째에 성공. 확인 경로만 다시 세운다.
+
+    v1.0.18: 원문은 제출 응답 본문으로 와야 한다(그게 1순위 근거다). 본문
+    훅을 심고, 회복 재발사의 정각 +140ms 대기는 실제 시각을 보므로 가짜로
+    끼운다(이 시계의 server_now 는 늘 정각 전이라 기다림이 끝나지 않는다).
+    """
     _open(drv, "too_early,too_early,ok")
+    _net_recorder(drv)
     booking.select_class(drv)
     booking.select_hours(drv, 9)
     g = booking.read_grid(drv)
@@ -135,13 +141,29 @@ def test_too_early_then_open_is_retried_until_it_takes(drv):
         def arrival_for_local_fire(self, t):
             return -0.2
 
+        def local_fire_for_arrival(self, t):
+            return t
+
         def note_too_early(self, est, margin=0.03):
             return 0.0
 
-    res = booking.confirm_burst(drv, p, Clock(), 0.0, retry_seconds=5, retry_ms=1)
+    from aisarang import clock as clockmod
+    waited = []
+    orig_wait = clockmod.sleep_until_local
+    clockmod.sleep_until_local = lambda target, ev=None, spin_ms=40: waited.append(target)
+    try:
+        res = booking.confirm_burst(drv, p, Clock(), 0.0, retry_seconds=5,
+                                    retry_ms=1)
+    finally:
+        clockmod.sleep_until_local = orig_wait
     assert res.ok, res.message
     assert drv.execute_script("return window.__fired;") == 3
     assert [s["code"] for s in res.detail["shots"]] == ["too_early", "too_early", "ok"]
+    # 회복 발사는 표준 조준(정각 +140ms 도착 목표)까지 기다렸어야 한다.
+    assert waited == [0.140, 0.140], waited
+    # 그리고 판정은 본문에서 났어야 한다(화면 문구만으론 문이 안 열린다).
+    assert [s["outcome"]["source"] for s in res.detail["shots"]] == ["submit"] * 3, \
+        res.detail["shots"]
 
 
 def test_full_stops_after_one_shot(drv):
@@ -203,6 +225,18 @@ def test_confirm_is_not_fired_when_the_row_check_is_gone(drv):
 # 아래 fixture 는 고객 PC 진단 ZIP 에서 읽은 **실제 마크업**을 재현한 것이다
 # (2026-08-25T05:24Z, 인증서 세션. 개인정보는 가짜 값으로 바꿨다).
 CHILD_FIXTURE = os.path.join(ROOT, "ci", "fixtures", "child_select.html")
+
+
+def _net_recorder(drv):
+    """v1.0.18: 이 시험 모듈은 start_chrome 을 안 거치므로 응답 본문 훅이 없다.
+
+    제출 응답 본문이 판정의 1순위 근거다(2026-09-18 이후 화면 문구는
+    살아 있는 근거가 아니다). 본문 훅 없이 too_early 를 본문으로 답하는
+    시험은 화면 문구만으로는 못 받는다. 그래서 제품이 쓰는 것과 같은
+    훅을 여기서 직접 심는다.
+    """
+    from aisarang import automation
+    drv.execute_script(automation._JS_NET_RECORDER)
 
 
 def _open_child(d):
