@@ -2519,7 +2519,74 @@ back, dead key physically gone from the rewritten file). The 09-18 pinned test t
 `test_the_aim_never_goes_backwards_from_199ms` (never regress past 175, currently 140).
 319 passed locally; the same number on the runner.
 
-## 배포 현황 (v1.0.17, 2026-09-22 01:20Z) ← 지금 서빙 중
+## v1.0.18 (2026-09-23): the ONE-DAY pre-hour experiment, first confirm at -500ms
+
+Customer-approved one-day trial: the first [확인] press aims at 정각 **-500ms** (before the
+hour) instead of +140ms after it. Rationale: the 09-22 morning run landed at +205ms and lost
+to 선예약 with 21 ahead in the queue, so the question is whether arriving just before/around
+the hour can win the slot. The server discards anything before 09:00:00.000 (measured
+2026-08-27), so a pre-hour first shot is expected to answer 예약시간전; that is why the
+recovery path ships in the same build.
+
+What changed (and what did NOT):
+
+| Item | Where | What |
+|---|---|---|
+| First-shot aim -500ms | `config.CONFIRM_PREHOUR_LEAD_MS = -500.0`, `Runner._arrival_aim()` returns it unconditionally | `ARRIVAL_SAFETY_MS` (+140) is now the RECOVERY aim only; clock sync untouched |
+| Recovery re-press, genuine too_early only | `booking.handover_is_genuine()` / `handover.is_genuine_too_early()` | requires `outcome.source == "submit"` AND whitespace-normalized text containing `booking.TOO_EARLY_REAL` (아직 예약 가능한 시간이 아닙니다.) |
+| Recovery waits for the standard aim | `handover` burst after `reopen.do()`, and `booking.confirm_burst` attempt > 1 | `clockmod.sleep_until_local(clock.local_fire_for_arrival(open_epoch + recovery_aim_s))`, so the re-press lands at +140ms, not another pre-hour hammer |
+| Queue never classifies too_early | classifier keeps `_RE_PENDING` (대기자순번, NetFunnel_Loading_Popup) -> R_UNKNOWN | a queue screen can never trigger a second press (the site has no duplicate-submit guard) |
+| Dead key purge extended | `config.load_settings()` | obsolete `arrival_after_ms` in settings.json is deleted on load so a stale file cannot shadow the -500ms constant |
+| Diagnostics | `reporter.meta()` -> `aimPrehourLeadMs` | every diagnostic ZIP now shows the resolved pre-hour aim |
+
+Tests: 324 passed locally (and the same number on the runner). New/updated pins:
+`test_the_prehour_experiment_aim_is_minus_500ms`, `test_the_recovery_aim_stays_after_the_hour`,
+`test_the_dead_setting_cannot_come_back_from_an_old_settings_file`,
+`test_burst_waits_for_the_standard_posthour_aim_before_the_second_press`,
+`test_burst_stops_on_a_screen_only_too_early`, queue tests (`test_reopen_never_fires_while_the_queue_layer_is_up`,
+`test_reopen_locks_forever_once_a_queue_shows_up`), real-browser `ci/too_early_retry_check.py`
+(early-once codes `['too_early','ok']` reopenUsed=1; early-repeat 4x too_early then ok,
+every shot `source=submit`, log line `회복 발사는 표준 조준까지 기다립니다: 정각 +140ms 도착 목표`),
+`--handovertest ci/fixtures/real` -> `fired=1/6` with netfunnel_waiting queue `fired=False`.
+
+CI note: the first build run (35852563586) failed in the real-Chromium recovery step with
+`SessionNotCreatedException` because the windows-latest image pins chromedriver 152 at
+`C:\SeleniumWebDrivers\ChromeDriver` while its Chrome auto-updated to 154. Fixed by deleting
+the pinned driver in the workflow so Selenium Manager downloads the matching one.
+
+## 배포 현황 (v1.0.18, 2026-09-23 12:07Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.18.zip
+  (29,303,608 bytes, HTTP 200 over the real egress URL with cache-buster)
+  sha256 `727e68d7c47b373aae6696e86cfbc0faf87c75208ef5c5661b09c4cc74d1e8c4`.
+  Three places agree: CI log value = downloaded artifact = bytes Caddy serves. `unzip -t` clean
+  (1352 entries, top folder `aisarang-reservation-1.0.18/`).
+  GUI screenshot `out/ci-1.0.18/screenshots/gui.png` shows v1.0.18 in the titlebar and header.
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.18` / `updatedAt 2026-09-23T12:06:54Z` / `supersedes 1.0.17` / `zipUrl` only
+  (no `exeUrl`). Installed with `install -m 0644`. Copy committed at
+  `deploy/manifests/version-aisarang-1.0.18.json`. Verified with a cache-buster curl:
+  served version 1.0.18, sha256 prefix 727e68d7c47b373a, size 29303608.
+- Live manifest fed to the shipped `updater.choose_download` after publishing:
+  1.0.5 / 1.0.8 / 1.0.12 / 1.0.16 / 1.0.17 -> zip 1.0.18, and **1.0.18 -> None** (no restart loop).
+- CI: GitHub Actions run **35856020285**, commit `78f819d`, **success** in ~15m.
+  324 passed, Defender onedir and zip both CLEAN (`VERDICT onedir: CLEAN`, `VERDICT zip: CLEAN`),
+  stale notice check OK, real-browser retry check OK (early-once `['too_early','ok']`,
+  early-repeat 4x too_early then ok), frozen-exe steps OK, HANDOVERTEST `fired=1/6 expected=1`.
+- Artifacts upload re-proven through the shipped `Diagnostics.upload(..., blocking=True)`
+  (script `~/workspace/kmong/tmp/upload_1018_diag.py`): `진단 업로드 status=200`,
+  `진단 업로드 matched=True`; `artifacts-check 2309842` shows the row
+  `aisarang-reservation-diag 2026-09-23T11:49:23 PENDING [aisarang-reservation v1.0.18] ... v1.0.18 게시 점검`
+  with the ZIP on disk at
+  `.../artifacts/private/05788f12-b025-48ba-bb01-7c45121013d8/1790164163873-aisarang-reservation-2309842-20260923-134923.zip`.
+- 전달 경로: **자동 업데이트**. The customer runs 1.0.17; the next launch picks up 1.0.18
+  (the manifest notes tell them this build tries the confirm click slightly before the hour
+  as a one-day trial and that everything else is unchanged).
+- 되돌리기: 1.0.17 ZIP stays served.
+  Reinstall `deploy/manifests/version-aisarang-1.0.17.json` over the manifest path with
+  `install -m 0644` to roll back.
+
+## 배포 현황 (v1.0.17, 2026-09-22 01:20Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.17.zip
   (29,302,445 bytes, HTTP 200)
