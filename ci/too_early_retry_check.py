@@ -223,6 +223,14 @@ class _Clock:
         # 우리 추정. skew 만큼 낙관적이다(실제보다 늦게 도착했다고 믿는다).
         return local_epoch + self.skew
 
+    def local_fire_for_arrival(self, arrival_epoch: float) -> float:
+        # v1.0.18: 회복 발사가 표준 조준까지 기다리는 경로가 실제로 도는지
+        # 보기 위해 기다린 목표 시각을 기록한다. 도착 -> 현지 발사 변환은
+        # 이 판에서는 항등 함수다(도착 추정이 곧 현지 시각).
+        self.waited_for = getattr(self, "waited_for", [])
+        self.waited_for.append(round(arrival_epoch, 3))
+        return arrival_epoch
+
     def note_too_early(self, est_arrival_offset: float, margin: float = 0.03):
         from aisarang.clock import ClockSync
         delta = ClockSync.note_too_early(self, est_arrival_offset, margin)

@@ -20,6 +20,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pytest
 
+      # 2026-09-23: windows-latest 이미지는 구버전 chromedriver 를
+      # C:\SeleniumWebDrivers\ChromeDriver 에 박아두고 PATH 에 올린다. 이미지의
+      # 크롬은 자동 갱신되는데 그 드라이버는 갱신되지 않는다(이번 판: 드라이버
+      # 152 vs 크롬 154). 그러면 모든 실물 크롬 단계가 SessionNotCreatedException
+      # 으로 죽는다. PATH 에서 지워버리면 셀레늄 매니저가 이미지 크롬에 맞는
+      # 드라이버를 제 내려받기로 맞춘다(원래 기본 동작).
+      - name: drop the runner's pinned chromedriver (it lags the image's Chrome)
+        shell: pwsh
+        run: |
+          $p = "C:\SeleniumWebDrivers\ChromeDriver\chromedriver.exe"
+          if (Test-Path $p) { Remove-Item $p -Force; "removed pinned chromedriver: $p" }
+          else { "no pinned chromedriver in the image this time" }
+
       - name: unit tests
         run: python -m pytest tests/ -q
 
