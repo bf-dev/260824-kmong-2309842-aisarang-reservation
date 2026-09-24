@@ -2589,6 +2589,42 @@ incident (`memories/customers/2309842/a-stale-settings-key-...`): `save_settings
 beats the constant. `_arrival_aim` keeps its `settings` argument only for call-site
 compatibility and never reads it; `test_the_runner_ignores_any_setting_when_it_aims` pins that.
 
+## 배포 현황 (v1.0.19, 2026-09-24 00:36Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.19.zip
+  (29,303,948 bytes, HTTP 200 over the real egress URL with a cache-buster)
+  sha256 `591485decde1d7966f0608551a22585e405e81fae8cd62e9ff87a55852e6fe27`.
+  Three places agree: CI log value = downloaded artifact = bytes Caddy serves. `unzip -t` clean
+  (1352 entries, top folder `aisarang-reservation-1.0.19/`).
+  GUI screenshot `out/ci-1.0.19/screenshots/gui.png` shows v1.0.19 in the titlebar and header.
+  Published with `~/workspace/scripts/works-publish 2309842 ...` (mode 644).
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.19` / `updatedAt 2026-09-24T00:35:32Z` / `supersedes 1.0.18` / `zipUrl` only
+  (no `exeUrl`). Installed with `install -m 0644`. Copy committed at
+  `deploy/manifests/version-aisarang-1.0.19.json`. Verified with a cache-buster curl:
+  served version 1.0.19, sha256 prefix 591485decde1d796, size 29303948, `no-exeUrl`.
+- Live manifest fed to the shipped `updater.choose_download` after publishing:
+  1.0.4 / 1.0.5 / 1.0.17 / 1.0.18 -> zip 1.0.19, and **1.0.19 -> None** (no restart loop).
+- CI: GitHub Actions run **35937858609**, commit `0c23806`, **success**.
+  324 passed, Defender onedir and zip both CLEAN (`VERDICT onedir: CLEAN`, `VERDICT zip: CLEAN`),
+  `STALE NOTICE CHECK: OK`, `HANDOVERTEST fired=1/6 expected=1`, `HANDOVERTEST OK`,
+  `staleIgnored=True`, frozen-exe handover + run-exe-from-zip + auto-update swap all OK.
+- 조준 증거 (dry-run, `~/workspace/kmong/tmp/aim_dryrun_1019.py`): with a stale 1.0.18
+  `settings.json` on disk holding `confirm_prehour_lead_ms=-500`, `arrival_prehour_lead_ms=-500`,
+  `arrival_safety_ms=250`, `arrival_after_ms=250`, the aim for a 09:00 target is
+  `+165.0 ms` (`조준 확정: 도착 목표 정각 +165ms (시각 오차 ±25ms + 여유 140ms)`),
+  arrival `09:00:00.165`, `pre-hour? False`. After `load_settings()` the file on disk no longer
+  holds any dead aim key (`_OBSOLETE` strips and rewrites it).
+- Artifacts upload re-proven through the shipped `Diagnostics.upload(..., blocking=True)`
+  (script `~/workspace/kmong/tmp/upload_1019_diag.py`): `진단 업로드 status=200`,
+  `진단 업로드 matched=True`; `artifacts-check 2309842` shows the row
+  `aisarang-reservation-diag 2026-09-24T00:36:23 PENDING [aisarang-reservation v1.0.19] ... v1.0.19 게시 점검`.
+- 전달 경로: **자동 업데이트**. The customer runs 1.0.18; the next launch picks up 1.0.19
+  (the manifest notes explain the 09-24 live result and that the pre-hour trial is withdrawn).
+- 되돌리기: the 1.0.18 ZIP stays served.
+  Reinstall `deploy/manifests/version-aisarang-1.0.18.json` over the manifest path with
+  `install -m 0644` to roll back.
+
 ## 배포 현황 (v1.0.18, 2026-09-23 12:07Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.18.zip
