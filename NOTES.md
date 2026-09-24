@@ -2554,7 +2554,42 @@ CI note: the first build run (35852563586) failed in the real-Chromium recovery 
 `C:\SeleniumWebDrivers\ChromeDriver` while its Chrome auto-updated to 154. Fixed by deleting
 the pinned driver in the workflow so Selenium Manager downloads the matching one.
 
-## 배포 현황 (v1.0.18, 2026-09-23 12:07Z) ← 지금 서빙 중
+## v1.0.19 (2026-09-24): the pre-hour experiment is REVERTED, first confirm aims after the hour again
+
+The 1.0.18 one-day trial ran live at 2026-09-24 09:00:00 and answered its own question.
+Diagnostic ZIP: `artifacts/private/05788f12-b025-48ba-bb01-7c45121013d8/1790208002908-aisarang-reservation-2309842-20260924-090003.zip`.
+
+| Shot | Arrival vs the hour | Server answer | Outcome |
+|---|---|---|---|
+| 1 (pre-hour aim) | **-499ms** | HTTP 200, body `아직 예약 가능한 시간이 아닙니다` | rejected, nothing bought |
+| 2 (recovery re-press) | **+359ms** | `1건 예약 중 1건 예약되었습니다` | success, 20261008 secured |
+
+Reading: the WEB path (`InsertOcreqst`) still hard-rejects anything that arrives before the
+hour, exactly as measured on 2026-08-27. The customer's 09-23 observation that the mobile APP
+pushes a pre-hour request into the queue does NOT transfer to the web path we drive. Worse, the
+recovery lap (close the alert, re-click 예약하기, wait for the modal, re-fire) pushed the real
+arrival out to +359ms, while an ordinary single shot lands at +169~+205ms. The experiment cost
+about 190ms of arrival latency and bought nothing.
+
+So v1.0.19 restores the single standard shot:
+
+| Item | Where | What |
+|---|---|---|
+| First-shot aim back to the standard margin | `Runner._arrival_aim()` returns `clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000)` | aim = (measured clock-uncertainty half-width) + 140ms, floored at `ARRIVAL_MIN_AFTER_MS` = 140ms, so it is ALWAYS after the hour |
+| `CONFIRM_PREHOUR_LEAD_MS` deleted | `config.py` | there is no code path that aims before the hour any more; `test_the_first_shot_aims_after_the_hour_again` asserts `not hasattr(config, "CONFIRM_PREHOUR_LEAD_MS")` |
+| too_early recovery KEPT | `handover.burst` / `booking.confirm_burst` / `_Reopen` | this is the v1.0.15 safety net, not the experiment. A genuine too_early (`outcome.source == "submit"` AND whitespace-normalized body contains `booking.TOO_EARLY_REAL`) still reopens the modal and re-fires, and the re-press still WAITS for the standard aim |
+| Queue still never re-presses | classifier `_RE_PENDING` -> `R_UNKNOWN` | unchanged |
+| Stale-settings shadow closed for the experiment key too | `config._OBSOLETE` += `confirm_prehour_lead_ms`, `arrival_prehour_lead_ms` | a PC that ran 1.0.18 cannot keep a frozen pre-hour key in settings.json; `load_settings()` strips it and rewrites the file |
+| Diagnostics | `reporter.meta()` dropped `aimPrehourLeadMs`; `runner._finish` stamps `aimSource = "clock.safe_arrival_after(ARRIVAL_SAFETY_MS)"` | one ZIP still answers "what aim did this PC really use" |
+| Artifacts upload | untouched | same `Diagnostics.upload`, same source `aisarang-reservation-diag` |
+
+Do NOT "fix" this by reading an aim out of `settings`. That is the 2026-09-17 shadowing
+incident (`memories/customers/2309842/a-stale-settings-key-...`): `save_settings` writes every
+`DEFAULT_SETTINGS` key, so any aim key placed there freezes on the customer PC and silently
+beats the constant. `_arrival_aim` keeps its `settings` argument only for call-site
+compatibility and never reads it; `test_the_runner_ignores_any_setting_when_it_aims` pins that.
+
+## 배포 현황 (v1.0.18, 2026-09-23 12:07Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.18.zip
   (29,303,608 bytes, HTTP 200 over the real egress URL with cache-buster)

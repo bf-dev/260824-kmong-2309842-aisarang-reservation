@@ -109,6 +109,14 @@ def test_one_point_ten_is_newer_than_one_point_nine():
 def test_the_shipped_version_matches_what_the_manifest_will_say():
     """리포의 판 번호와 서빙 중인 매니페스트가 같아야 한다.
 
+    1.0.19 는 **되돌림** 판이다. 1.0.18 의 하루 실험(첫 발을 정각 전 500ms
+    에 도착시키기) 은 2026-09-24 09:00 실전에서 답이 나왔다: 1발 -499ms 는
+    서버가 버렸고(본문 "아직 예약 가능한 시간이 아닙니다"), 2발 회복
+    발사 +359ms 가 예약을 잡았다. 평소 한 발은 +169~+205ms 에 닿으므로
+    실험은 약 190ms 손해였다. 그래서 첫 발 조준을 다시 표준
+    ((시각 오차 반폭) + 140ms) 으로 되돌렸다. too_early 회복 경로는
+    v1.0.15 부터의 안전망이라 그대로 남는다.
+
     1.0.17 은 **조준** 판이다. 고객 요청으로 여유를 175 -> 140ms 로 당겼고
     (하한도 같이 140), 그 밖의 판정 / 시각측정 / 되살리기 경로는 한 글자도
     안 건드렸다. 아래는 1.0.16 에서 확정된 판정 규칙이고 그대로 유지된다.
@@ -128,7 +136,7 @@ def test_the_shipped_version_matches_what_the_manifest_will_say():
     대조할 수 있는 것은 상수뿐이다. 실제 서빙 값은 NOTES.md 의 '배포 현황'
     절과 metadata.json 의 `deploy.manifestServing` 에 적어 둔다.
     """
-    assert config.APP_VERSION == "1.0.18"
+    assert config.APP_VERSION == "1.0.19"
     assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.16")
 
 

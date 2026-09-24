@@ -295,10 +295,10 @@ def test_burst_stops_on_a_screen_only_too_early(monkeypatch):
 
 
 def test_burst_waits_for_the_standard_posthour_aim_before_the_second_press(monkeypatch):
-    """v1.0.18: 진짜 too_early 의 재발사는 정각 +140ms 도착 목표까지 기다린다.
+    """진짜 too_early 의 재발사는 정각 +140ms 도착 목표까지 기다린다.
 
-    첫 발은 정각 -500ms(하루 실험). 회복 발사가 정각 전에 또 도착하면
-    서버는 계속 '아직 예약 가능한 시간이 아닙니다' 를 돌려줄 뿐이다.
+    회복 발사가 정각 전에 또 도착하면 서버는 계속 '아직 예약 가능한 시간이
+    아닙니다' 를 돌려줄 뿐이다(2026-08-27, 2026-09-24 실측).
     """
     class JustAfterTheFirstShot(FakeClock):
         """재시도 창 안이지만 아직 표준 조준 시각에 못 미치는 시계."""

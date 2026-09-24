@@ -170,9 +170,6 @@ class Diagnostics:
             "aimSafetyMs": config.ARRIVAL_SAFETY_MS,
             "aimFloorMs": config.ARRIVAL_MIN_AFTER_MS,
             "aimCeilMs": config.ARRIVAL_MAX_AFTER_MS,
-            # v1.0.18 하루 실험: 첫 발 조준은 상수(정각 -500ms) 로만 정한다.
-            # settings.json 이 어떤 값을 갖고 있어도 이 값이 진실이다.
-            "aimPrehourLeadMs": config.CONFIRM_PREHOUR_LEAD_MS,
         }
         if extra:
             for k, v in extra.items():
