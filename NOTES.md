@@ -2589,7 +2589,73 @@ incident (`memories/customers/2309842/a-stale-settings-key-...`): `save_settings
 beats the constant. `_arrival_aim` keeps its `settings` argument only for call-site
 compatibility and never reads it; `test_the_runner_ignores_any_setting_when_it_aims` pins that.
 
-## 배포 현황 (v1.0.19, 2026-09-24 00:36Z) ← 지금 서빙 중
+## v1.0.20 (2026-09-28): pre-hour first shot is BACK at the customer's request, and a queue is waited out
+
+Two changes, both asked for on 2026-09-28 after the 09:00 run was lost.
+
+**Why the 09-28 run was lost (root cause, ours).** After [확인] the NetFunnel layer showed
+(대기자순번, ahead 32). `read_outcome_detail` treated the queue as `R_UNKNOWN` and gave up
+after about 2.4s. The InsertOcreqst POST actually left at about +2665ms, after we had stopped
+reading, so the real verdict was never seen. The customer should check 신청현황 for that
+day's target date: the submission may have landed.
+
+**1. First shot restored to 정각 -500ms (customer request, the 1.0.18 setting).** Customer:
+"거절해도 다시 요청해서 성공한다면 차라리 그게 더 나은가 싶어서요". So:
+
+| Item | Where | What |
+|---|---|---|
+| First-shot aim | `config.CONFIRM_PREHOUR_LEAD_MS = -500.0`, `Runner._arrival_aim()` returns it / 1000 | code constant ONLY, never read from settings (the 09-17 shadowing lesson still stands); diag stamps `aimSource = "constant CONFIRM_PREHOUR_LEAD_MS"`, `reporter.meta()` stamps `aimPrehourLeadMs` + `queueWaitSeconds` |
+| Recovery aim | `handover.burst` (handover mode) and `booking.confirm_burst` (auto mode) | on a genuine too_early (source submit + `TOO_EARLY_REAL`): close alert, re-press 예약하기 once, WAIT for `open + ARRIVAL_SAFETY_MS` (+140ms) via `clock.local_fire_for_arrival` + `clockmod.sleep_until_local`, re-fire. Up to `REOPEN_EARLY_MAX` = 6 revives |
+| Stale keys | `config._OBSOLETE` still strips `confirm_prehour_lead_ms`, `arrival_prehour_lead_ms` | unchanged from 1.0.19 |
+
+**2. The queue is a wait, never a give-up and never a re-click.**
+
+| Item | Where | What |
+|---|---|---|
+| Sticky queue wait | `booking.read_outcome_detail(..., queue_timeout=, log=, stop_event=)` | while the queue layer is visible the ordinary 1.6s/9s timers are suspended; the read continues until `started + queue_timeout` (`config.QUEUE_WAIT_SECONDS` = 90). When the queue clears the timers restart from that moment, so the submit that leaves after the release is read normally. A re-appearing queue resets them again. Logs are throttled (`QUEUE_LOG_SECONDS` = 2): `가상대기열에 섰습니다...`, `대기열이 풀렸습니다(N초 대기)...`, `대기열이 다시 떴습니다...` |
+| Outcome fields | `Outcome.queue_wait_ms`, `Outcome.queue_cleared` | in the shot diag |
+| Handover burst | `handover.burst` | a queued watcher state never clicks; the burst deadline extends to `queue_since + QUEUE_WAIT_SECONDS`; a queued verdict does NOT lock `_Reopen`; the reopen window is measured from `verdict_at` (the time the post-queue verdict arrived), so a too_early that comes back 20s late still gets its recovery shot |
+| Auto mode | `booking.confirm_once` passes `queue_timeout`; `confirm_burst` extends its deadline after a queued shot; `redrive_confirm` passes `wait_modal(deadline_local=now + QUEUE_WAIT_SECONDS)` so a queue after the re-press is waited out with ONE press | |
+| Stop button | `stop_event` returns early from a queue wait | |
+| Capped queue | still `R_UNKNOWN` after 90s, burst returns `unknown_submitted`, never re-fires | |
+
+`queue_timeout=None` keeps the old give-up exactly (pinned by a test), so callers that do not
+opt in are unchanged.
+
+Tests: `tests/test_queue_wait_0928.py` (16): timed-driver queue 2.7s -> OK read,
+queue -> genuine too_early, queue -> taken/full, flicker, never-clearing cap, stop, cap >= 60;
+burst pre-hour -500ms then recovery aimed at OPEN+0.140, no clicks while queued, queued
+too_early 20s late still recovers, queue after repress waited out, capped unknown stops,
+reopen window from `verdict_at`, auto-mode redrive waits a 3.6s queue with a single press.
+Full suite 340 passed locally and in CI. `ci/too_early_retry_check.py` passes locally in real
+Chrome (`RETRY ALL OK`).
+
+## 배포 현황 (v1.0.20, 2026-09-28 01:03Z) ← 지금 서빙 중
+
+- 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.20.zip
+  (29,307,700 bytes, HTTP 200 over the real egress URL with a cache-buster)
+  sha256 `ae7d15da445c83930f6845221226b9db2f79b0d9ae706876584b15714dadd800`.
+  CI log value = downloaded artifact = bytes Caddy serves. `unzip -t` clean (1352 files).
+  GUI screenshot `out/ci-1.0.20/screenshots/gui.png` shows v1.0.20 in the titlebar and header.
+- 매니페스트: https://works.insu.ng/works/public/2309842/version-aisarang.json
+  `version 1.0.20` / `updatedAt 2026-09-28T01:03:12Z` / `supersedes 1.0.19` / `zipUrl` only
+  (no `exeUrl`). `install -m 0644`. Copy at `deploy/manifests/version-aisarang-1.0.20.json`.
+  Live manifest fed to `updater.choose_download`: 1.0.4/1.0.5/1.0.18/1.0.19 -> zip 1.0.20,
+  1.0.20 -> None.
+- CI: GitHub Actions run **36363537972**, commit `95a0f56`, success. 340 passed,
+  `RETRY ALL OK`, `STALE NOTICE CHECK: OK`, Defender onedir/zip CLEAN, `HANDOVERTEST fired=1/6
+  expected=1`, `HANDOVERTEST OK`, `staleIgnored=True`, `SWAP CHECK: OK`.
+- Aim dry-run (`handover.burst` with a fake clock, first shot too_early then OK): first shot
+  arrival `-500ms`, recovery arrival target `open +140ms`, log line
+  `회복 발사는 표준 조준까지 기다립니다: 정각 +140ms 도착 목표.` A stale settings dict with
+  `confirm_prehour_lead_ms 0` still gives `-500ms`.
+- Artifacts: shipped `Diagnostics.upload(blocking=True)` -> `status=200`, `matched=True`;
+  `artifacts-check 2309842` shows `aisarang-reservation-diag 2026-09-28T01:03:28 [v1.0.20] ...
+  v1.0.20 게시 점검`. Devnote posted as `aisarang-reservation-devnote`.
+- 되돌리기: the 1.0.19 ZIP stays served. `install -m 0644 deploy/manifests/version-aisarang-1.0.19.json`
+  over the manifest path to roll back (a 1.0.20 PC will not downgrade by itself, reinstall by hand).
+
+## 배포 현황 (v1.0.19, 2026-09-24 00:36Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.19.zip
   (29,303,948 bytes, HTTP 200 over the real egress URL with a cache-buster)
