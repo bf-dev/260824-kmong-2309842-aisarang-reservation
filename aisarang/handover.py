@@ -543,9 +543,14 @@ class _Reopen:
       5. 가상대기열 레이어가 떠 있지 않다.
       6. 정각을 지났고, 마감(REOPEN_EARLY_SECONDS) 전이다.
       7. 남은 횟수가 있다.
-      8. 잠기지 않았다. 한 번이라도 대기열을 보면 영구히 잠근다.
+      8. 잠기지 않았다(정원초과/칸 거절/버튼 없음 등은 영구히 잠근다).
 
-    8번이 이 판의 핵심이다. [예약하기] 는 곧 `NetFunnel_Action`, 즉 대기열
+    v1.0.20: 대기열을 봤다고 잠그지 않는다. 대기열이 떠 있는 동안에는 아무
+    것도 누르지 않고(5번) 풀릴 때까지 기다린 뒤 진짜 판정을 읽는다. 판정이
+    대기열을 거쳐 늦게 왔다면 마감(6번)은 그 판정 시각부터 다시 센다
+    (`verdict_at`). 대기열 20초 뒤에 온 진짜 '예약시간전' 도 회복할 수 있다.
+
+    5번이 이 판의 핵심이다. [예약하기] 는 곧 `NetFunnel_Action`, 즉 대기열
     진입이다(실물 스크립트). 대기열이 떴다면 다시 누르는 것은 순번을 맨 뒤로
     보내는 짓이고, 2026-08-26 에 그것이 72명 → 138명 → 177명을 만들었다.
 
@@ -586,6 +591,8 @@ class _Reopen:
         self.last_confident = False
         # 되살리려 했지만 실제로 누르지 못한 회차. `used` 와 섞지 않는다.
         self.skipped = 0
+        # v1.0.20: 대기열을 거쳐 판정이 온 서버 시각. 마감을 여기서 다시 센다.
+        self.verdict_at = None
 
     def lock(self, why: str) -> None:
         if not self.locked:
@@ -614,6 +621,8 @@ class _Reopen:
         """
         self.last_code = code or ""
         self.last_confident = is_genuine_too_early(outcome)
+        if outcome is not None and getattr(outcome, "queued", False):
+            self.verdict_at = self.clock.server_now()
         if code and code != booking.R_TOO_EARLY:
             self.lock(f"결과가 {code} 입니다")
 
@@ -631,7 +640,13 @@ class _Reopen:
         if not st.on_reserve_page or st.ticked <= 0:
             return False
         now = self.clock.server_now()
-        return self.open_epoch <= now < self.open_epoch + self.seconds
+        return self.open_epoch <= now < self._window_end()
+
+    def _window_end(self) -> float:
+        end = self.open_epoch + self.seconds
+        if self.verdict_at is not None:
+            end = max(end, self.verdict_at + self.seconds)
+        return end
 
     def why_not(self, st: LiveState) -> str:
         if self.locked:
@@ -670,7 +685,7 @@ class _Reopen:
         self.used += 1
         self.pressed = True
         log(f"확인창 되살리기 {self.used}/{self.max_times}회차. "
-            f"대기열이 뜨면 그대로 기다리고 다시 누르지 않습니다.")
+            f"대기열이 뜨면 풀릴 때까지 그대로 기다리고 다시 누르지 않습니다.")
         return True
 
     def as_dict(self) -> dict:
@@ -678,7 +693,8 @@ class _Reopen:
                 "locked": self.locked, "lockReason": self.lock_reason,
                 "skipped": self.skipped,
                 "pressedReserveAgain": self.pressed,
-                "genuineTooEarly": self.last_confident}
+                "genuineTooEarly": self.last_confident,
+                "verdictAt": self.verdict_at}
 
 
 def is_genuine_too_early(outcome) -> bool:
@@ -751,6 +767,17 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
         않고, 대기열이 보이면 두 번 누르지 않는다.
       - 회복 발사는 `recovery_aim`(기본 config.ARRIVAL_SAFETY_MS = 정각
         +140ms)까지 기다렸다가 쏜다. 정각 전에 두 번째 발사가 나가지 않는다.
+
+    v1.0.20: 첫 발은 다시 정각 전(config.CONFIRM_PREHOUR_LEAD_MS = -500ms)
+    도착이다(runner 가 조준). 진짜 '예약시간전' 이면 위 회복이 +140ms 로
+    다시 쏜다. 그리고 **대기열에서 포기하지 않는다.**
+      - 발사 뒤 대기열이 뜨면 `read_outcome_detail(queue_timeout=
+        config.QUEUE_WAIT_SECONDS)` 가 풀릴 때까지(최대 90초) 기다린 뒤 제출
+        응답의 진짜 판정을 읽는다. 기다리는 동안 누르지도 다시 쏘지도 않는다.
+        2026-09-28 에는 2.4초 만에 포기했고 제출은 +2.67초에 나갔다.
+      - 발사 전(되살리기 뒤) 대기열이 떠도 잠그지 않는다. 누르지 않고
+        기다리며, 그동안 마감을 연장한다(대기열 첫 목격부터 최대 90초).
+      - 상한에 닿도록 대기열이 안 풀리면 예전처럼 unknown_submitted 로 멈춘다.
     """
     shots: list = []
     deadline = open_epoch + max(retry_seconds, 1)
@@ -760,6 +787,8 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
     reopen = _Reopen(clock, open_epoch, reopen_max, reopen_seconds)
     recovery_aim_s = (config.ARRIVAL_SAFETY_MS / 1000.0
                       if recovery_aim is None else max(float(recovery_aim), 0.0))
+    queue_cap = max(float(config.QUEUE_WAIT_SECONDS), 0.0)
+    queue_since = None        # 발사 전 대기열을 처음 본 서버 시각
 
     while clock.server_now() < deadline:
         if stop_event is not None and stop_event.is_set():
@@ -771,10 +800,16 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
 
         if not st.ready():
             if st.queue:
-                # 정각을 넘겨 대기열에 잡혀 있을 수도 있다. 기다리는 게 맞다.
-                # 우리가 되살리려고 누른 뒤에 뜬 것이라면 여기서 영구히 잠근다.
-                if reopen.pressed:
-                    reopen.lock("가상대기열에 섰습니다(다시 누르면 맨 뒤로 갑니다)")
+                # 대기열이다. 아무것도 누르지 않고 풀릴 때까지 기다린다.
+                # v1.0.20: 잠그지 않는다. 풀리면 확인창이 다시 뜨고 그때 쏜다.
+                # 기다리는 동안 마감을 연장한다(첫 목격부터 최대 queue_cap).
+                now = clock.server_now()
+                if queue_since is None:
+                    queue_since = now
+                    log(f"가상대기열이 떠 있습니다. 누르지 않고 풀릴 때까지 "
+                        f"기다립니다(최대 {queue_cap:.0f}초).")
+                if now < queue_since + queue_cap:
+                    deadline = max(deadline, now + max(retry_seconds, 1))
                 time.sleep(max(retry_ms, 50) / 1000.0)
                 continue
             if reopen.allowed(st):
@@ -783,7 +818,7 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
                     # v1.0.18: 회복 발사는 표준 조준(정각 +140ms)까지 기다린다.
                     # 정각 전 두 번째 발사는 이 실험이 아무리 나빠도 있으면 안
                     # 되는 것(대기열 순번 낭비)이라, 되살리기 직후 곧바로 누르지
-                    # 않는다. 대기열이 이 사이에 뜨면 위 queue 분기가 잠근다.
+                    # 않는다. 대기열이 이 사이에 뜨면 위 queue 분기가 기다린다.
                     fire_local = clock.local_fire_for_arrival(
                         open_epoch + recovery_aim_s)
                     log(f"회복 발사는 표준 조준까지 기다립니다: 정각 "
@@ -825,12 +860,19 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
             time.sleep(max(retry_ms, 50) / 1000.0)
             continue
 
-        outcome = booking.read_outcome_detail(driver, timeout=OUTCOME_TIMEOUT,
-                                              submit_timeout=SUBMIT_TIMEOUT)
+        queue_since = None
+        outcome = booking.read_outcome_detail(
+            driver, timeout=OUTCOME_TIMEOUT, submit_timeout=SUBMIT_TIMEOUT,
+            queue_timeout=config.QUEUE_WAIT_SECONDS, log=log,
+            stop_event=stop_event)
         code, text = outcome.code, outcome.text
         shot.code, shot.text, shot.outcome = code, text, outcome
         shots.append(shot)
         reopen.note_outcome(code, outcome)
+        if getattr(outcome, "queued", False):
+            # 판정이 대기열을 거쳐 늦게 왔다. 남은 일(회복 발사)을 할 시간을
+            # 판정 시각부터 다시 준다.
+            deadline = max(deadline, clock.server_now() + max(retry_seconds, 1))
         log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
             f"· 서버: {text or '(문구 없음)'} "
             f"[{code} · {booking.outcome_label(code)}]")

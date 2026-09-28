@@ -917,7 +917,7 @@ def _run_burst(monkeypatch, states, outcomes, **kw):
         calls["fire"] += 1
         return True
 
-    def fake_outcome(_driver, timeout=0.0, submit_timeout=None):
+    def fake_outcome(_driver, timeout=0.0, submit_timeout=None, **kw):
         # handover.burst 가 부르는 이름은 v1.0.12 부터 read_outcome_detail 이고,
         # 돌려주는 것은 (코드, 원문) 이 아니라 Outcome 이다. 여기서 튜플을 계속
         # 돌려주면 shot.code 에 튜플이 들어가 모든 분기가 조용히 빗나간다.
@@ -1043,15 +1043,21 @@ def test_burst_never_represses_after_an_unrecognised_answer(monkeypatch):
 
 
 def test_burst_waits_out_a_queue_that_appears_after_the_repress(monkeypatch):
-    """되살렸더니 대기열이 떴다. 기다린다. 절대 다시 누르지 않는다."""
+    """되살렸더니 대기열이 떴다. 기다린다. 절대 다시 누르지 않는다.
+
+    v1.0.20: 대기열을 봤다고 잠그지 않는다(풀리면 확인창이 다시 뜨고 그때
+    쏜다). 이 대기열은 끝내 안 풀리므로 상한(여기서는 0.5초)까지 기다렸다가
+    끝난다. 그 사이 [확인] 도 [예약하기] 도 더 누르지 않는다.
+    """
+    monkeypatch.setattr(config, "QUEUE_WAIT_SECONDS", 0.5)
     res, calls = _run_burst(
         monkeypatch,
         states=[_ready(), _closed(), _closed(queue=True)],
         outcomes=[(booking.R_TOO_EARLY, booking.TOO_EARLY_REAL)])
     assert calls["fire"] == 1
     assert calls["repress"] == 1, calls
-    assert res.detail["reopen"]["locked"] is True
-    assert "대기열" in res.detail["reopen"]["lockReason"]
+    assert res.detail["reopen"]["locked"] is False
+    assert res.reason == "exhausted"
 
 
 def test_burst_stops_at_the_repress_cap(monkeypatch):

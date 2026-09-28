@@ -389,7 +389,7 @@ def _run_handover(monkeypatch, states, outcomes):
         calls["fire"] += 1
         return True
 
-    def fake_outcome(_d, timeout=0.0, submit_timeout=None):
+    def fake_outcome(_d, timeout=0.0, submit_timeout=None, **kw):
         return outcomes[min(calls["fire"], len(outcomes)) - 1]
 
     monkeypatch.setattr(handover, "fire", fake_fire)
@@ -495,7 +495,7 @@ def test_guard_does_not_block_the_too_early_retry(monkeypatch):
 def _run_confirm_burst(monkeypatch, outcomes):
     calls = {"n": 0, "redrive": 0}
 
-    def fake_outcome(_d, timeout=6.0, submit_timeout=None):
+    def fake_outcome(_d, timeout=6.0, submit_timeout=None, **kw):
         o = outcomes[min(calls["n"], len(outcomes) - 1)]
         calls["n"] += 1
         return o

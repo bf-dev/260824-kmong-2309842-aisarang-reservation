@@ -252,9 +252,10 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
     v1.0.18: `arrival_after_ms` 도 같은 죽은 키다. 2026-09-17 에 이 키 하나가
     새 조준을 그림자처럼 덮어써서 250ms 로 머문 사건이 있었다.
 
-    v1.0.19: 하루 실험(정각 전 발사) 을 되돌리면서 `confirm_prehour_lead_ms`
-    도 죽은 키 목록에 넣었다. 실험 판을 돌린 PC 의 settings.json 에 그 키가
-    남아 있어도 조준은 표준 여유(정각 뒤) 로 돌아와야 한다.
+    v1.0.19: `confirm_prehour_lead_ms` 도 죽은 키 목록에 넣었다.
+
+    v1.0.20: 정각 전 첫 발(-500ms) 이 돌아왔지만 **코드 상수로만** 돌아왔다.
+    settings.json 에 어떤 값이 남아 있어도 조준은 상수 -500ms 다.
     """
     import json
 
@@ -278,18 +279,17 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
             assert dead not in data, (old, dead)
         assert data["use_hours"] == 9             # 진짜 고객 설정은 그대로 산다
 
-        # 조준은 파일이 아니라 그 아침 측정값 + ARRIVAL_SAFETY_MS 를 따른다.
+        # 조준은 파일이 아니라 상수(정각 -500ms) 를 따른다. 측정값도 무관하다.
         r = Runner()
         r.clock = _measured(50.0)
-        want = r.clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
-        assert want > 0.0                          # 정각 뒤로만 조준한다
+        want = config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
         assert abs(r._arrival_aim(data) - want) < 1e-9, old
 
         # 파일의 값을 억지로 다시 끼워 넣어도 이제 무시된다.
         stale = dict(data)
         stale["arrival_after_ms"] = old
         stale["arrival_safety_ms"] = old
-        stale["confirm_prehour_lead_ms"] = -500.0
+        stale["confirm_prehour_lead_ms"] = 900.0
         assert abs(r._arrival_aim(stale) - want) < 1e-9, old
 
         # 그리고 읽고 나면 죽은 키는 디스크에서도 지워진다(v1.0.17).
@@ -313,37 +313,32 @@ def test_the_default_settings_do_not_carry_a_dead_aim_key():
     assert "confirm_prehour_lead_ms" in config._OBSOLETE
 
 
-def test_the_first_shot_aims_after_the_hour_again():
-    """v1.0.19: 정각 전 발사 실험은 끝났고, 첫 발도 정각 뒤를 겨냥한다.
+def test_the_prehour_first_shot_aim_is_minus_500ms():
+    """v1.0.20: 고객 요청으로 v1.0.18 의 정각 전 첫 발을 되살렸다.
 
-    2026-09-24 09:00 실측: 첫 발이 정각 -499ms 에 닿았고 서버는
-    '아직 예약 가능한 시간이 아닙니다' 로 버렸다. 회복 발사(+359ms)가
-    예약을 잡았다. 평소 한 발은 +169~+205ms 에 닿으므로 정각 전 발사는
-    약 190ms 순손해였다. 그래서 조준은 다시 (측정 오차 반폭) + 140ms 다.
+    고객(2026-09-28): "정각이전 요청을 거절한다고 하셨는데 거절해도 다시
+    요청해서 성공한다면 차라리 그게 더 나은가 싶어서요". 첫 발 [확인] 은
+    정각 500ms 전에 도착시키고, 서버가 '아직 예약 가능한 시간이 아닙니다'
+    로 거절하면 회복 발사가 표준 조준(정각 +140ms)으로 다시 누른다.
+    조준은 코드 상수다. 측정값도 설정 파일도 조준을 바꾸지 못한다.
     """
     from aisarang.runner import Runner
 
+    assert config.CONFIRM_PREHOUR_LEAD_MS == -500.0
     assert config.ARRIVAL_SAFETY_MS == 140.0
-    assert config.ARRIVAL_MIN_AFTER_MS == 140.0
-    assert not hasattr(config, "CONFIRM_PREHOUR_LEAD_MS")
 
     r = Runner()
     for u in (0.0, 50.0, 133.2, 869.2, 5000.0):
         r.clock = _measured(u)
-        want = r.clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
-        got = r._arrival_aim({}) * 1000.0
-        assert abs(got - want * 1000.0) < 1e-9, u
-        assert got >= config.ARRIVAL_MIN_AFTER_MS, u       # 정각 전은 없다
-        assert got <= config.ARRIVAL_MAX_AFTER_MS, u
-        assert r._arrival_aim(dict(config.DEFAULT_SETTINGS)) == want
+        assert r._arrival_aim({}) * 1000.0 == -500.0, u
+        assert r._arrival_aim(dict(config.DEFAULT_SETTINGS)) * 1000.0 == -500.0
 
-    # 09:00 정각을 노릴 때 실제로 계산되는 조준. 측정이 좋을수록 140ms 바닥.
-    r.clock = _measured(50.0)
-    open_epoch = 1_800_000_000.0                  # 정각 대용
-    aim = r._arrival_aim({})
-    assert abs(aim * 1000.0 - 165.0) < 0.5        # 25(반폭) + 140
-    fire = r.clock.local_fire_for_arrival(open_epoch + aim)
-    assert r.clock.arrival_for_local_fire(fire) > open_epoch
+    # 음수 조준이어도 발사 시각 변환은 정상(정각보다 이른 로컬 발사)이다.
+    c = _clock(offset=0.0, rtt=0.040)
+    open_epoch = 1_800_000_000.0
+    fire = c.local_fire_for_arrival(open_epoch - 0.5)
+    assert abs(fire - (open_epoch - 0.520)) < 1e-9
+    assert abs(c.arrival_for_local_fire(fire) - (open_epoch - 0.5)) < 1e-9
 
 
 def test_the_recovery_aim_stays_after_the_hour():
@@ -357,14 +352,15 @@ def test_the_recovery_aim_stays_after_the_hour():
 
 
 def test_the_runner_ignores_any_setting_when_it_aims():
-    """Runner._arrival_aim 은 settings 를 아예 읽지 않는다(측정값 전용)."""
+    """Runner._arrival_aim 은 settings 를 아예 읽지 않는다(상수 전용)."""
     from aisarang.runner import Runner
 
     r = Runner()
     r.clock = _measured(869.2)
-    want = r.clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
+    want = config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
     for junk in ({"arrival_after_ms": 900},
-                 {"confirm_prehour_lead_ms": -500.0},
+                 {"confirm_prehour_lead_ms": 300.0},
+                 {"arrival_prehour_lead_ms": -2000.0},
                  {"arrival_after_ms": -300},
                  {"arrival_after_ms": 99999},
                  {"arrival_safety_ms": 250},

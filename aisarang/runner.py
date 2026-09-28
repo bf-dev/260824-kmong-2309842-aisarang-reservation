@@ -51,33 +51,27 @@ class Runner:
 
     # -- 조준 ---------------------------------------------------------
     def _arrival_aim(self, settings: dict) -> float:
-        """[확인] 요청의 목표 도착시각. 정각 기준 초 단위. **항상 양수다.**
+        """[확인] 요청의 목표 도착시각. 정각 기준 초 단위(음수 = 정각 전).
 
-        v1.0.19: 정각 **뒤** 표준 조준 한 발로 돌아왔다.
+        v1.0.20: back to the v1.0.18 first shot, 정각 **전** 500ms
+        (config.CONFIRM_PREHOUR_LEAD_MS). The customer asked for it on
+        2026-09-28: "거절해도 다시 요청해서 성공한다면 차라리 그게 더 나은가
+        싶어서요". On 09-24 this exact plan was rejected at -499ms and the
+        recovery shot booked at +359ms.
 
-            조준 = (그 아침 측정한 시각 오차 반폭) + ARRIVAL_SAFETY_MS(140ms)
-                   , 하한 ARRIVAL_MIN_AFTER_MS(140ms) / 상한 1200ms
+        Safety net: if this shot comes back with the server's own text
+        「아직 예약 가능한 시간이 아닙니다.」 (genuine too_early), the seat has
+        not gone to anyone, so recovery re-clicks [예약하기] and fires again at
+        the standard aim, 정각 +ARRIVAL_SAFETY_MS (handover._Reopen /
+        booking.confirm_burst). A NetFunnel queue is not a rejection: the
+        program waits for it to release and never clicks while queued.
 
-        v1.0.18 의 정각 전(-500ms) 한 발은 2026-09-24 09:00:00 실전에서
-        기각됐다. 1발이 -499ms 에 닿아 서버가 "아직 예약 가능한 시간이
-        아닙니다" 로 버렸고, 회복 2발이 +359ms 에 닿아 성공했다. 평소 한
-        발은 +169~+205ms 에 닿으므로 정각 전 발사는 약 190ms 손해였다.
-        웹(InsertOcreqst) 경로는 여전히 정각 전 요청을 하드 거절한다.
-
-        회복은 그대로 남는다: 이 한 발이 서버 응답 본문의 진짜 문구
-        「아직 예약 가능한 시간이 아닙니다.」 로 too_early 면 자리는 아직
-        아무에게도 안 갔다는 뜻이므로 확인창을 되살려 다시 쏜다
-        (handover._Reopen / booking.confirm_burst).
-
-        조준은 **상수와 실측만** 본다. settings 는 읽지 않는다. 예전에
-        arrival_safety_ms: 250 (v1.0.14), 그리고 모든 버전이 쓴
-        save_settings 특성상 파일에 남는 옛 키가 상수를 그림자처럼 덮어쳐서
-        조준이 안 바뀐 적이 있다(2026-09-17 실측). 그래서 arrival_after_ms
-        는 죽은 키다(config._OBSOLETE). 여기서 settings 를 다시 읽는 순간
-        그 사고가 그대로 돌아온다. 인수는 호출부 호환을 위해 남겨둘 뿐
-        읽지 않는다.
+        조준은 **상수만** 본다. settings 는 읽지 않는다. 파일에 남은 옛 키가
+        상수를 그림자처럼 덮어쓴 적이 있다(2026-09-17 실측). 그래서
+        confirm_prehour_lead_ms / arrival_prehour_lead_ms 는 죽은 키다
+        (config._OBSOLETE). 인수는 호출부 호환을 위해 남겨둘 뿐 읽지 않는다.
         """
-        return self.clock.safe_arrival_after(config.ARRIVAL_SAFETY_MS / 1000.0)
+        return config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
 
     # -- 로그 ---------------------------------------------------------
     def log(self, line: str) -> None:
@@ -216,11 +210,12 @@ class Runner:
                  f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사"
                  + ("" if mode == config.MODE_HANDOVER
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
-        self.log("정각보다 먼저 도착한 요청은 서버가 그냥 버립니다"
-                 "(2026-08-27, 2026-09-24 실측). 그래서 늦는 쪽으로 조준합니다. "
-                 "그래도 서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
-                 "확인창을 되살려 한 번 더 누릅니다. 대기열 화면이 뜨면 "
-                 "다시 누르지 않고 기다립니다.")
+        self.log("고객 요청(2026-09-28): 첫 [확인] 을 정각 "
+                 f"{abs(config.CONFIRM_PREHOUR_LEAD_MS):.0f}ms 전에 도착시킵니다. "
+                 "서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
+                 f"확인창을 되살려 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 "
+                 "다시 누릅니다. 대기열 화면이 뜨면 다시 누르지 않고 풀릴 때까지"
+                 f"(최대 {int(config.QUEUE_WAIT_SECONDS)}초) 기다린 뒤 서버 답을 읽습니다.")
 
         self.status("크롬을 실행합니다...")
         self.driver = automation.build_driver(log=self.log, diag=self.diag)
@@ -303,9 +298,9 @@ class Runner:
         # --- 9단계: [확인] 만 정각에 쏜다. ---
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
-                 f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
-                 f"{int(config.ARRIVAL_SAFETY_MS)}ms)")
+        self.log(f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
+                 f"(정각 전 발사. 서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
+                 f"거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 다시 누른다)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -439,9 +434,9 @@ class Runner:
 
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(f"조준 확정: 도착 목표 정각 +{aim * 1000:.0f}ms "
-                 f"(시각 오차 ±{self.clock.uncertainty * 500:.0f}ms + 여유 "
-                 f"{int(config.ARRIVAL_SAFETY_MS)}ms)")
+        self.log(f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
+                 f"(정각 전 발사. 서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
+                 f"거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 다시 누른다)")
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -767,10 +762,12 @@ class Runner:
                             if self.clock.last_sync_local else None),
             # 어떤 조준으로 쐈는지는 업로드에 그대로 찍는다.
             "resolvedAimMs": round(aim * 1000, 1),
-            "aimPlan": (f"첫 발 정각 +{aim * 1000:.0f}ms, "
+            "aimPlan": (f"첫 발 정각 {aim * 1000:+.0f}ms, "
                         f"회복 발사 정각 +{recovery_ms:.0f}ms "
                         f"(서버 원문 too_early 일 때만)"),
-            "aimSource": "clock.safe_arrival_after(ARRIVAL_SAFETY_MS)",
+            "aimSource": "constant CONFIRM_PREHOUR_LEAD_MS",
+            "recoveryAimSource": "clock.safe_arrival_after(ARRIVAL_SAFETY_MS)",
+            "queueWaitSeconds": config.QUEUE_WAIT_SECONDS,
             "result": "success" if ok else "fail",
         }
         if detail:

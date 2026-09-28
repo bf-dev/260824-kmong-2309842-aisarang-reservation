@@ -167,6 +167,8 @@ class Diagnostics:
             # settings.json 이 옛 여유값을 그림자처럼 덮어써서 조준이 안
             # 바뀐 적이 있다. 그때 서버에서 이걸 확인할 방법이 없었다.
             # 이제 매 실행의 meta 에 찍히므로 진단 ZIP 하나면 끝난다.
+            "aimPrehourLeadMs": config.CONFIRM_PREHOUR_LEAD_MS,
+            "queueWaitSeconds": config.QUEUE_WAIT_SECONDS,
             "aimSafetyMs": config.ARRIVAL_SAFETY_MS,
             "aimFloorMs": config.ARRIVAL_MIN_AFTER_MS,
             "aimCeilMs": config.ARRIVAL_MAX_AFTER_MS,

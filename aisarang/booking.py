@@ -2187,6 +2187,9 @@ class Outcome:
     # v1.0.16: 사이트가 우리를 신청현황(`?menuno=245`)으로 보냈는가.
     # 실물 스크립트는 성공 분기에서만 이동한다. 즉 이것도 확실한 근거다.
     navigated: bool = False
+    # v1.0.20: 대기열에 서 있던 시간(ms)과, 그 대기열이 판정 전에 풀렸는가.
+    queue_wait_ms: float = 0.0
+    queue_cleared: bool = False
 
     @property
     def confident(self) -> bool:
@@ -2218,6 +2221,9 @@ class Outcome:
             out["queueBehind"] = self.queue.get("behind")
             out["queueEta"] = self.queue.get("eta") or ""
             out["queueProgress"] = self.queue.get("progress") or ""
+        if self.queued:
+            out["queueWaitMs"] = round(self.queue_wait_ms, 1)
+            out["queueCleared"] = self.queue_cleared
         return out
 
 
@@ -2260,7 +2266,9 @@ SUBMIT_START_GRACE = 1.2
 
 
 def read_outcome_detail(driver, timeout: float = 6.0,
-                        submit_timeout: float = None) -> Outcome:
+                        submit_timeout: float = None,
+                        queue_timeout: float = None,
+                        log=None, stop_event=None) -> Outcome:
     """[확인] 이후 서버가 뭐라고 했는지. 근거까지 같이 돌려준다.
 
     보는 순서:
@@ -2292,9 +2300,25 @@ def read_outcome_detail(driver, timeout: float = 6.0,
         받아들인다. 틀린 성공은 고객에게 없는 자리를 있다고 말하는 짓이라
         정직한 unknown 보다 훨씬 나쁘다. 성공이 아닌 판정은 예전처럼 즉시
         돌려준다(재시도 타이밍을 잃지 않으려고).
+
+    v1.0.20: queue_timeout 을 주면 **대기열이 풀릴 때까지 기다린다.**
+    2026-09-28 09:00 에 우리는 대기열(앞에 32명)을 2.4초 보고 unknown 으로
+    멈췄는데, 실제 InsertOcreqst 는 +2,665ms 에 나갔고 그 답은 아무도 읽지
+    않았다. 규칙:
+      - 대기열을 한 번이라도 봤으면(sticky) 제출이 끝날 때까지 기다린다.
+        상한은 발사 시각부터 queue_timeout 초(config.QUEUE_WAIT_SECONDS=90).
+      - 줄에 서 있는 동안 화면은 읽지 않는다. 아무것도 누르지 않는다
+        (이 함수는 원래 누르지 않는다. 부르는 쪽도 판정이 나올 때까지
+        다시 누르지 않는다).
+      - 대기열이 풀리면 그 시각부터 제출 시작 유예(SUBMIT_START_GRACE)와
+        제출 응답 대기(submit_timeout)를 새로 센다. 대기열이 다시 뜨면
+        처음부터 다시 기다린다.
+      - 상한까지 풀리지 않으면 예전처럼 unknown(queued=True)을 돌려준다.
+    queue_timeout 이 None 이면 v1.0.19 와 똑같이 동작한다.
     """
     from . import automation
 
+    say = log or (lambda *_: None)
     started = time.time()
     if submit_timeout is None:
         submit_timeout = SUBMIT_WAIT_SECONDS
@@ -2308,10 +2332,28 @@ def read_outcome_detail(driver, timeout: float = 6.0,
     stale = None
     # 우리가 방금 [확인] 을 눌렀는가. 눌렀다면 제출이 시작될 시간을 준다.
     fired_recently = fired_at_ms(driver) > 0
+    # v1.0.20 대기열 기다리기. queue_end 가 None 이면 예전 동작 그대로다.
+    queue_end = (started + max(float(queue_timeout), 0.0)
+                 if queue_timeout else None)
+    ever_queued = False       # 한 번이라도 줄에 섰는가 (sticky)
+    cleared_at = None         # 대기열이 마지막으로 풀린 시각
+    seen_at = None            # 제출이 처음 잡힌 시각
+    last_qlog = 0.0
+    qlog_every = float(getattr(automation.config, "QUEUE_LOG_SECONDS", 2.0))
+    first_queued_at = None
+
+    def _stamp(o):
+        if first_queued_at is not None:
+            o.queued = True
+            o.queue_cleared = cleared_at is not None
+            o.queue_wait_ms = ((cleared_at or time.time()) - first_queued_at) * 1000.0
+        return o
     while True:
         now = time.time()
         sub = submit_response(driver)
         in_flight = False
+        if sub["seen"] and seen_at is None:
+            seen_at = now
         if sub["seen"]:
             best.submit_seen = True
             best.submit_done = sub["done"]
@@ -2327,7 +2369,7 @@ def read_outcome_detail(driver, timeout: float = 6.0,
                               queued=best.queued, queue=dict(best.queue),
                               waited_ms=(time.time() - started) * 1000.0)
                 if code != R_UNKNOWN:
-                    return out
+                    return _stamp(out)
                 # 본문은 받았는데 문구가 분류되지 않는다. 화면도 마저 본다.
                 best = out
             else:
@@ -2343,13 +2385,50 @@ def read_outcome_detail(driver, timeout: float = 6.0,
             queued = bool(q.get("queue"))
             if queued:
                 best.queued = True
+                if first_queued_at is None:
+                    first_queued_at = now
                 # v1.0.14: 숫자를 통째로 들고 있는다. 순번은 시간이 갈수록
                 # 줄어드니 **처음 본 값**을 남긴다(가장 나쁜 순간이 곧 답이다).
                 # 숫자가 아직 안 그려졌으면 다음 바퀴에 다시 채운다.
                 if not best.queue or best.queue.get("ahead") is None:
                     best.queue = dict(q)
 
-        if (in_flight or queued) and now < hard_end:
+        # v1.0.20: 대기열을 봤다면 기다리는 끝을 대기열 기준으로 다시 잡는다.
+        wait_end = hard_end
+        if queue_end is not None:
+            if queued:
+                if not ever_queued:
+                    ever_queued = True
+                    say("가상대기열에 섰습니다. 예약 제출은 순번이 와야 나갑니다. "
+                        "다시 누르지 않고 풀릴 때까지 기다립니다(최대 %d초)."
+                        % int(queue_timeout))
+                if cleared_at is not None:
+                    say("대기열이 다시 떴습니다. 계속 기다립니다.")
+                cleared_at = None
+                if now - last_qlog >= qlog_every:
+                    last_qlog = now
+                    say(queue_line(q))
+            elif ever_queued and cleared_at is None:
+                cleared_at = now
+                say("대기열이 풀렸습니다(%.1f초 대기). 예약 제출의 답을 기다립니다."
+                    % (now - started))
+                # 풀린 뒤에는 막 쏜 것처럼 화면 창도 새로 준다.
+                end = min(queue_end, max(end, now + max(float(timeout), 0.0)))
+            if ever_queued:
+                if queued:
+                    wait_end = queue_end
+                elif sub["seen"]:
+                    wait_end = min(queue_end,
+                                   max(hard_end, seen_at + float(submit_timeout)))
+                else:
+                    wait_end = min(queue_end,
+                                   max(hard_end, cleared_at + SUBMIT_START_GRACE))
+
+        if ever_queued and stop_event is not None and stop_event.is_set():
+            # 사용자가 [중지] 를 눌렀다. 90초 줄서기 중에도 바로 멈춘다.
+            best.waited_ms = (time.time() - started) * 1000.0
+            return _stamp(best)
+        if (in_flight or queued) and now < wait_end:
             # 답이 오는 중이거나 아직 줄에 서 있다. 화면은 읽지 않는다.
             time.sleep(0.05)
             continue
@@ -2363,7 +2442,7 @@ def read_outcome_detail(driver, timeout: float = 6.0,
             best.source = best.source or "navigated"
             best.navigated = True
             best.waited_ms = (time.time() - started) * 1000.0
-            return best
+            return _stamp(best)
 
         # v1.0.16: 제출이 아직 **시작조차** 안 했다면 조금 기다린다.
         # 사이트는 [확인] → 대기열 표 → fnSubmit → ajax 순서라 제출이
@@ -2372,8 +2451,10 @@ def read_outcome_detail(driver, timeout: float = 6.0,
         #
         # 단, **우리가 방금 쏜 경우에만** 기다린다. 발사 기록이 없으면
         # (누른 적이 없거나 조준조차 안 된 화면) 기다릴 이유가 없다.
-        if (not sub["seen"]) and (now - started) < SUBMIT_START_GRACE \
-                and now < hard_end and fired_recently:
+        # v1.0.20: 대기열이 풀린 경우에는 풀린 시각부터 유예를 센다.
+        grace_from = cleared_at if (ever_queued and cleared_at) else started
+        if (not sub["seen"]) and (now - grace_from) < SUBMIT_START_GRACE \
+                and now < wait_end and (fired_recently or ever_queued):
             time.sleep(0.05)
             continue
 
@@ -2422,7 +2503,7 @@ def read_outcome_detail(driver, timeout: float = 6.0,
             best.code, best.text = code, text
             best.source = best.source or "screen"
             best.waited_ms = (time.time() - started) * 1000.0
-            return best
+            return _stamp(best)
 
         if time.time() >= end:
             break
@@ -2434,7 +2515,7 @@ def read_outcome_detail(driver, timeout: float = 6.0,
     if not best.text:
         best.text = last_text
     best.waited_ms = (time.time() - started) * 1000.0
-    return best
+    return _stamp(best)
 
 
 # 사이트의 실물 알림 컨테이너. 결과 문구는 여기로 들어온다.
@@ -2786,7 +2867,11 @@ def confirm_once(driver, p: Prepared, clock, open_epoch: float,
         shot.text = "확인 버튼이 사라져 누르지 못했습니다."
         log(shot.text)
         return shot
-    outcome = read_outcome_detail(driver)
+    # v1.0.20: 대기열이 뜨면 풀릴 때까지(최대 QUEUE_WAIT_SECONDS) 기다린 뒤
+    # 진짜 판정을 읽는다. 2026-09-28 은 2.4초 만에 포기했다.
+    from . import automation
+    outcome = read_outcome_detail(
+        driver, queue_timeout=automation.config.QUEUE_WAIT_SECONDS, log=log)
     shot.code, shot.text, shot.outcome = outcome.code, outcome.text, outcome
     log(f"[확인] {attempt}발째 · 도착 추정 정각 {shot.arrival_offset_ms:+.0f}ms "
         f"· 서버: {outcome.text or '(문구 없음)'} "
@@ -2812,7 +2897,12 @@ def redrive_confirm(driver, p: Prepared, log=lambda *_: None) -> bool:
             return False
     if not press_reserve(driver, log):
         return False
-    text, _saw_queue = wait_modal(driver, 3.0, log)
+    # v1.0.20: [예약하기] 뒤에 대기열이 뜨면 풀릴 때까지(QUEUE_WAIT_SECONDS)
+    # 기다린다. 다시 누르지 않는다. 대기열이 없으면 예전처럼 3초만 본다.
+    from . import automation
+    text, _saw_queue = wait_modal(
+        driver, 3.0, log,
+        deadline_local=time.time() + float(automation.config.QUEUE_WAIT_SECONDS))
     if not text:
         return False
     p.modal_open, p.modal_text = True, text
@@ -2836,6 +2926,12 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
                   log=lambda *_: None, diag=None, stop_event=None,
                   recovery_aim: float = None) -> StepResult:
     """정각에 [확인] 을 쏘고, '예약시간전' 이면 열릴 때까지 재시도한다.
+
+    v1.0.20: 첫 발은 정각 -500ms 도착(부르는 쪽 조준, 상수), 회복 발사는
+    정각 +140ms 도착. 대기열이 뜨면 confirm_once 가 풀릴 때까지(최대
+    QUEUE_WAIT_SECONDS) 기다려 진짜 판정을 읽는다. 줄에 서 있는 동안에는
+    다시 쏘지 않는다. 대기열 뒤에 받은 판정이면 재시도 창을 그 시각부터
+    다시 센다(줄이 창을 다 먹어도 회복 발사가 남도록).
 
     - 예약시간전 → 아직 안 열렸다. 자리는 살아 있으니 다시 쏜다.
                    v1.0.19: 다시 쏘는 시각도 **표준 조준**이다. 정각
@@ -2866,6 +2962,10 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
             clockmod.sleep_until_local(fire_local, stop_event, spin_ms=20)
         shot = confirm_once(driver, p, clock, open_epoch, attempt, log)
         shots.append(shot)
+        if shot.outcome is not None and getattr(shot.outcome, "queued", False):
+            # v1.0.20: 줄에 서 있던 시간은 재시도 창에서 빼 준다.
+            deadline = max(deadline,
+                           clock.server_now() + max(retry_seconds, 1))
 
         if shot.code == R_OK:
             return StepResult(True, shot.text or "예약이 완료되었습니다.", "reserved", p,

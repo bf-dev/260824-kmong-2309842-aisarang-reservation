@@ -233,7 +233,7 @@ def _burst(monkeypatch, codes, clock=None, source="screen"):
     seq = list(codes)
     calls = {"n": 0}
 
-    def fake_outcome(driver, timeout=6.0, submit_timeout=None):
+    def fake_outcome(driver, timeout=6.0, submit_timeout=None, **kw):
         i = min(calls["n"], len(seq) - 1)
         calls["n"] += 1
         code = seq[i]

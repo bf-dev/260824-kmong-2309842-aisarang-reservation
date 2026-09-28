@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.19"
+APP_VERSION = "1.0.20"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -260,33 +260,38 @@ ARRIVAL_MIN_AFTER_MS = 140.0
 ARRIVAL_MAX_AFTER_MS = 1200.0
 ARRIVAL_SAFETY_MS = 140.0
 
-# ------------------------------------------------------------------ 정각 전 조준 실험은 끝났다 (v1.0.19)
+# ------------------------------------------------------------------ pre-hour first shot, restored (v1.0.20)
 #
-# v1.0.18 은 고객이 요구한 하루짜리 실험이었다: 첫 [확인] 을 정각 **전**
-# 500ms 에 도착시키고(CONFIRM_PREHOUR_LEAD_MS = -500), 서버가 거절하면
-# 표준 조준으로 다시 쏜다. 2026-09-24 09:00:00 실전에서 답이 나왔다.
+# History:
+#   v1.0.18 (customer experiment): first [확인] arrives at 정각 -500ms.
+#     2026-09-24 09:00 live: shot 1 arrived -499ms, server body
+#     "아직 예약 가능한 시간이 아닙니다" (rejected). Recovery shot arrived
+#     +359ms and booked 20261008.
+#   v1.0.19 put the first shot back on the standard after-hour aim.
+#     2026-09-28 09:00 live: shot 1 arrived +170ms, the NetFunnel queue showed
+#     (32 ahead), and the program gave up reading at 2.4s. The InsertOcreqst
+#     POST actually left at +2665ms and its answer was never read.
+#   v1.0.20: the customer asked (2026-09-28) to go back to the v1.0.18 setting:
+#     "거절해도 다시 요청해서 성공한다면 차라리 그게 더 나은가 싶어서요".
+#     So the first shot aims at CONFIRM_PREHOUR_LEAD_MS again. A genuine
+#     too_early (server text only) triggers the REOPEN_EARLY_* recovery,
+#     which waits for the standard aim (+ARRIVAL_SAFETY_MS) and re-fires.
+#     A queue screen is never a reason to click again: the program waits
+#     for it to release (QUEUE_WAIT_SECONDS) and reads the real verdict.
 #
-#   1발  도착 -499ms → HTTP 200, 본문 "아직 예약 가능한 시간이 아닙니다"
-#                       = 거절. 웹 경로는 여전히 정각 전 요청을 버린다.
-#   2발  회복 발사, 도착 +359ms → "1건 예약 중 1건 예약되었습니다" 성공
-#                       (20261008 확보).
-#
-# 즉 정각 전 발사는 아무것도 사지 못하고, 회복 한 바퀴(알림 닫기 →
-# [예약하기] 재클릭 → 확인창 → 재발사) 때문에 도착이 +359ms 로 밀렸다.
-# 실험 없는 평소 한 발은 +169~+205ms 에 닿는다. 정각 전 발사는 순수하게
-# 약 190ms 의 손해였다. 고객이 09-23 에 들고 온 "앱은 정각 전 요청을
-# 대기열로 넘겨준다" 는 관찰은 앱 경로에만 해당하고, 우리가 쓰는 웹
-# (InsertOcreqst) 경로에는 해당하지 않는다.
-#
-# 그래서 v1.0.19 는 평상시 한 발을 다시 표준 조준으로 되돌린다:
-#   조준 = (시각 오차 반폭) + ARRIVAL_SAFETY_MS, 하한 ARRIVAL_MIN_AFTER_MS.
-# 정각 전으로 쏘는 경로는 코드에서 사라졌다(CONFIRM_PREHOUR_LEAD_MS 삭제).
-#
-# **회복(REOPEN_EARLY_*)은 그대로 남긴다.** 그것은 실험이 아니라 v1.0.15
-# 부터의 안전망이다. 서버 원문 「아직 예약 가능한 시간이 아닙니다.」 로
-# too_early 가 확인되면 자리는 아직 아무에게도 안 갔다는 뜻이므로 확인창을
-# 되살려 다시 쏜다. 대기열 화면은 too_early 가 아니라 unknown 이고 절대
-# 두 번 누르지 않는다(2026-09-15 / 09-18 실측).
+# Code constant only. It is not a setting: the old settings keys
+# confirm_prehour_lead_ms / arrival_prehour_lead_ms stay in _OBSOLETE so a
+# stale settings.json can never override it.
+CONFIRM_PREHOUR_LEAD_MS = -500.0
+
+# How long to keep waiting while the NetFunnel queue shows (seconds). The
+# queue is the site holding our request; the submission goes out when it
+# releases (09-28: released after about 2.5s with 32 ahead). While queued we
+# never click, never re-fire, and never read the screen as a verdict. After
+# this cap the run stops as unknown_submitted (check 신청현황 by hand).
+QUEUE_WAIT_SECONDS = 90.0
+# Log the queue position at most this often while waiting.
+QUEUE_LOG_SECONDS = 2.0
 
 # '예약시간전' 회복 창(초). 정각 이후 이 시간 안에는 확인창 되살리기를
 # 넉넉하게 허용한다. 근거: 서버는 자기 시계로 정각 전에 닿은 요청을 **전부**
@@ -297,8 +302,9 @@ REOPEN_EARLY_SECONDS = 2.0
 # 그 창 안에서의 되살리기 상한. 되살리기 한 번은 [예약하기] 재클릭 =
 # 넷퍼널 대기열 진입이라 무한히 허용하지 않는다. 한 번의 회복 주기는
 # 실측 400~800ms(발사 → 응답 → 알림 닫기 → 재클릭 → 확인창)라
-# 2초에 6번이면 창을 다 쓴다. 대기열이 한 번이라도 보이면 이 상한과
-# 무관하게 영구히 잠긴다(handover._Reopen.lock).
+# 2초에 6번이면 창을 다 쓴다. v1.0.20: a queue no longer locks recovery.
+# While queued we only wait; if the verdict after the queue is a genuine
+# too_early, the window is measured from that verdict, not from 정각.
 REOPEN_EARLY_MAX = 6
 
 # 고객이 알려준 기본 센터 (2026-08-24, 고객 원문: "서초구 신반포 센터 기본값으로")
@@ -328,8 +334,8 @@ DEFAULT_SETTINGS = {
     # 모달을 열어둔 채 기다린다. 정각에 쏘는 것은 [확인] 하나뿐이다.
     "setup_seconds": 240,
     # v1.0.18 부터 arrival_after_ms 는 설정에서 죽었다. 조준은 상수
-    # (ARRIVAL_SAFETY_MS / ARRIVAL_MIN_AFTER_MS) 와 그 아침의 실측으로만
-    # 정한다. 아래 _OBSOLETE 참고.
+    # (CONFIRM_PREHOUR_LEAD_MS for the first shot, ARRIVAL_SAFETY_MS /
+    # ARRIVAL_MIN_AFTER_MS for recovery) 로만 정한다. 아래 _OBSOLETE 참고.
     "retry_seconds": 20,         # 정각 이후 [확인] 재시도 지속 시간
     "confirm_retry_ms": 90,      # '예약시간전' 일 때 재발사 간격
     "dry_run": False,            # True 면 [확인] 직전에서 멈춘다
@@ -360,6 +366,8 @@ DEFAULT_SETTINGS = {
 # 것과 같은 함정이다. 그래서 이 키도 죽은 키로 만들었다: 파일에서 지우고
 # (load_settings 가 재작성), 읽는 곳도 없다.
 #
+# v1.0.20 restores the pre-hour aim as a code constant; these two keys stay
+# dead so no settings file can move it.
 # v1.0.19 는 정각 전 조준 실험을 되돌리면서 실험이 남겼을 수 있는 키까지
 # 여기에 같이 묻는다(confirm_prehour_lead_ms / arrival_prehour_lead_ms).
 # 지금 코드가 그 키를 쓰지 않는 것만으로는 부족하다. 09-17 의 교훈은

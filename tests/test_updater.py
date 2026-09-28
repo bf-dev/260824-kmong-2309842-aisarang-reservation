@@ -109,6 +109,13 @@ def test_one_point_ten_is_newer_than_one_point_nine():
 def test_the_shipped_version_matches_what_the_manifest_will_say():
     """리포의 판 번호와 서빙 중인 매니페스트가 같아야 한다.
 
+    1.0.20 은 고객 요청 판이다. 첫 발을 다시 정각 전 500ms 에 도착시키고
+    (코드 상수), '예약시간전' 거절이면 +140ms 회복 발사로 다시 누른다.
+    그리고 2026-09-28 에 드러난 대기열 포기를 고쳤다: 넷퍼널 대기열이 떠
+    있는 동안은 누르지 않고 최대 90초 기다린 뒤 진짜 판정(서버 본문)을
+    읽는다. 그날 우리는 2.4초 만에 unknown 으로 멈췄고 실제 제출은
+    +2,665ms 에 나갔다.
+
     1.0.19 는 **되돌림** 판이다. 1.0.18 의 하루 실험(첫 발을 정각 전 500ms
     에 도착시키기) 은 2026-09-24 09:00 실전에서 답이 나왔다: 1발 -499ms 는
     서버가 버렸고(본문 "아직 예약 가능한 시간이 아닙니다"), 2발 회복
@@ -136,7 +143,7 @@ def test_the_shipped_version_matches_what_the_manifest_will_say():
     대조할 수 있는 것은 상수뿐이다. 실제 서빙 값은 NOTES.md 의 '배포 현황'
     절과 metadata.json 의 `deploy.manifestServing` 에 적어 둔다.
     """
-    assert config.APP_VERSION == "1.0.19"
+    assert config.APP_VERSION == "1.0.20"
     assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.16")
 
 
