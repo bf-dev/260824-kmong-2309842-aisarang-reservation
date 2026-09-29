@@ -124,6 +124,10 @@ def test_the_shipped_version_matches_what_the_manifest_will_say():
     ((시각 오차 반폭) + 140ms) 으로 되돌렸다. too_early 회복 경로는
     v1.0.15 부터의 안전망이라 그대로 남는다.
 
+    1.0.21 은 **조준** 한 줄 판이다. 고객 요청(2026-09-29, "59.75초")으로
+    첫 발 조준을 정각 -500ms 에서 -250ms 로 옮겼다. 회복 / 대기열 / 판정은
+    1.0.20 그대로다.
+
     1.0.17 은 **조준** 판이다. 고객 요청으로 여유를 175 -> 140ms 로 당겼고
     (하한도 같이 140), 그 밖의 판정 / 시각측정 / 되살리기 경로는 한 글자도
     안 건드렸다. 아래는 1.0.16 에서 확정된 판정 규칙이고 그대로 유지된다.
@@ -143,7 +147,7 @@ def test_the_shipped_version_matches_what_the_manifest_will_say():
     대조할 수 있는 것은 상수뿐이다. 실제 서빙 값은 NOTES.md 의 '배포 현황'
     절과 metadata.json 의 `deploy.manifestServing` 에 적어 둔다.
     """
-    assert config.APP_VERSION == "1.0.20"
+    assert config.APP_VERSION == "1.0.21"
     assert updater.version_tuple(config.APP_VERSION) > updater.version_tuple("1.0.16")
 
 

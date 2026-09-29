@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """자동 업데이트 (Kmong 고객 2309842).
 
-works.insu.ng 에서 version-aisarang.json 을 주기적으로 확인하고, 새 버전이
+static.neoworks.us (v1.0.21 이전: works.insu.ng) 에서 version-aisarang.json 을 주기적으로 확인하고, 새 버전이
 있으면 받아서 자기 자신을 교체한 뒤 재시작한다. 고객이 다시 내려받을 필요가 없다.
 
     https://works.insu.ng/works/public/2309842/version-aisarang.json

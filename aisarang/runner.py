@@ -15,6 +15,20 @@ from .masking import register_secret
 from .reporter import Diagnostics
 
 
+def _prehour_clock_text(lead_ms: float, open_hour: int = None) -> str:
+    """-250 -> '08:59:59.750'. The wall-clock arrival of the first shot."""
+    try:
+        h = config.OPEN_HOUR if open_hour is None else int(open_hour)
+        total_ms = int(round(h * 3600000 + float(lead_ms)))
+        total_ms %= 24 * 3600000
+        hh, rem = divmod(total_ms, 3600000)
+        mm, rem = divmod(rem, 60000)
+        ss, ms = divmod(rem, 1000)
+        return f"{hh:02d}:{mm:02d}:{ss:02d}.{ms:03d}"
+    except Exception:
+        return "?"
+
+
 def _hours_from_slots(slots) -> list:
     """화면의 시간대 칩("09:00")을 표의 열(9)로 바꾼다. 순서 = 우선순위."""
     out = []
@@ -53,8 +67,10 @@ class Runner:
     def _arrival_aim(self, settings: dict) -> float:
         """[확인] 요청의 목표 도착시각. 정각 기준 초 단위(음수 = 정각 전).
 
-        v1.0.20: back to the v1.0.18 first shot, 정각 **전** 500ms
-        (config.CONFIRM_PREHOUR_LEAD_MS). The customer asked for it on
+        v1.0.21: 정각 **전** 250ms (config.CONFIRM_PREHOUR_LEAD_MS), i.e.
+        arrival at 08:59:59.750 server time. Customer (2026-09-29):
+        "59.75초로 다시 시도해보고싶습니다".
+        v1.0.20: back to the v1.0.18 first shot, 정각 **전** 500ms. The customer asked for it on
         2026-09-28: "거절해도 다시 요청해서 성공한다면 차라리 그게 더 나은가
         싶어서요". On 09-24 this exact plan was rejected at -499ms and the
         recovery shot booked at +359ms.
@@ -210,8 +226,13 @@ class Runner:
                  f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사"
                  + ("" if mode == config.MODE_HANDOVER
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
-        self.log("고객 요청(2026-09-28): 첫 [확인] 을 정각 "
-                 f"{abs(config.CONFIRM_PREHOUR_LEAD_MS):.0f}ms 전에 도착시킵니다. "
+        lead_ms = abs(config.CONFIRM_PREHOUR_LEAD_MS)
+        self.log(f"첫 [확인] 조준: 정각 {lead_ms:.0f}ms 전 도착 "
+                 f"(서버시각 {_prehour_clock_text(config.CONFIRM_PREHOUR_LEAD_MS)}, "
+                 f"target arrival {lead_ms:.0f}ms before the hour, "
+                 f"CONFIRM_PREHOUR_LEAD_MS={config.CONFIRM_PREHOUR_LEAD_MS:+.0f})")
+        self.log("고객 요청(2026-09-29, 59.75초): 첫 [확인] 을 정각 "
+                 f"{lead_ms:.0f}ms 전에 도착시킵니다. "
                  "서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
                  f"확인창을 되살려 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 "
                  "다시 누릅니다. 대기열 화면이 뜨면 다시 누르지 않고 풀릴 때까지"

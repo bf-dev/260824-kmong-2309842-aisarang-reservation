@@ -768,7 +768,7 @@ def burst(driver, clock, open_epoch: float, watcher: Watcher,
       - 회복 발사는 `recovery_aim`(기본 config.ARRIVAL_SAFETY_MS = 정각
         +140ms)까지 기다렸다가 쏜다. 정각 전에 두 번째 발사가 나가지 않는다.
 
-    v1.0.20: 첫 발은 다시 정각 전(config.CONFIRM_PREHOUR_LEAD_MS = -500ms)
+    v1.0.20: 첫 발은 다시 정각 전(config.CONFIRM_PREHOUR_LEAD_MS, v1.0.21 은 -250ms)
     도착이다(runner 가 조준). 진짜 '예약시간전' 이면 위 회복이 +140ms 로
     다시 쏜다. 그리고 **대기열에서 포기하지 않는다.**
       - 발사 뒤 대기열이 뜨면 `read_outcome_detail(queue_timeout=

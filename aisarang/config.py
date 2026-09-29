@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.20"
+APP_VERSION = "1.0.21"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -81,7 +81,10 @@ WORKS_API = "https://works.insu.ng/works/api"
 ARTIFACT_SOURCE = f"{APP_SLUG}-diag"
 
 # 자동 업데이트
-STATIC_BASE = f"https://works.insu.ng/works/public/{CUSTOMER_ID}"
+# v1.0.21: house static host. It serves the same directory as the old
+# https://works.insu.ng/works/public/<id>/ path, which stays up for PCs still
+# on <= 1.0.20 (the manifest is published at the same file for both).
+STATIC_BASE = f"https://static.neoworks.us/{CUSTOMER_ID}"
 VERSION_URL = f"{STATIC_BASE}/version-aisarang.json"
 
 # 대상 사이트.
@@ -279,10 +282,15 @@ ARRIVAL_SAFETY_MS = 140.0
 #     A queue screen is never a reason to click again: the program waits
 #     for it to release (QUEUE_WAIT_SECONDS) and reads the real verdict.
 #
+#   v1.0.21: the customer asked (2026-09-29) to try arriving at 59.75s
+#     instead of 59.5s: "59.75초로 다시 시도해보고싶습니다". First shot now
+#     aims at 정각 -250ms (08:59:59.750 server time). Recovery, queue wait
+#     and verdict reading are unchanged from v1.0.20.
+#
 # Code constant only. It is not a setting: the old settings keys
 # confirm_prehour_lead_ms / arrival_prehour_lead_ms stay in _OBSOLETE so a
 # stale settings.json can never override it.
-CONFIRM_PREHOUR_LEAD_MS = -500.0
+CONFIRM_PREHOUR_LEAD_MS = -250.0
 
 # How long to keep waiting while the NetFunnel queue shows (seconds). The
 # queue is the site holding our request; the submission goes out when it
