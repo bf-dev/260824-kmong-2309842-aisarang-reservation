@@ -2630,7 +2630,63 @@ reopen window from `verdict_at`, auto-mode redrive waits a 3.6s queue with a sin
 Full suite 340 passed locally and in CI. `ci/too_early_retry_check.py` passes locally in real
 Chrome (`RETRY ALL OK`).
 
-## 배포 현황 (v1.0.20, 2026-09-28 01:03Z) ← 지금 서빙 중
+## v1.0.21 (2026-09-29): first shot moves from -500ms to -250ms (customer: "59.75초")
+
+One change only, requested 2026-09-29 after the 09-29 run (1.0.20, server answer 선예약):
+"59.75초로 다시 시도해보고싶습니다". The first [확인] now aims to ARRIVE at server time
+08:59:59.750.
+
+| Item | Where | What |
+|---|---|---|
+| First-shot aim | `config.CONFIRM_PREHOUR_LEAD_MS = -250.0` | still a code constant only; `Runner._arrival_aim()` returns it / 1000 and never reads settings |
+| Startup log line | `runner.py`, helper `_prehour_clock_text(lead_ms)` | `첫 [확인] 조준: 정각 250ms 전 도착 (서버시각 08:59:59.750, target arrival 250ms before the hour, CONFIRM_PREHOUR_LEAD_MS=-250)` plus a `고객 요청(2026-09-29, 59.75초)` line. The existing `[확인] 목표 도착: 정각 -250ms` line stays |
+| Diag meta | `reporter.meta()` | `aimPrehourLeadMs: -250.0` (confirmed in the CI frozen-exe zips stored server-side) |
+| VERSION_URL | `config.STATIC_BASE` | now `https://static.neoworks.us/2309842`. Same directory as `https://works.insu.ng/works/public/2309842/`, so PCs on <= 1.0.20 (which poll the old path) still see the same manifest. Keep BOTH paths alive |
+| Unchanged | | too_early re-press and re-fire at +140ms (`ARRIVAL_SAFETY_MS`) up to `REOPEN_EARLY_MAX=6`; NetFunnel wait up to `QUEUE_WAIT_SECONDS=90` with no re-click; verdict from the InsertOcreqst response body |
+
+Tests: `tests/test_arrival.py::test_the_prehour_first_shot_aim_is_minus_250ms` (constant -250,
+REOPEN 6, aim -250 even with a -500 stale dict, clock text 08:59:59.750, local fire time
+open-0.270 at 40ms one-way). Stale test asserts -0.25. Full suite 340 passed locally and in CI.
+
+Stale-settings runtime check (2026-09-29): a settings.json holding `confirm_prehour_lead_ms -500`,
+`arrival_prehour_lead_ms -500`, `arrival_after_ms 250`, `arrival_safety_ms 0` was loaded with
+`APPDATA` pointed at a temp dir. After `load_settings()` none of those keys remained in memory
+or on disk, and `_arrival_aim` gave -250ms both on the loaded dict and on a raw -500 dict.
+
+CI gotcha seen on this build: the first attempt of run 36566035489 failed the step
+"diagnostic recorder records but never clicks (frozen exe)" with `RECTEST no-child-radio
+url=chrome://new-tab-page/` (Chrome never navigated to the fixture; recorder.py/main.py
+unchanged since 1.0.16). `gh run rerun --failed` passed (`RECTEST OK`). Treat a single
+new-tab-page RECTEST failure as a runner flake; rerun once before debugging.
+
+## 배포 현황 (v1.0.21, 2026-09-29 12:38Z) ← 지금 서빙 중
+
+- 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.21.zip
+  (same bytes at https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.21.zip)
+  29,307,816 bytes, sha256 `ef74af516399abe80bee8a2c7668b8508f2b0daa9f564c8df8395fb4eced3f0d`.
+  CI log value = downloaded artifact = bytes served on both hosts (cache-buster curl, and a
+  python-requests GET, which is what the updater uses). `unzip -t` clean, top folder
+  `aisarang-reservation-1.0.21/`. Published with `works-publish 2309842` (mode 644).
+  GUI screenshot `out/ci-1.0.21/screenshots/gui.png` shows v1.0.21.
+- 매니페스트: served at both https://static.neoworks.us/2309842/version-aisarang.json and
+  https://works.insu.ng/works/public/2309842/version-aisarang.json (one file on disk).
+  `version 1.0.21` / `updatedAt 2026-09-29T12:37:59Z` / `supersedes 1.0.20` / `zipUrl` on
+  static.neoworks.us only (no `exeUrl`). `install -m 0644`. Copy at
+  `deploy/manifests/version-aisarang-1.0.21.json`. Live manifest fed to
+  `updater.choose_download`: 1.0.4/1.0.5/1.0.19/1.0.20 -> zip 1.0.21, 1.0.21 -> None.
+- CI: GitHub Actions run **36566035489**, commit `64fc703`, success on rerun (see flake note
+  above). 340 passed, `RETRY ALL OK`, `STALE NOTICE CHECK: OK`, Defender onefile/onedir/zip
+  CLEAN, `SWAP CHECK: OK`, `RECTEST OK`, `HANDOVERTEST fired=1/6 expected=1`, `HANDOVERTEST OK`,
+  `staleIgnored=True`.
+- Artifacts: shipped `Diagnostics.upload(blocking=True)` (`~/workspace/kmong/tmp/upload_1021_diag.py`)
+  -> `status=200`, `matched=True`; `artifacts-check 2309842` shows
+  `aisarang-reservation-diag 2026-09-29T12:38:18 [v1.0.21] ... v1.0.21 게시 점검`. Stored diag
+  zips carry `appVersion 1.0.21`, `aimPrehourLeadMs -250.0`. Devnote posted.
+- 되돌리기: the 1.0.20 ZIP stays served. `install -m 0644 deploy/manifests/version-aisarang-1.0.20.json`
+  over `/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`
+  (a 1.0.21 PC will not downgrade by itself, reinstall by hand).
+
+## 배포 현황 (v1.0.20, 2026-09-28 01:03Z) ← 지난 판
 
 - 프로그램: https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.20.zip
   (29,307,700 bytes, HTTP 200 over the real egress URL with a cache-buster)
