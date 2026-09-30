@@ -2927,7 +2927,7 @@ def confirm_burst(driver, p: Prepared, clock, open_epoch: float,
                   recovery_aim: float = None) -> StepResult:
     """정각에 [확인] 을 쏘고, '예약시간전' 이면 열릴 때까지 재시도한다.
 
-    v1.0.20/21: 첫 발은 정각 전 도착(부르는 쪽 조준, 상수 -250ms, v1.0.20 은
+    v1.0.20/21/22: 첫 발은 정각 전 도착(부르는 쪽 조준, 상수 -100ms, v1.0.21 -250ms, v1.0.20 은
     -500ms), 회복 발사는
     정각 +140ms 도착. 대기열이 뜨면 confirm_once 가 풀릴 때까지(최대
     QUEUE_WAIT_SECONDS) 기다려 진짜 판정을 읽는다. 줄에 서 있는 동안에는
