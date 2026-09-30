@@ -226,6 +226,33 @@ def main(argv: list[str] | None = None) -> int:
             _out("SELFTEST " + ("OK" if ok else "FAILED"))
             return 0 if ok else 1
 
+        if any(a.startswith("--aimtest") for a in argv):
+            # v1.0.22: the aim lines are only logged inside Runner.run after
+            # login, which CI never reaches. This mode logs the exact same
+            # lines through a real Runner (saved settings applied, stale keys
+            # stripped) so the frozen exe proves the shipped aim. A UTF-8 copy
+            # goes to --aimtest=<file> because the CI console garbles Korean.
+            from aisarang.runner import Runner, aim_startup_line, aim_confirm_line
+            from aisarang import config as cfg
+            r = Runner(status_cb=_out, log_cb=_out, diag=diag)
+            aim = r._arrival_aim(cfg.load_settings())
+            lines = [aim_startup_line(), aim_confirm_line(aim)]
+            for line in lines:
+                r.log(line)
+            dest = next((a.split("=", 1)[1] for a in argv
+                         if a.startswith("--aimtest=")), "")
+            if dest:
+                with open(dest, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(lines) + "\n")
+            ok = abs(aim * 1000 - cfg.CONFIRM_PREHOUR_LEAD_MS) < 0.5
+            diag.upload("조준 점검 " + ("성공" if ok else "실패"),
+                        {"mode": "aimtest", "aimMs": round(aim * 1000, 1)},
+                        blocking=True)
+            _out(f"AIMTEST {'OK' if ok else 'FAILED'} aimMs={aim * 1000:+.0f} "
+                 f"leadMs={cfg.CONFIRM_PREHOUR_LEAD_MS:+.0f} "
+                 f"version={cfg.APP_VERSION}")
+            return 0 if ok else 1
+
         if "--arrivaltest" in argv:
             # 도착시각 모델 검증. 서버의 초 경계 앞뒤로 쏴서, 응답 Date 헤더가
             # 기대한 초를 가리키는지 본다. 우리 진단/CI 전용이다.

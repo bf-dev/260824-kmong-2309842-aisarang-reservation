@@ -29,6 +29,22 @@ def _prehour_clock_text(lead_ms: float, open_hour: int = None) -> str:
         return "?"
 
 
+def aim_startup_line() -> str:
+    """The startup aim line. Shared with main.py --aimtest so CI checks the real text."""
+    lead_ms = abs(config.CONFIRM_PREHOUR_LEAD_MS)
+    return (f"첫 [확인] 조준: 정각 {lead_ms:.0f}ms 전 도착 "
+            f"(서버시각 {_prehour_clock_text(config.CONFIRM_PREHOUR_LEAD_MS)}, "
+            f"target arrival {lead_ms:.0f}ms before the hour, "
+            f"CONFIRM_PREHOUR_LEAD_MS={config.CONFIRM_PREHOUR_LEAD_MS:+.0f})")
+
+
+def aim_confirm_line(aim: float) -> str:
+    """The line logged right before the first [확인] is fired (aim in seconds)."""
+    return (f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
+            f"(정각 전 발사. 서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
+            f"거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 다시 누른다)")
+
+
 def _hours_from_slots(slots) -> list:
     """화면의 시간대 칩("09:00")을 표의 열(9)로 바꾼다. 순서 = 우선순위."""
     out = []
@@ -230,10 +246,7 @@ class Runner:
                  + ("" if mode == config.MODE_HANDOVER
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
         lead_ms = abs(config.CONFIRM_PREHOUR_LEAD_MS)
-        self.log(f"첫 [확인] 조준: 정각 {lead_ms:.0f}ms 전 도착 "
-                 f"(서버시각 {_prehour_clock_text(config.CONFIRM_PREHOUR_LEAD_MS)}, "
-                 f"target arrival {lead_ms:.0f}ms before the hour, "
-                 f"CONFIRM_PREHOUR_LEAD_MS={config.CONFIRM_PREHOUR_LEAD_MS:+.0f})")
+        self.log(aim_startup_line())
         self.log("고객 요청(2026-09-30, -250 -> -100): 첫 [확인] 을 정각 "
                  f"{lead_ms:.0f}ms 전에 도착시킵니다. "
                  "서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
@@ -322,9 +335,7 @@ class Runner:
         # --- 9단계: [확인] 만 정각에 쏜다. ---
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
-                 f"(정각 전 발사. 서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
-                 f"거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 다시 누른다)")
+        self.log(aim_confirm_line(aim))
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -458,9 +469,7 @@ class Runner:
 
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
-                 f"(정각 전 발사. 서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
-                 f"거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 다시 누른다)")
+        self.log(aim_confirm_line(aim))
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)

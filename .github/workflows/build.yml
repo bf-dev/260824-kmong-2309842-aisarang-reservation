@@ -283,6 +283,40 @@ jobs:
             Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           }
 
+      # v1.0.22: the frozen exe must aim the first [확인] at 08:59:59.900
+      # (정각 100ms 전), even with stale -500/-250 keys in saved settings.
+      # The console garbles Korean, so the lines are checked in a UTF-8 file.
+      - name: first-shot aim is 100ms before the hour (frozen exe)
+        shell: pwsh
+        run: |
+          $appdir = Join-Path $env:APPDATA "AisarangReservation"
+          New-Item -ItemType Directory -Force -Path $appdir | Out-Null
+          $sp = Join-Path $appdir "settings.json"
+          $had = Test-Path $sp
+          if ($had) { Copy-Item $sp "$sp.bak" -Force }
+          '{"confirm_prehour_lead_ms": -500, "arrival_prehour_lead_ms": -250}' | Set-Content -Encoding utf8 $sp
+          try {
+            $aim = Join-Path (Get-Location) "aimtest-lines.txt"
+            $log = "aimtest.log"
+            $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe `
+                 -ArgumentList "--aimtest=$aim" `
+                 -RedirectStandardOutput $log -PassThru -Wait
+            Get-Content $log
+            "aimtest exit code: $($p.ExitCode)"
+            $raw = Get-Content $aim -Raw -Encoding utf8
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            $raw
+            if ($p.ExitCode -ne 0) { throw "aim check failed" }
+            if ((Get-Content $log -Raw) -notmatch "AIMTEST OK aimMs=-100 leadMs=-100") { throw "aim is not -100ms" }
+            if (-not $raw.Contains("정각 100ms 전 도착 (서버시각 08:59:59.900")) { throw "startup aim line missing" }
+            if (-not $raw.Contains("조준 확정: 도착 목표 정각 -100ms")) { throw "confirm aim line missing" }
+            $left = Get-Content $sp -Raw
+            if ($left -match "prehour_lead_ms") { throw "stale aim keys were not stripped" }
+            "AIM CHECK: OK"
+          } finally {
+            if ($had) { Move-Item "$sp.bak" $sp -Force } else { Remove-Item $sp -Force -ErrorAction SilentlyContinue }
+          }
+
       # v1.0.6 의 다른 약속: 진단 기록 모드는 **아무것도 누르지 않는다**.
       # 프로즌 exe 로 진짜 크롬을 띄워, 사람이 누르는 것만 기록되는지,
       # 우리가 못 봤던 ajax 응답 본문이 실제로 남는지, 그리고 예약 계기가
