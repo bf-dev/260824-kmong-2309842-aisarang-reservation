@@ -2659,7 +2659,51 @@ url=chrome://new-tab-page/` (Chrome never navigated to the fixture; recorder.py/
 unchanged since 1.0.16). `gh run rerun --failed` passed (`RECTEST OK`). Treat a single
 new-tab-page RECTEST failure as a runner flake; rerun once before debugging.
 
-## 배포 현황 (v1.0.21, 2026-09-29 12:38Z) ← 지금 서빙 중
+## v1.0.22 (2026-09-30): first shot moves from -250ms to -100ms (customer: "-250을 -100으로")
+
+One change only, requested 2026-09-30 after the 09-30 run (1.0.21 arrived about -248ms, server
+answer 선예약 HTTP 200): "-250을 -100으로 수정해주시면 내일 다시 시도해보겠습니다". The first
+[확인] now aims to ARRIVE at server time 08:59:59.900.
+
+| Item | Where | What |
+|---|---|---|
+| First-shot aim | `config.CONFIRM_PREHOUR_LEAD_MS = -100.0` | still a code constant only; stale `confirm_prehour_lead_ms` / `arrival_prehour_lead_ms` keys are stripped from settings.json by `config._OBSOLETE` at load |
+| Aim log lines | `runner.aim_startup_line()` / `runner.aim_confirm_line(aim)` | shared helpers now; Runner.run and `main.py --aimtest` use the same text so CI checks the real lines |
+| `--aimtest[=file]` | `main.py` | new CI/diag mode: real Runner, real `load_settings()`, logs both aim lines, uploads diag `조준 점검 성공`, prints `AIMTEST OK aimMs=-100 leadMs=-100 version=...`, writes a UTF-8 copy of the lines to `file` (the CI console garbles Korean) |
+| CI step | build.yml `first-shot aim is 100ms before the hour (frozen exe)` | seeds a stale -500/-250 settings.json in %APPDATA%\AisarangReservation, runs the frozen exe, asserts `정각 100ms 전 도착 (서버시각 08:59:59.900` and `조준 확정: 도착 목표 정각 -100ms`, and that the stale keys were stripped. When the aim changes, update the asserted strings here |
+| Diag meta | `reporter.meta()` | `aimPrehourLeadMs: -100.0` in every stored v1.0.22 zip |
+| Unchanged | | ARRIVAL_SAFETY_MS=140, REOPEN_EARLY_MAX=6, QUEUE_WAIT_SECONDS=90, too_early re-press logic |
+
+Tests: `tests/test_arrival.py::test_the_prehour_first_shot_aim_is_minus_100ms` (constant -100,
+stale -500/-250 dicts still give -100, clock text 08:59:59.900, local fire open-0.120 at 40ms
+one-way). Full suite 340 passed locally and in CI. Seen once locally: a single early test failed
+on a timing flake and passed on 4 reruns; not seen in CI.
+
+## 배포 현황 (v1.0.22, 2026-09-30 00:55Z) ← 지금 서빙 중
+
+- 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.22.zip
+  (same bytes at https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.22.zip)
+  29,309,335 bytes, sha256 `410c14ad462713c9b795604316aa5e717f09bc4e7d997b0a291b84daba7f7ba0`.
+  CI log value = downloaded artifact = bytes served on both hosts (cache-buster curl). `unzip -t`
+  clean, top folder `aisarang-reservation-1.0.22/`. Published with `works-publish 2309842` (mode 644).
+- 매니페스트: one file on disk, served at https://static.neoworks.us/2309842/version-aisarang.json
+  and https://works.insu.ng/works/public/2309842/version-aisarang.json. `version 1.0.22` /
+  `updatedAt 2026-09-30T00:55:43Z` / `supersedes 1.0.21` / `zipUrl` only (no `exeUrl`).
+  `install -m 0644`. Copy at `deploy/manifests/version-aisarang-1.0.22.json`. Live manifest fed
+  to `updater.choose_download`: 1.0.4/1.0.5/1.0.20/1.0.21 -> zip 1.0.22, 1.0.22 -> None.
+- CI: GitHub Actions run **36651411345**, commit `987641c` (constant change in `96f796e`, run
+  36649479726 also green but its zip was superseded), success on first attempt. 340 passed,
+  `RETRY ALL OK`, `STALE NOTICE CHECK: OK`, `SWAP CHECK: OK`, `CLOCKTEST OK resyncs=3`,
+  `AIMTEST OK aimMs=-100 leadMs=-100 version=1.0.22`, `AIM CHECK: OK`, `RECTEST OK`, `HANDOVERTEST OK`.
+- Artifacts: `artifacts-check 2309842` shows v1.0.22 rows from the frozen exe (셀프테스트 성공 x3,
+  시각 재측정 점검, 조준 점검 성공, 진단 기록, 인계 모드 점검 성공). The stored 조준 점검 zip's
+  run.log holds both aim lines; every zip's meta has `appVersion 1.0.22`, `aimPrehourLeadMs -100.0`.
+  Devnote posted (matched=true).
+- 되돌리기: the 1.0.21 ZIP stays served. `install -m 0644 deploy/manifests/version-aisarang-1.0.21.json`
+  over `/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`
+  (a 1.0.22 PC will not downgrade by itself, reinstall by hand).
+
+## 배포 현황 (v1.0.21, 2026-09-29 12:38Z) ← 지난 판
 
 - 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.21.zip
   (same bytes at https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.21.zip)
