@@ -259,6 +259,8 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
     -500 이 남아 있어도 조준은 상수 -250ms 다.
     v1.0.22: 상수가 -100ms 로 바뀌었다. 파일에 -500 / -250 이 남아 있어도
     조준은 상수 -100ms 다.
+    v1.0.23: 상수가 -200ms 로 바뀌었다. v1.0.22 를 쓰던 PC 의 파일에
+    -100 이 남아 있어도(아래 두 번째 루프) 조준은 상수 -200ms 다.
     """
     import json
 
@@ -268,12 +270,17 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
                         lambda: tmp_path / "settings.json")
 
     dead_keys = ("arrival_safety_ms", "arrival_after_ms", "reopen_max",
-                 "reopen_seconds", "confirm_prehour_lead_ms")
+                 "reopen_seconds", "confirm_prehour_lead_ms",
+                 "arrival_prehour_lead_ms")
 
-    for old in (250, 175):
+    # (old safety, stale first-shot lead). The last two rows are what a PC
+    # that ran v1.0.21 / v1.0.22 could still carry: -250 and -100.
+    for old, lead in ((250, -500.0), (175, -500.0), (140, -250.0),
+                      (140, -100.0)):
         (tmp_path / "settings.json").write_text(
             json.dumps({"arrival_safety_ms": old, "arrival_after_ms": 250,
-                        "confirm_prehour_lead_ms": -500.0,
+                        "confirm_prehour_lead_ms": lead,
+                        "arrival_prehour_lead_ms": lead,
                         "reopen_max": 2,
                         "reopen_seconds": 15, "use_hours": 9},
                        ensure_ascii=False), encoding="utf-8")
@@ -282,25 +289,28 @@ def test_the_saved_safety_margin_can_no_longer_shadow_the_constant(tmp_path,
             assert dead not in data, (old, dead)
         assert data["use_hours"] == 9             # 진짜 고객 설정은 그대로 산다
 
-        # 조준은 파일이 아니라 상수(정각 -100ms) 를 따른다. 측정값도 무관하다.
+        # 조준은 파일이 아니라 상수(정각 -200ms) 를 따른다. 측정값도 무관하다.
         r = Runner()
         r.clock = _measured(50.0)
         want = config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
-        assert want == -0.1
-        assert abs(r._arrival_aim(data) - want) < 1e-9, old
+        assert want == -0.2
+        assert abs(r._arrival_aim(data) - want) < 1e-9, (old, lead)
 
         # 파일의 값을 억지로 다시 끼워 넣어도 이제 무시된다.
         stale = dict(data)
         stale["arrival_after_ms"] = old
         stale["arrival_safety_ms"] = old
+        stale["confirm_prehour_lead_ms"] = lead
+        stale["arrival_prehour_lead_ms"] = lead
+        assert abs(r._arrival_aim(stale) - want) < 1e-9, (old, lead)
         stale["confirm_prehour_lead_ms"] = 900.0
-        assert abs(r._arrival_aim(stale) - want) < 1e-9, old
+        assert abs(r._arrival_aim(stale) - want) < 1e-9, (old, lead)
 
         # 그리고 읽고 나면 죽은 키는 디스크에서도 지워진다(v1.0.17).
         on_disk = json.loads((tmp_path / "settings.json").read_text(
             encoding="utf-8"))
         for dead in dead_keys:
-            assert dead not in on_disk, (old, dead)
+            assert dead not in on_disk, (old, lead, dead)
         assert on_disk["use_hours"] == 9
 
 
@@ -317,8 +327,14 @@ def test_the_default_settings_do_not_carry_a_dead_aim_key():
     assert "confirm_prehour_lead_ms" in config._OBSOLETE
 
 
-def test_the_prehour_first_shot_aim_is_minus_100ms():
-    """v1.0.22: 고객 요청으로 첫 발을 59.75초 에서 59.9초 로 옮겼다.
+def test_the_prehour_first_shot_aim_is_minus_200ms():
+    """v1.0.23: 고객 요청으로 첫 발을 59.9초 에서 59.8초 로 옮겼다.
+
+    고객(2026-10-02): "앗 이번엔 150 말고 200으로 해보겠습니다!". 첫 발
+    [확인] 은 정각 200ms 전(서버시각 08:59:59.800) 에 도착시킨다. 회복
+    발사(+140ms, 최대 6회), 대기열 대기(90초) 는 그대로다.
+
+    v1.0.22: 고객 요청으로 첫 발을 59.75초 에서 59.9초 로 옮겼다.
 
     고객(2026-09-30): "-250을 -100으로 수정해주시면 내일 다시
     시도해보겠습니다". 첫 발 [확인] 은 정각 100ms 전(서버시각 08:59:59.900)
@@ -334,31 +350,32 @@ def test_the_prehour_first_shot_aim_is_minus_100ms():
     """
     from aisarang.runner import Runner, _prehour_clock_text
 
-    assert config.CONFIRM_PREHOUR_LEAD_MS == -100.0
+    assert config.CONFIRM_PREHOUR_LEAD_MS == -200.0
     assert config.ARRIVAL_SAFETY_MS == 140.0
     assert config.REOPEN_EARLY_MAX == 6
 
     r = Runner()
     for u in (0.0, 50.0, 133.2, 869.2, 5000.0):
         r.clock = _measured(u)
-        assert r._arrival_aim({}) * 1000.0 == -100.0, u
-        assert r._arrival_aim(dict(config.DEFAULT_SETTINGS)) * 1000.0 == -100.0
-        # v1.0.20 / v1.0.21 의 값이 파일에 남아 있어도 무시된다.
-        for stale in (-500.0, -250.0):
+        assert r._arrival_aim({}) * 1000.0 == -200.0, u
+        assert r._arrival_aim(dict(config.DEFAULT_SETTINGS)) * 1000.0 == -200.0
+        # v1.0.20 / v1.0.21 / v1.0.22 의 값이 파일에 남아 있어도 무시된다.
+        for stale in (-500.0, -250.0, -100.0):
             assert r._arrival_aim({"confirm_prehour_lead_ms": stale,
                                    "arrival_prehour_lead_ms": stale}) \
-                * 1000.0 == -100.0
+                * 1000.0 == -200.0
 
-    assert _prehour_clock_text(config.CONFIRM_PREHOUR_LEAD_MS) == "08:59:59.900"
+    assert _prehour_clock_text(config.CONFIRM_PREHOUR_LEAD_MS) == "08:59:59.800"
+    assert _prehour_clock_text(-100.0) == "08:59:59.900"
     assert _prehour_clock_text(-250.0) == "08:59:59.750"
     assert _prehour_clock_text(-500.0) == "08:59:59.500"
 
     # 음수 조준이어도 발사 시각 변환은 정상(정각보다 이른 로컬 발사)이다.
     c = _clock(offset=0.0, rtt=0.040)
     open_epoch = 1_800_000_000.0
-    fire = c.local_fire_for_arrival(open_epoch - 0.1)
-    assert abs(fire - (open_epoch - 0.120)) < 1e-9
-    assert abs(c.arrival_for_local_fire(fire) - (open_epoch - 0.1)) < 1e-9
+    fire = c.local_fire_for_arrival(open_epoch - 0.2)
+    assert abs(fire - (open_epoch - 0.220)) < 1e-9
+    assert abs(c.arrival_for_local_fire(fire) - (open_epoch - 0.2)) < 1e-9
 
 
 def test_the_recovery_aim_stays_after_the_hour():
