@@ -14,7 +14,7 @@ from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.23"
+APP_VERSION = "1.0.24"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -299,10 +299,15 @@ ARRIVAL_SAFETY_MS = 140.0
 #     REOPEN_EARLY_MAX, QUEUE_WAIT_SECONDS and the T-90s remeasure stop are
 #     unchanged.
 #
+#   v1.0.24: the customer asked (2026-10-08) for -230 instead of -200:
+#     "조준 확정: 도착 목표 정각 -200ms 에서 200을 230으로 변경 부탁드립니다". First shot now aims at 정각 -230ms (08:59:59.770 server
+#     time). ARRIVAL_SAFETY_MS, REOPEN_EARLY_MAX, QUEUE_WAIT_SECONDS and the
+#     T-90s remeasure stop are unchanged.
+#
 # Code constant only. It is not a setting: the old settings keys
 # confirm_prehour_lead_ms / arrival_prehour_lead_ms stay in _OBSOLETE so a
 # stale settings.json can never override it.
-CONFIRM_PREHOUR_LEAD_MS = -200.0
+CONFIRM_PREHOUR_LEAD_MS = -230.0
 
 # How long to keep waiting while the NetFunnel queue shows (seconds). The
 # queue is the site holding our request; the submission goes out when it

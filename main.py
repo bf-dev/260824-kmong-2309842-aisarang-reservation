@@ -227,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if ok else 1
 
         if any(a.startswith("--aimtest") for a in argv):
-            # v1.0.22/23: the aim lines are only logged inside Runner.run after
+            # v1.0.22~24: the aim lines are only logged inside Runner.run after
             # login, which CI never reaches. This mode logs the exact same
             # lines through a real Runner (saved settings applied, stale keys
             # stripped) so the frozen exe proves the shipped aim. A UTF-8 copy
