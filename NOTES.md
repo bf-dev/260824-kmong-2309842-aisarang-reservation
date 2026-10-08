@@ -2679,6 +2679,51 @@ stale -500/-250 dicts still give -100, clock text 08:59:59.900, local fire open-
 one-way). Full suite 340 passed locally and in CI. Seen once locally: a single early test failed
 on a timing flake and passed on 4 reruns; not seen in CI.
 
+## v1.0.24 (2026-10-08): first shot moves from -200ms to -230ms (customer: "200을 230으로")
+
+One change only, requested 2026-10-08 after the 10-08 run (1.0.23 at -200ms, server answer
+선예약): "조준 확정: 도착 목표 정각 -200ms 에서 200을 230으로 변경 부탁드립니다". The first
+[확인] now aims to ARRIVE at server time 08:59:59.770. Done exactly like v1.0.23 (same file list).
+
+| Item | Where | What |
+|---|---|---|
+| First-shot aim | `config.CONFIRM_PREHOUR_LEAD_MS = -230.0` | code constant only; `config._OBSOLETE` still strips `confirm_prehour_lead_ms` / `arrival_prehour_lead_ms` from settings.json at load |
+| Customer-request log line | `runner.py` Runner.run | `고객 요청(2026-10-08, -200 -> -230): 첫 [확인] 을 정각 230ms 전에 도착시킵니다...` |
+| Stale-settings test | `tests/test_arrival.py::test_the_saved_safety_margin_can_no_longer_shadow_the_constant` | also writes a v1.0.23-style (-200) settings.json; asserts aim stays -0.23 and keys are gone |
+| Aim test | `tests/test_arrival.py::test_the_prehour_first_shot_aim_is_minus_230ms` | constant -230, safety 140, REOPEN_EARLY_MAX 6, stale -500/-250/-100/-200 give -230, clock text 08:59:59.770, local fire open-0.250 at 40ms one-way |
+| CI step | build.yml `first-shot aim is 230ms before the hour (frozen exe)` | seeds `{"confirm_prehour_lead_ms": -200, "arrival_prehour_lead_ms": -200, "use_hours": 9}`, asserts `AIMTEST OK aimMs=-230 leadMs=-230`, `정각 230ms 전 도착 (서버시각 08:59:59.770`, `조준 확정: 도착 목표 정각 -230ms`, stale keys stripped |
+| Unchanged | | ARRIVAL_SAFETY_MS=140 (+140ms re-fire on too_early), REOPEN_EARLY_MAX=6, QUEUE_WAIT_SECONDS=90 (no re-click), T-90s remeasure stop |
+
+Artifact download layout gotcha: `gh run download <id> -n aisarang-reservation -D out/ci-<ver>`
+puts the zip at `out/ci-<ver>/out/aisarang-reservation-<ver>.zip` (no `aisarang-reservation/`
+level; that level only appears when downloading without `-n`).
+
+## 배포 현황 (v1.0.24, 2026-10-08 00:40Z) ← 지금 서빙 중
+
+- 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.24.zip
+  29,316,873 bytes, sha256 `1de129ae4767d7f22ea70d70a4b31adb961085f046d03c5ed0080ee3c30837f4`.
+  CI log value = downloaded artifact = bytes served by static.neoworks.us (cache-buster curl, 200).
+  `unzip -t` clean, top folder `aisarang-reservation-1.0.24/`. Published with `works-publish 2309842` (mode 644).
+- 매니페스트: one file on disk, served at https://static.neoworks.us/2309842/version-aisarang.json
+  and https://works.insu.ng/works/public/2309842/version-aisarang.json (both 200, version 1.0.24,
+  sha256 1de129ae..., size 29316873, no `exeUrl`). `supersedes 1.0.23`, `install -m 0644`.
+  Copy at `deploy/manifests/version-aisarang-1.0.24.json`. Live manifest fed to
+  `updater.choose_download`: 1.0.5/1.0.22/1.0.23 -> zip 1.0.24, 1.0.24 -> None.
+- CI: GitHub Actions run **37707596868**, commit `fe21707`, success on first attempt. 340 passed,
+  real-markup 24 passed, handover 49 passed, `RETRY ALL OK`, `STALE NOTICE CHECK: OK`, `SWAP CHECK: OK`,
+  `CLOCKTEST OK resyncs=3`, `AIMTEST OK aimMs=-230 leadMs=-230 version=1.0.24`, `AIM CHECK: OK`,
+  `RECTEST OK`, `HANDOVERTEST fired=1/6 expected=1`.
+- Artifacts: `artifacts-check 2309842` shows v1.0.24 rows from the frozen exe (셀프테스트 성공 x3,
+  시각 재측정 점검, 조준 점검 성공, 진단 기록, 인계 모드 점검 성공). The stored 조준 점검 zip's meta.json
+  has `appVersion 1.0.24`, `aimMs -230.0`, `aimPrehourLeadMs -230.0`, `customerId 2309842`.
+  Devnote posted (id 46e75b18-3ba0-4272-b280-86be0c348a45, matched=true).
+- 되돌리기: the 1.0.23 ZIP stays served (200). `install -m 0644 deploy/manifests/version-aisarang-1.0.23.json`
+  over `/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`
+  (byte-identical to the manifest that served before this release; a 1.0.24 PC will not downgrade
+  by itself, reinstall by hand).
+- Next live run: expect `첫 [확인] 조준: 정각 230ms 전 도착 (서버시각 08:59:59.770` at the top of the
+  customer's run log and `aimPrehourLeadMs -230.0` in the diag meta.
+
 ## v1.0.23 (2026-10-02): first shot moves from -100ms to -200ms (customer: "이번엔 150 말고 200으로")
 
 One change only, requested 2026-10-02 after the 10-02 run (1.0.22 at -100ms, server answer
@@ -2707,7 +2752,7 @@ Gotcha seen during verification: a bare Python `urllib` GET of the manifest on s
 gets HTTP 403 (Cloudflare rejects the default urllib UA). The app's updater uses `requests` and
 gets 200, as does curl. Use `requests` (or curl) when checking the manifest from a script.
 
-## 배포 현황 (v1.0.23, 2026-10-02 00:25Z) ← 지금 서빙 중
+## 배포 현황 (v1.0.23, 2026-10-02 00:25Z) ← 지난 판
 
 - 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.23.zip
   (same bytes at https://works.insu.ng/works/public/2309842/aisarang-reservation-1.0.23.zip)
