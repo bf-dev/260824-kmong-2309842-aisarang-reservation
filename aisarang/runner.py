@@ -16,7 +16,7 @@ from .reporter import Diagnostics
 
 
 def _prehour_clock_text(lead_ms: float, open_hour: int = None) -> str:
-    """-230 -> '08:59:59.770'. The wall-clock arrival of the first shot."""
+    """-240 -> '08:59:59.760'. The wall-clock arrival of the first shot."""
     try:
         h = config.OPEN_HOUR if open_hour is None else int(open_hour)
         total_ms = int(round(h * 3600000 + float(lead_ms)))
@@ -83,6 +83,9 @@ class Runner:
     def _arrival_aim(self, settings: dict) -> float:
         """[확인] 요청의 목표 도착시각. 정각 기준 초 단위(음수 = 정각 전).
 
+        v1.0.25: 정각 **전** 240ms (config.CONFIRM_PREHOUR_LEAD_MS), i.e.
+        arrival at 08:59:59.760 server time. Customer (2026-10-12):
+        "08:59:58 조준 확정: 도착 목표 정각 -230ms 에서 230을 240 으로 수정부탁드립니다".
         v1.0.24: 정각 **전** 230ms (config.CONFIRM_PREHOUR_LEAD_MS), i.e.
         arrival at 08:59:59.770 server time. Customer (2026-10-08):
         "조준 확정: 도착 목표 정각 -200ms 에서 200을 230으로 변경 부탁드립니다".
@@ -253,7 +256,7 @@ class Runner:
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
         lead_ms = abs(config.CONFIRM_PREHOUR_LEAD_MS)
         self.log(aim_startup_line())
-        self.log("고객 요청(2026-10-08, -200 -> -230): 첫 [확인] 을 정각 "
+        self.log("고객 요청(2026-10-12, -230 -> -240): 첫 [확인] 을 정각 "
                  f"{lead_ms:.0f}ms 전에 도착시킵니다. "
                  "서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
                  f"확인창을 되살려 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 "
