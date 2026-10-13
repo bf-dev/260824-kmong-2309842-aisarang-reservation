@@ -11,7 +11,7 @@ Windows 프로그램. Kmong 고객 2309842 (거대한고봉밥), 주문 7566483,
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests/ -q        # 319 passed (v1.0.17, 크롬 있으면 브라우저 포함)
+.venv/bin/python -m pytest tests/ -q        # 377 passed (v1.0.27, 크롬 있으면 브라우저 포함)
 python3 main.py                              # GUI (고객이 쓰는 화면)
 python3 main.py --selftest                   # 실서버 조회 + 서버시각 동기화 점검
 python3 main.py --guidemo --hold=60000       # CI 스크린샷용 데모 (실제 조회 수행)
@@ -2679,6 +2679,71 @@ stale -500/-250 dicts still give -100, clock text 08:59:59.900, local fire open-
 one-way). Full suite 340 passed locally and in CI. Seen once locally: a single early test failed
 on a timing flake and passed on 4 reruns; not seen in CI.
 
+## v1.0.27 (2026-10-13): the first-shot aim is a customer setting in the GUI (owner instruction)
+
+**The aim no longer needs a build.** The customer asked for a new first [확인] aim almost daily
+(-230 -> -240 -> -280), so the owner had the value moved into the GUI. If the customer asks us to
+change it again, tell them where the field is; do not ship a new build for an aim change.
+
+| Item | Where | What |
+|---|---|---|
+| GUI field | `gui.py` card "1. 실행 방식", label `config.CONFIRM_AIM_LABEL` = `[확인] 도착 목표 (정각 기준, ms)` | entry + live preview `= 서버시각 08:59:59.720 도착 (기본값)`; hint `config.CONFIRM_AIM_HINT` |
+| Validation | `config.parse_confirm_aim_ms` | integer only, -1000..1000, accepts `-280`, `+120`, `-280ms`, unicode minus; blank = default. Bad input -> Korean messagebox from `_check_aim` on [설정 저장] and on [[확인] 대기 시작] (run does not start) |
+| Storage | settings.json key `confirm_aim_ms` (`config.CONFIRM_AIM_KEY`) | NOT in `DEFAULT_SETTINGS`. `save_settings` writes it only when present in the dict; `gui._collect` puts it there only when the customer changed the field (an untouched -280 on a PC with no key stays absent; blank removes it). An invalid value in the file is dropped at load (falls back to default) |
+| Default | `config.CONFIRM_PREHOUR_LEAD_MS = -280.0` | applies when the key is absent. Because the default is never frozen into the file, changing this constant still reaches every PC that never edited the field (the 1.0.15/1.0.17 trap) |
+| Obsolete keys | `config._OBSOLETE` unchanged | `confirm_prehour_lead_ms`, `arrival_prehour_lead_ms`, `arrival_safety_ms`, `reopen_*` etc. still stripped at load and never read |
+| Resolver | `config.resolve_confirm_aim(settings) -> (ms, "settings"/"default")`, `Runner._arrival_aim` / `_arrival_aim_source` | single source of truth for the run, the status board countdown, `_finish` meta and `--aimtest` |
+| Log lines | `runner.aim_startup_line(ms, source)`, `runner.aim_confirm_line(aim_s, source)` | `첫 [확인] 조준: 정각 280ms 전 도착 (서버시각 08:59:59.720, 기본값 -280ms, ...)` and `조준 확정: 도착 목표 정각 -280ms (기본값, 서버시각 08:59:59.720, 정각 전 발사. ...)`; custom shows `설정값` and appends `기본값은 -280ms` to the startup line |
+| Artifacts | `reporter._aim_meta` in every upload's meta.json; `_finish` meta | `aimMsEffective`, `aimSource` (settings/default), `aimSourceLabel` (설정값/기본값), `aimSettingsKey`; run meta `resolvedAimMs`, `aimSource` (`settings confirm_aim_ms` / `default CONFIRM_PREHOUR_LEAD_MS`), `aimDefaultMs`. `aimPrehourLeadMs` is now the DEFAULT, not necessarily what fired |
+| `--aimtest` | `main.py` | new `--expect=<ms>` and `--expectsource=settings|default`; prints `AIMTEST OK aimMs=-280 source=default expectMs=-280 defaultMs=-280 version=1.0.27` |
+| CI | build.yml `first-shot aim follows the GUI setting, default -280 (frozen exe)` | three seeds on the frozen exe: stale -240 keys only -> -280 기본값 (key not frozen in); `confirm_aim_ms -300` + stale keys -> -300 설정값 (key kept, stale stripped); `"abc"` -> -280 기본값 (key dropped). Prints `AIM CHECK: OK` |
+| Tests | `tests/test_confirm_aim_setting.py` (new, 37 cases) | default when absent (v1.0.26 file), custom -300 to aim + both log lines + fire time, invalid input rejected (Korean message), invalid file value falls back, stale obsolete keys never override, default still moves for PCs that never set it, reporter + `_finish` meta |
+| Unchanged | | ARRIVAL_SAFETY_MS 140 (too_early re-fire at +140ms), REOPEN_EARLY_MAX 6, QUEUE_WAIT_SECONDS 90, T-90s remeasure stop, handover mode |
+| Also | `ci/version_info.txt` | the exe version resource had been left at 1.0.20 since that release; now 1.0.27. Bump it with APP_VERSION |
+
+Reading a customer diag after 1.0.27: the aim that fired is `resolvedAimMs` in the run meta (or the
+`조준 확정` line), with its source. Do not read `aimPrehourLeadMs` as the fired value any more.
+
+Local checks: full suite 377 passed (3m20s). Under Xvfb: field shows `-280` with
+`= 서버시각 08:59:59.720 도착 (기본값)`; plain save leaves the key absent; `-300` saves as -300;
+`abc`, `-1500`, `-280.5` each raise the Korean dialog, leave the file untouched and block the run.
+
+## 배포 현황 (v1.0.27, 2026-10-13 05:12Z) ← 지금 서빙 중
+
+- 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.27.zip
+  29,325,642 bytes, sha256 `aa15196032575369025597ce67c98cb2f5578418f6804c1b97af961c031a43a8`.
+  CI log value = downloaded artifact = bytes served by static.neoworks.us and works.insu.ng
+  (cache-buster curls, 200). `unzip -t` clean, top folder `aisarang-reservation-1.0.27/`.
+  Defender in CI: onedir CLEAN, zip CLEAN. Published with `works-publish 2309842` (mode 644).
+- 매니페스트: served at https://static.neoworks.us/2309842/version-aisarang.json and
+  https://works.insu.ng/works/public/2309842/version-aisarang.json (both 200, version 1.0.27,
+  sha256 aa151960..., size 29325642, no `exeUrl`, `supersedes 1.0.26`), `install -m 0644`.
+  Copy at `deploy/manifests/version-aisarang-1.0.27.json`. Fed to `updater.choose_download`:
+  1.0.5/1.0.25/1.0.26 -> zip 1.0.27, 1.0.27 -> None.
+- CI: GitHub Actions run **38338266386**, commit `8aa586e`. Attempt 1 failed only on the known
+  RECTEST new-tab-page flake (`RECTEST no-child-radio url=chrome://new-tab-page/`, recorder.py
+  untouched); `gh run rerun --failed` attempt 2 passed everything: 377 passed, real-markup 24,
+  handover 49, `RETRY ALL OK`, `STALE NOTICE CHECK: OK`, `SWAP CHECK: OK`, `CLOCKTEST OK resyncs=3`,
+  `AIMTEST OK aimMs=-280 source=default expectMs=-280 defaultMs=-280 version=1.0.27`,
+  `AIMTEST OK aimMs=-300 source=settings expectMs=-300 defaultMs=-280 version=1.0.27`,
+  `AIM CHECK default/custom/invalid: OK`, `RECTEST OK`, `HANDOVERTEST fired=1/6 expected=1`,
+  version resource `1.0.27.0`. Frozen exe printed
+  `조준 확정: 도착 목표 정각 -280ms (기본값, 서버시각 08:59:59.720, ...)` and
+  `조준 확정: 도착 목표 정각 -300ms (설정값, 서버시각 08:59:59.700, ...)`.
+- Screenshot: out/ci-1.0.27/screenshots/gui.png (windows-latest session 1) shows the new field
+  `[확인] 도착 목표 (정각 기준, ms)` = `-280`, preview `= 서버시각 08:59:59.720 도착 (기본값)`.
+- Artifacts: `artifacts-check 2309842` shows v1.0.27 rows from the frozen exe. Stored 조준 점검 zips:
+  default run meta `aimMs -280.0, aimSource default, aimSourceLabel 기본값`; custom run meta
+  `aimMs -300.0, aimMsEffective -300.0, aimSource settings, aimSourceLabel 설정값`.
+  Devnote id 3e3751f8-f322-4736-93c2-8001eb435843 (matched=true).
+- 되돌리기: the 1.0.26 ZIP stays served (200). `install -m 0644 deploy/manifests/version-aisarang-1.0.26.json`
+  over `/home/bfdev/neoworks/apps/gateway/artifacts/public/2309842/version-aisarang.json`
+  (byte-identical to the manifest that served before, checked with `cmp` before the swap; a 1.0.27
+  PC will not downgrade by itself). A 1.0.26 build ignores `confirm_aim_ms` (unknown key, dropped
+  on its next save), so a rollback returns everyone to -280.
+- Next live run 2026-10-14 09:00 KST: expect `첫 [확인] 조준: 정각 280ms 전 도착 (서버시각 08:59:59.720, 기본값 -280ms`
+  unless the customer edits the field; run meta `resolvedAimMs`, `aimSource`.
+
 ## v1.0.26 (2026-10-13): first shot moves from -240ms to -280ms (customer: "240을 280으로")
 
 One change only, requested 2026-10-13 after the 10-13 run (1.0.25 at -240ms: arrival -240ms,
@@ -2705,7 +2770,7 @@ Gotcha: fetching the manifest with Python urllib (default UA) gets a Cloudflare 
 That is a UA block on our probe, not a file-mode problem. Feed the curl'd JSON to
 `updater.choose_download` instead.
 
-## 배포 현황 (v1.0.26, 2026-10-13 00:23Z) ← 지금 서빙 중
+## 배포 현황 (v1.0.26, 2026-10-13 00:23Z) ← 지난 판
 
 - 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.26.zip
   29,320,188 bytes, sha256 `7ea60f57de0de4b620870dcfd4c3e2d77b5e085f0ddabd4e69d5007e5e695fdd`.
