@@ -2708,7 +2708,7 @@ Local checks: full suite 377 passed (3m20s). Under Xvfb: field shows `-280` with
 `= 서버시각 08:59:59.720 도착 (기본값)`; plain save leaves the key absent; `-300` saves as -300;
 `abc`, `-1500`, `-280.5` each raise the Korean dialog, leave the file untouched and block the run.
 
-## 배포 현황 (v1.0.27, 2026-10-13 05:12Z) ← 지금 서빙 중
+## 배포 현황 (v1.0.27, 2026-10-13 03:12Z) ← 지금 서빙 중
 
 - 프로그램: https://static.neoworks.us/2309842/aisarang-reservation-1.0.27.zip
   29,325,642 bytes, sha256 `aa15196032575369025597ce67c98cb2f5578418f6804c1b97af961c031a43a8`.
