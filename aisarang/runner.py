@@ -29,19 +29,42 @@ def _prehour_clock_text(lead_ms: float, open_hour: int = None) -> str:
         return "?"
 
 
-def aim_startup_line() -> str:
-    """The startup aim line. Shared with main.py --aimtest so CI checks the real text."""
-    lead_ms = abs(config.CONFIRM_PREHOUR_LEAD_MS)
-    return (f"첫 [확인] 조준: 정각 {lead_ms:.0f}ms 전 도착 "
-            f"(서버시각 {_prehour_clock_text(config.CONFIRM_PREHOUR_LEAD_MS)}, "
-            f"target arrival {lead_ms:.0f}ms before the hour, "
-            f"CONFIRM_PREHOUR_LEAD_MS={config.CONFIRM_PREHOUR_LEAD_MS:+.0f})")
+def _aim_source_label(source: str) -> str:
+    return config.AIM_SOURCE_LABELS.get(source, source or "기본값")
 
 
-def aim_confirm_line(aim: float) -> str:
+def aim_startup_line(aim_ms: float = None, source: str = None) -> str:
+    """The startup aim line. Shared with main.py --aimtest so CI checks the real text.
+
+    v1.0.27: the value comes from the GUI field (settings confirm_aim_ms) or
+    the code default CONFIRM_PREHOUR_LEAD_MS; the line says which.
+    """
+    if aim_ms is None:
+        aim_ms, source = config.resolve_confirm_aim({})
+    label = _aim_source_label(source)
+    clock_text = _prehour_clock_text(aim_ms)
+    if aim_ms < 0:
+        where = f"정각 {abs(aim_ms):.0f}ms 전 도착"
+        eng = f"target arrival {abs(aim_ms):.0f}ms before the hour"
+    elif aim_ms > 0:
+        where = f"정각 {aim_ms:.0f}ms 뒤 도착"
+        eng = f"target arrival {aim_ms:.0f}ms after the hour"
+    else:
+        where = "정각 도착"
+        eng = "target arrival on the hour"
+    tail = ("" if source != config.AIM_SOURCE_SETTINGS
+            else f", 기본값은 {config.CONFIRM_PREHOUR_LEAD_MS:+.0f}ms")
+    return (f"첫 [확인] 조준: {where} "
+            f"(서버시각 {clock_text}, {label} {aim_ms:+.0f}ms, {eng}{tail})")
+
+
+def aim_confirm_line(aim: float, source: str = None) -> str:
     """The line logged right before the first [확인] is fired (aim in seconds)."""
-    return (f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms "
-            f"(정각 전 발사. 서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
+    label = _aim_source_label(source or config.AIM_SOURCE_DEFAULT)
+    when = "정각 전 발사" if aim < 0 else "정각 뒤 도착"
+    return (f"조준 확정: 도착 목표 정각 {aim * 1000:+.0f}ms ({label}, "
+            f"서버시각 {_prehour_clock_text(aim * 1000)}, {when}. "
+            f"서버가 '아직 예약 가능한 시간이 아닙니다' 로 "
             f"거절하면 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 다시 누른다)")
 
 
@@ -83,6 +106,11 @@ class Runner:
     def _arrival_aim(self, settings: dict) -> float:
         """[확인] 요청의 목표 도착시각. 정각 기준 초 단위(음수 = 정각 전).
 
+        v1.0.27: the customer sets this in the GUI field
+        "[확인] 도착 목표 (정각 기준, ms)" (settings key config.CONFIRM_AIM_KEY
+        = "confirm_aim_ms"). When the key is absent or invalid, the code default
+        config.CONFIRM_PREHOUR_LEAD_MS (-280) applies. See _arrival_aim_source.
+
         v1.0.26: 정각 **전** 280ms (config.CONFIRM_PREHOUR_LEAD_MS), i.e.
         arrival at 08:59:59.720 server time. Customer (2026-10-13):
         "08:59:59 조준 확정: 도착 목표 정각 -240ms 에서 240을 280으로 수정부탁드립니다!".
@@ -113,12 +141,16 @@ class Runner:
         booking.confirm_burst). A NetFunnel queue is not a rejection: the
         program waits for it to release and never clicks while queued.
 
-        조준은 **상수만** 본다. settings 는 읽지 않는다. 파일에 남은 옛 키가
-        상수를 그림자처럼 덮어쓴 적이 있다(2026-09-17 실측). 그래서
-        confirm_prehour_lead_ms / arrival_prehour_lead_ms 는 죽은 키다
-        (config._OBSOLETE). 인수는 호출부 호환을 위해 남겨둘 뿐 읽지 않는다.
+        Up to v1.0.26 this read the constant only. Old keys once shadowed the
+        constant (2026-09-17), so confirm_prehour_lead_ms /
+        arrival_prehour_lead_ms stay dead (config._OBSOLETE) and are never
+        read here; only the new confirm_aim_ms key is.
         """
-        return config.CONFIRM_PREHOUR_LEAD_MS / 1000.0
+        return config.resolve_confirm_aim(settings)[0] / 1000.0
+
+    def _arrival_aim_source(self, settings: dict) -> str:
+        """config.AIM_SOURCE_SETTINGS or config.AIM_SOURCE_DEFAULT."""
+        return config.resolve_confirm_aim(settings)[1]
 
     # -- 로그 ---------------------------------------------------------
     def log(self, line: str) -> None:
@@ -257,10 +289,10 @@ class Runner:
                  f"편도 추정 {self.clock.one_way * 1000:.0f}ms 만큼 미리 발사"
                  + ("" if mode == config.MODE_HANDOVER
                     else f" / 준비 시작은 정각 {setup_seconds}초 전"))
-        lead_ms = abs(config.CONFIRM_PREHOUR_LEAD_MS)
-        self.log(aim_startup_line())
-        self.log("고객 요청(2026-10-13, -240 -> -280): 첫 [확인] 을 정각 "
-                 f"{lead_ms:.0f}ms 전에 도착시킵니다. "
+        aim_src = self._arrival_aim_source(settings)
+        self.log(aim_startup_line(aim * 1000.0, aim_src))
+        self.log(f"[확인] 도착 목표는 화면의 '{config.CONFIRM_AIM_LABEL}' 값입니다"
+                 f"({_aim_source_label(aim_src)} {aim * 1000:+.0f}ms). "
                  "서버가 '아직 예약 가능한 시간이 아닙니다' 로 거절하면 "
                  f"확인창을 되살려 정각 +{int(config.ARRIVAL_SAFETY_MS)}ms 로 "
                  "다시 누릅니다. 대기열 화면이 뜨면 다시 누르지 않고 풀릴 때까지"
@@ -347,7 +379,7 @@ class Runner:
         # --- 9단계: [확인] 만 정각에 쏜다. ---
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(aim_confirm_line(aim))
+        self.log(aim_confirm_line(aim, self._arrival_aim_source(settings)))
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -481,7 +513,7 @@ class Runner:
 
         aim = self._arrival_aim(settings)
         fire_local = self.clock.local_fire_for_arrival(open_epoch + aim)
-        self.log(aim_confirm_line(aim))
+        self.log(aim_confirm_line(aim, self._arrival_aim_source(settings)))
         clockmod.sleep_until_local(fire_local, self.stop_event)
         if self.stop_event.is_set():
             return self._finish(False, "사용자가 중지했습니다.", center, target_date, slots)
@@ -810,7 +842,13 @@ class Runner:
             "aimPlan": (f"첫 발 정각 {aim * 1000:+.0f}ms, "
                         f"회복 발사 정각 +{recovery_ms:.0f}ms "
                         f"(서버 원문 too_early 일 때만)"),
-            "aimSource": "constant CONFIRM_PREHOUR_LEAD_MS",
+            "aimSource": ("settings confirm_aim_ms"
+                          if self._arrival_aim_source(self.settings)
+                          == config.AIM_SOURCE_SETTINGS
+                          else "default CONFIRM_PREHOUR_LEAD_MS"),
+            "aimSourceLabel": _aim_source_label(
+                self._arrival_aim_source(self.settings)),
+            "aimDefaultMs": config.CONFIRM_PREHOUR_LEAD_MS,
             "recoveryAimSource": "clock.safe_arrival_after(ARRIVAL_SAFETY_MS)",
             "queueWaitSeconds": config.QUEUE_WAIT_SECONDS,
             "result": "success" if ok else "fail",

@@ -227,16 +227,22 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if ok else 1
 
         if any(a.startswith("--aimtest") for a in argv):
-            # v1.0.22~26: the aim lines are only logged inside Runner.run after
+            # v1.0.22~27: the aim lines are only logged inside Runner.run after
             # login, which CI never reaches. This mode logs the exact same
             # lines through a real Runner (saved settings applied, stale keys
             # stripped) so the frozen exe proves the shipped aim. A UTF-8 copy
             # goes to --aimtest=<file> because the CI console garbles Korean.
+            # v1.0.27: the aim is the GUI value (settings confirm_aim_ms) or
+            # the default. --expect=<ms> makes CI assert the exact value, and
+            # --expectsource=settings|default the source.
             from aisarang.runner import Runner, aim_startup_line, aim_confirm_line
             from aisarang import config as cfg
             r = Runner(status_cb=_out, log_cb=_out, diag=diag)
-            aim = r._arrival_aim(cfg.load_settings())
-            lines = [aim_startup_line(), aim_confirm_line(aim)]
+            settings = cfg.load_settings()
+            aim = r._arrival_aim(settings)
+            source = r._arrival_aim_source(settings)
+            lines = [aim_startup_line(aim * 1000.0, source),
+                     aim_confirm_line(aim, source)]
             for line in lines:
                 r.log(line)
             dest = next((a.split("=", 1)[1] for a in argv
@@ -244,12 +250,19 @@ def main(argv: list[str] | None = None) -> int:
             if dest:
                 with open(dest, "w", encoding="utf-8") as fh:
                     fh.write("\n".join(lines) + "\n")
-            ok = abs(aim * 1000 - cfg.CONFIRM_PREHOUR_LEAD_MS) < 0.5
+            want = next((a.split("=", 1)[1] for a in argv
+                         if a.startswith("--expect=")), "")
+            want_src = next((a.split("=", 1)[1] for a in argv
+                             if a.startswith("--expectsource=")), "")
+            want_ms = float(want) if want else cfg.CONFIRM_PREHOUR_LEAD_MS
+            ok = abs(aim * 1000 - want_ms) < 0.5 and (not want_src or want_src == source)
             diag.upload("조준 점검 " + ("성공" if ok else "실패"),
-                        {"mode": "aimtest", "aimMs": round(aim * 1000, 1)},
+                        {"mode": "aimtest", "aimMs": round(aim * 1000, 1),
+                         "aimSourceRun": source, "aimExpectMs": want_ms},
                         blocking=True)
             _out(f"AIMTEST {'OK' if ok else 'FAILED'} aimMs={aim * 1000:+.0f} "
-                 f"leadMs={cfg.CONFIRM_PREHOUR_LEAD_MS:+.0f} "
+                 f"source={source} expectMs={want_ms:+.0f} "
+                 f"defaultMs={cfg.CONFIRM_PREHOUR_LEAD_MS:+.0f} "
                  f"version={cfg.APP_VERSION}")
             return 0 if ok else 1
 

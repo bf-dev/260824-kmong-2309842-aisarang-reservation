@@ -281,6 +281,28 @@ class App:
             anchor="w", justify="left")
         self.lbl_mode.grid(row=1, column=0, columnspan=4, sticky="w", pady=(10, 0))
 
+        # v1.0.27: the customer sets the first [확인] arrival aim here instead
+        # of asking us for a new build every time. Same sign as the log line
+        # "조준 확정: 도착 목표 정각 -280ms" (negative = before the hour).
+        aim_row = tk.Frame(c, bg=CARD)
+        aim_row.grid(row=2, column=0, columnspan=4, sticky="w", pady=(12, 0))
+        tk.Label(aim_row, text=config.CONFIRM_AIM_LABEL, bg=CARD, fg=INK,
+                 font=("맑은 고딕", 10, "bold")).pack(side="left")
+        self.ent_aim = tk.Entry(aim_row, width=7, font=("맑은 고딕", 12, "bold"),
+                                relief="flat", bg="#eef3fd", fg=ACCENT,
+                                justify="center", highlightthickness=1,
+                                highlightbackground="#b9cdf3",
+                                highlightcolor=ACCENT)
+        self.ent_aim.pack(side="left", padx=(10, 0), ipady=5)
+        self.lbl_aim = tk.Label(aim_row, text="", bg=CARD, fg=MUTED,
+                                font=("맑은 고딕", 10))
+        self.lbl_aim.pack(side="left", padx=(10, 0))
+        self.ent_aim.bind("<KeyRelease>", lambda e: self._show_aim())
+        self.ent_aim.bind("<FocusOut>", lambda e: self._show_aim())
+        tk.Label(c, text=config.CONFIRM_AIM_HINT, bg=CARD, fg=MUTED,
+                 font=("맑은 고딕", 9), anchor="w", justify="left").grid(
+            row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+
         # 1. 로그인
         c = card(outer, "2. 로그인 방식", self.compact)
         self.login_choice = SegmentedChoice(
@@ -408,8 +430,8 @@ class App:
                  justify="left").grid(row=0, column=0, columnspan=4, sticky="w")
         tk.Label(c, text="정각보다 먼저 도착한 요청은 사이트가 그냥 버립니다"
                          " ('아직 예약 가능한 시간이 아닙니다').\n"
-                         "그래서 9시 정각을 아주 조금 지나서 도착하도록 맞춥니다. "
-                         "그래도 이르면 확인창을 되살려 다시 누릅니다.\n"
+                         "첫 [확인] 은 1번 칸의 '[확인] 도착 목표' 시각에 도착하도록 누르고, "
+                         "이르다고 거절되면 확인창을 되살려 다시 누릅니다.\n"
                          "'정원초과' 라면 자리가 나간 것이라 두들기지 않고 결과를 알려드립니다.",
                  bg=CARD, fg=MUTED, font=("맑은 고딕", 9), anchor="w",
                  justify="left").grid(row=1, column=0, columnspan=4, sticky="w",
@@ -603,6 +625,10 @@ class App:
         except Exception:
             self.cb_hours.set("9")
         self.tg_dry.set(bool(s.get("dry_run")))
+        aim_ms, _src = config.resolve_confirm_aim(s)
+        self.ent_aim.delete(0, "end")
+        self.ent_aim.insert(0, f"{aim_ms:+.0f}" if aim_ms > 0 else f"{aim_ms:.0f}")
+        self._show_aim()
         center = s.get("center") or dict(config.DEFAULT_CENTER)
         self.centers = [center]
         self.cb_center["values"] = [self._center_label(center)]
@@ -620,6 +646,50 @@ class App:
             self._on_date_mode("auto")
         self.log(f"기본 센터: {center.get('name')} ({center.get('stcode')})")
         threading.Thread(target=self._load_regions, daemon=True).start()
+
+    def _read_aim(self):
+        """(ms or None, error text, explicitly set?) from the aim field.
+
+        Blank = back to the default (key removed). An unchanged default on a PC
+        that never set the key stays unset, so a future default change still
+        reaches it (the 1.0.15 / 1.0.17 frozen-default trap).
+        """
+        raw = self.ent_aim.get()
+        if not raw.strip():
+            return int(config.CONFIRM_PREHOUR_LEAD_MS), "", False
+        v, err = config.parse_confirm_aim_ms(raw)
+        if err:
+            return None, err, False
+        had_key = self.settings.get(config.CONFIRM_AIM_KEY) is not None
+        if not had_key and v == int(config.CONFIRM_PREHOUR_LEAD_MS):
+            return v, "", False
+        return v, "", True
+
+    def _show_aim(self):
+        try:
+            v, err, explicit = self._read_aim()
+            if err:
+                self.lbl_aim.config(text="정수(ms), -1000 ~ 1000 으로 넣어주세요", fg=BAD)
+                return
+            from .runner import _prehour_clock_text
+            src = config.AIM_SOURCE_LABELS[
+                config.AIM_SOURCE_SETTINGS if explicit else config.AIM_SOURCE_DEFAULT]
+            self.lbl_aim.config(
+                text=f"= 서버시각 {_prehour_clock_text(v)} 도착 ({src})", fg=MUTED)
+        except Exception:
+            pass
+
+    def _check_aim(self) -> bool:
+        v, err, _explicit = self._read_aim()
+        if err:
+            self._show_aim()
+            messagebox.showinfo("안내", err + "\n\n예: -280 (정각 0.28초 전 도착)")
+            try:
+                self.ent_aim.focus_set()
+            except Exception:
+                pass
+            return False
+        return True
 
     def _center_label(self, c: dict) -> str:
         kind = "통합반" if c.get("unityYn") == "Y" else "독립반"
@@ -789,10 +859,18 @@ class App:
         s["dry_run"] = self.tg_dry.get()
         s["target_date"] = (self.ent_date.get().strip()
                             if self.date_choice.get() == "fixed" else "")
+        # v1.0.27: callers run _check_aim first; an invalid value never lands.
+        aim, err, explicit = self._read_aim()
+        if not err and explicit:
+            s[config.CONFIRM_AIM_KEY] = aim
+        elif not err:
+            s.pop(config.CONFIRM_AIM_KEY, None)
         return s
 
     @safe_handler
     def on_save(self):
+        if not self._check_aim():
+            return
         self.settings = self._collect()
         if config.save_settings(self.settings):
             self.set_status("설정을 저장했습니다. 다음 실행에도 그대로 쓰입니다.")
@@ -804,8 +882,11 @@ class App:
     def on_start(self):
         if self.runner and self.runner.is_running():
             return
+        if not self._check_aim():
+            return
         self.settings = self._collect()
         config.save_settings(self.settings)
+        self._show_aim()
 
         if self.settings["login_mode"] == "cert" and not self.cert_pw.get().strip():
             messagebox.showinfo("안내", "공동인증서 자동 로그인을 고르셨습니다.\n"
@@ -953,6 +1034,8 @@ def run_demo(hold_ms: int = 60000, diag: Diagnostics | None = None,
             app.set_status("서버 시각을 맞추는 중입니다...")
             r = Runner(status_cb=app.set_status, log_cb=app.log, diag=app.diag)
             out = r.selfcheck()
+            from .runner import aim_startup_line
+            app.log(aim_startup_line(*config.resolve_confirm_aim(app.settings)))
             app.log(f"시간제보육 센터 조회: {out.get('centers')}개")
             app.log(f"기본 센터 확인: {out.get('default_found')}")
             offset_line = out.get("clock", "")

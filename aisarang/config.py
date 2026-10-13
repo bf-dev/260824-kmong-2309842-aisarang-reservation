@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
 APP_NAME = "아이사랑 시간제보육 예약"
 APP_SLUG = "aisarang-reservation"
-APP_VERSION = "1.0.26"
+APP_VERSION = "1.0.27"
 
 # 실행 방식.
 #   handover  인계 모드 (기본). 사람이 아동~[예약하기] 까지 손으로 끝내 두면
@@ -314,10 +315,91 @@ ARRIVAL_SAFETY_MS = 140.0
 #     time). ARRIVAL_SAFETY_MS, REOPEN_EARLY_MAX, QUEUE_WAIT_SECONDS and the
 #     T-90s remeasure stop are unchanged.
 #
-# Code constant only. It is not a setting: the old settings keys
-# confirm_prehour_lead_ms / arrival_prehour_lead_ms stay in _OBSOLETE so a
-# stale settings.json can never override it.
+#   v1.0.27: the owner asked (2026-10-13) to let the customer change this
+#     value in the GUI, since it moved almost daily (-230 -> -240 -> -280).
+#     CONFIRM_PREHOUR_LEAD_MS is now the DEFAULT only. The customer's own value
+#     lives under the NEW settings key CONFIRM_AIM_KEY ("confirm_aim_ms"),
+#     entered in the GUI field "[확인] 도착 목표 (정각 기준, ms)".
+#
+# The old keys confirm_prehour_lead_ms / arrival_prehour_lead_ms stay in
+# _OBSOLETE: they are never read and are stripped from settings.json at load.
+# The new key is written ONLY once the customer actually changed the field
+# (save_settings never writes it from DEFAULT_SETTINGS), so a future change of
+# this constant still reaches every PC that never edited it.
+# That is the 1.0.15 / 1.0.17 trap (frozen defaults shadowing constants).
 CONFIRM_PREHOUR_LEAD_MS = -280.0
+
+# v1.0.27: customer-editable first-shot aim (ms relative to the hour,
+# negative = before the hour, the same sign as the log line
+# "조준 확정: 도착 목표 정각 -280ms").
+CONFIRM_AIM_KEY = "confirm_aim_ms"
+CONFIRM_AIM_LABEL = "[확인] 도착 목표 (정각 기준, ms)"
+CONFIRM_AIM_HINT = ("-280 = 정각 0.28초 전 도착. 마이너스가 클수록(예: -300) 더 일찍 "
+                    "누릅니다. 비우면 기본값 -280.")
+CONFIRM_AIM_MIN_MS = -1000
+CONFIRM_AIM_MAX_MS = 1000
+AIM_SOURCE_SETTINGS = "settings"
+AIM_SOURCE_DEFAULT = "default"
+AIM_SOURCE_LABELS = {AIM_SOURCE_SETTINGS: "설정값", AIM_SOURCE_DEFAULT: "기본값"}
+
+_AIM_TEXT = re.compile(r"^[+-]?\d+$")
+
+
+def parse_confirm_aim_ms(value):
+    """Validate a first-shot aim. Returns (int ms, "") or (None, Korean error).
+
+    Accepts an int, an integral float, or text like "-280", "+120", "-280ms".
+    Blank text means "use the default" and returns the default.
+    """
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        if isinstance(value, int):
+            v = int(value)
+        elif isinstance(value, float):
+            if value != value or value != int(value):
+                return None, ("[확인] 도착 목표는 -280 처럼 정수(ms)로 넣어주세요. "
+                              "소수점은 넣을 수 없습니다.")
+            v = int(value)
+        else:
+            t = str(value if value is not None else "").strip()
+            t = t.replace("\u2212", "-").replace("\uff0d", "-").replace(" ", "")
+            if t.lower().endswith("ms"):
+                t = t[:-2]
+            if t == "":
+                return int(CONFIRM_PREHOUR_LEAD_MS), ""
+            if not _AIM_TEXT.match(t):
+                return None, ("[확인] 도착 목표는 -280 처럼 정수(ms)로 넣어주세요. "
+                              "소수점이나 글자는 넣을 수 없습니다.")
+            v = int(t)
+    except Exception:
+        return None, "[확인] 도착 목표는 -280 처럼 정수(ms)로 넣어주세요."
+    if v < CONFIRM_AIM_MIN_MS or v > CONFIRM_AIM_MAX_MS:
+        return None, (f"[확인] 도착 목표는 {CONFIRM_AIM_MIN_MS} 부터 "
+                      f"{CONFIRM_AIM_MAX_MS} 사이로 넣어주세요. (지금 값: {v})")
+    return v, ""
+
+
+def _aim_is_set(value) -> bool:
+    """None or blank text in a settings dict means "not set" (use the default)."""
+    return value is not None and not (isinstance(value, str) and not value.strip())
+
+
+def resolve_confirm_aim(settings) -> tuple:
+    """(aim ms as float, source) for the first [확인].
+
+    source is AIM_SOURCE_SETTINGS when settings carry a valid CONFIRM_AIM_KEY,
+    otherwise AIM_SOURCE_DEFAULT (CONFIRM_PREHOUR_LEAD_MS). Obsolete keys are
+    never looked at.
+    """
+    try:
+        if isinstance(settings, dict) and _aim_is_set(settings.get(CONFIRM_AIM_KEY)):
+            v, err = parse_confirm_aim_ms(settings.get(CONFIRM_AIM_KEY))
+            if not err and v is not None:
+                return float(v), AIM_SOURCE_SETTINGS
+    except Exception:
+        pass
+    return float(CONFIRM_PREHOUR_LEAD_MS), AIM_SOURCE_DEFAULT
 
 # How long to keep waiting while the NetFunnel queue shows (seconds). The
 # queue is the site holding our request; the submission goes out when it
@@ -460,6 +542,16 @@ def load_settings() -> dict:
                     if k in _OBSOLETE:
                         stale.append(k)
                         continue
+                    if k == CONFIRM_AIM_KEY:
+                        # v1.0.27: optional, customer-set only. An unusable
+                        # value is dropped so the default applies.
+                        aim, err = (parse_confirm_aim_ms(v) if _aim_is_set(v)
+                                    else (None, "unset"))
+                        if err or aim is None:
+                            stale.append(k)
+                        else:
+                            data[k] = aim
+                        continue
                     if k in data:
                         data[k] = v
                 if not isinstance(data.get("center"), dict) or not data["center"].get("stcode"):
@@ -488,12 +580,33 @@ def load_settings() -> dict:
 def save_settings(data: dict) -> bool:
     try:
         payload = {k: data.get(k, DEFAULT_SETTINGS[k]) for k in DEFAULT_SETTINGS}
+        # v1.0.27: the aim key is NOT in DEFAULT_SETTINGS on purpose, so a
+        # plain save never freezes the code default into the file. It is
+        # written only when it is present in `data`, which happens only when
+        # the customer set it in the GUI (gui._collect) or it was already in
+        # their file. The default can then still move for everyone else.
+        if _aim_is_set(data.get(CONFIRM_AIM_KEY)):
+            aim, err = parse_confirm_aim_ms(data.get(CONFIRM_AIM_KEY))
+            if not err and aim is not None:
+                payload[CONFIRM_AIM_KEY] = aim
         settings_path().write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return True
     except Exception:
         return False
+
+
+def peek_confirm_aim() -> tuple:
+    """Read-only look at the saved aim (no rewrite). For diagnostics meta."""
+    try:
+        p = settings_path()
+        if p.exists():
+            saved = json.loads(p.read_text(encoding="utf-8"))
+            return resolve_confirm_aim(saved if isinstance(saved, dict) else {})
+    except Exception:
+        pass
+    return float(CONFIRM_PREHOUR_LEAD_MS), AIM_SOURCE_DEFAULT
 
 
 def is_frozen() -> bool:

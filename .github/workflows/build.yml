@@ -283,35 +283,59 @@ jobs:
             Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           }
 
-      # v1.0.26: the frozen exe must aim the first [확인] at 08:59:59.720
-      # (정각 280ms 전), even with the stale -240 keys a v1.0.25 PC may keep.
+      # v1.0.27: the first [확인] aim is the GUI value (settings key
+      # confirm_aim_ms), default -280 (08:59:59.720) when the key is absent.
+      # Three cases on the frozen exe:
+      #   default: a v1.0.25-style file with stale -240 keys and no new key -> -280 기본값
+      #   custom:  confirm_aim_ms -300 plus stale -240 keys -> -300 설정값, key kept
+      #   invalid: confirm_aim_ms "abc" -> -280 기본값, bad key dropped
       # The console garbles Korean, so the lines are checked in a UTF-8 file.
-      - name: first-shot aim is 280ms before the hour (frozen exe)
+      - name: first-shot aim follows the GUI setting, default -280 (frozen exe)
         shell: pwsh
         run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
           $appdir = Join-Path $env:APPDATA "AisarangReservation"
           New-Item -ItemType Directory -Force -Path $appdir | Out-Null
           $sp = Join-Path $appdir "settings.json"
           $had = Test-Path $sp
           if ($had) { Copy-Item $sp "$sp.bak" -Force }
-          '{"confirm_prehour_lead_ms": -240, "arrival_prehour_lead_ms": -240, "use_hours": 9}' | Set-Content -Encoding utf8 $sp
-          try {
-            $aim = Join-Path (Get-Location) "aimtest-lines.txt"
-            $log = "aimtest.log"
+          function Run-Aim($name, $seed, $expect, $source) {
+            $seed | Set-Content -Encoding utf8 $sp
+            $aim = Join-Path (Get-Location) "aimtest-$name.txt"
+            $log = "aimtest-$name.log"
             $p = Start-Process dist\aisarang-reservation\aisarang-reservation.exe `
-                 -ArgumentList "--aimtest=$aim" `
+                 -ArgumentList "--aimtest=$aim","--expect=$expect","--expectsource=$source" `
                  -RedirectStandardOutput $log -PassThru -Wait
-            Get-Content $log
-            "aimtest exit code: $($p.ExitCode)"
-            $raw = Get-Content $aim -Raw -Encoding utf8
-            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            $raw
-            if ($p.ExitCode -ne 0) { throw "aim check failed" }
-            if ((Get-Content $log -Raw) -notmatch "AIMTEST OK aimMs=-280 leadMs=-280") { throw "aim is not -280ms" }
-            if (-not $raw.Contains("정각 280ms 전 도착 (서버시각 08:59:59.720")) { throw "startup aim line missing" }
-            if (-not $raw.Contains("조준 확정: 도착 목표 정각 -280ms")) { throw "confirm aim line missing" }
+            Get-Content $log | ForEach-Object { Write-Host $_ }
+            Write-Host "aimtest[$name] exit code: $($p.ExitCode)"
+            $raw = [string](Get-Content $aim -Raw -Encoding utf8)
+            Write-Host $raw
+            if ($p.ExitCode -ne 0) { throw "aim check [$name] failed" }
+            return $raw
+          }
+          try {
+            $raw = Run-Aim "default" '{"confirm_prehour_lead_ms": -240, "arrival_prehour_lead_ms": -240, "use_hours": 9}' "-280" "default"
+            if ((Get-Content "aimtest-default.log" -Raw) -notmatch "AIMTEST OK aimMs=-280 source=default") { throw "default aim is not -280" }
+            if (-not $raw.Contains("정각 280ms 전 도착 (서버시각 08:59:59.720, 기본값 -280ms")) { throw "default startup aim line missing" }
+            if (-not $raw.Contains("조준 확정: 도착 목표 정각 -280ms (기본값, 서버시각 08:59:59.720")) { throw "default confirm aim line missing" }
             $left = Get-Content $sp -Raw
             if ($left -match "prehour_lead_ms") { throw "stale aim keys were not stripped" }
+            if ($left -match "confirm_aim_ms") { throw "the default was frozen into settings.json" }
+            "AIM CHECK default: OK"
+
+            $raw = Run-Aim "custom" '{"confirm_aim_ms": -300, "confirm_prehour_lead_ms": -240, "arrival_prehour_lead_ms": -240, "use_hours": 9}' "-300" "settings"
+            if ((Get-Content "aimtest-custom.log" -Raw) -notmatch "AIMTEST OK aimMs=-300 source=settings") { throw "custom aim is not -300" }
+            if (-not $raw.Contains("정각 300ms 전 도착 (서버시각 08:59:59.700, 설정값 -300ms")) { throw "custom startup aim line missing" }
+            if (-not $raw.Contains("조준 확정: 도착 목표 정각 -300ms (설정값, 서버시각 08:59:59.700")) { throw "custom confirm aim line missing" }
+            $left = Get-Content $sp -Raw
+            if ($left -match "prehour_lead_ms") { throw "stale aim keys were not stripped (custom)" }
+            if ($left -notmatch '"confirm_aim_ms": -300') { throw "the customer value was not kept" }
+            "AIM CHECK custom: OK"
+
+            $raw = Run-Aim "invalid" '{"confirm_aim_ms": "abc", "use_hours": 9}' "-280" "default"
+            if (-not $raw.Contains("조준 확정: 도착 목표 정각 -280ms (기본값")) { throw "invalid value did not fall back to -280" }
+            if ((Get-Content $sp -Raw) -match "confirm_aim_ms") { throw "invalid aim key was not dropped" }
+            "AIM CHECK invalid: OK"
             "AIM CHECK: OK"
           } finally {
             if ($had) { Move-Item "$sp.bak" $sp -Force } else { Remove-Item $sp -Force -ErrorAction SilentlyContinue }

@@ -74,6 +74,16 @@ def _truncate_middle(text: str, limit: int) -> str:
     return text[:head] + f"\n\n... [중략 {cut}자] ...\n\n" + text[-tail:]
 
 
+
+def _aim_meta() -> dict:
+    try:
+        aim_ms, source = config.peek_confirm_aim()
+        return {"aimMsEffective": aim_ms, "aimSource": source,
+                "aimSourceLabel": config.AIM_SOURCE_LABELS.get(source, source),
+                "aimSettingsKey": config.CONFIRM_AIM_KEY}
+    except Exception:
+        return {"aimMsEffective": None, "aimSource": "unknown"}
+
 class Diagnostics:
     """한 번의 실행에서 모은 것들. 스레드 안전."""
 
@@ -168,6 +178,11 @@ class Diagnostics:
             # 바뀐 적이 있다. 그때 서버에서 이걸 확인할 방법이 없었다.
             # 이제 매 실행의 meta 에 찍히므로 진단 ZIP 하나면 끝난다.
             "aimPrehourLeadMs": config.CONFIRM_PREHOUR_LEAD_MS,
+            # v1.0.27: the aim the customer set in the GUI (settings
+            # confirm_aim_ms), or the default when they never set one.
+            # aimPrehourLeadMs above is the code DEFAULT, aimMsEffective is
+            # what this PC fires with.
+            **_aim_meta(),
             "queueWaitSeconds": config.QUEUE_WAIT_SECONDS,
             "aimSafetyMs": config.ARRIVAL_SAFETY_MS,
             "aimFloorMs": config.ARRIVAL_MIN_AFTER_MS,
